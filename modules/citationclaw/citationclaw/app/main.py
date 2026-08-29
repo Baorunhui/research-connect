@@ -10,15 +10,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
-import httpx
 
 from citationclaw.core.web_search_compat import web_search_extra
 
 
 def _make_openai_client(api_key: str, base_url: str, timeout: float = 60.0):
     """Create an OpenAI client that bypasses system proxy settings."""
-    from openai import OpenAI
-    return OpenAI(
+    import httpx
+    from research_connect_core.llm import create_openai_client
+    return create_openai_client(
         api_key=api_key,
         base_url=base_url,
         timeout=timeout,

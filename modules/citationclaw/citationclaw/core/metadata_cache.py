@@ -4,15 +4,14 @@ File: data/cache/metadata_cache.json
 Key: DOI or paper_title.lower()
 Value: {authors, affiliations, h_index, citations, source, fetched_at}
 """
-import json
-import os
-import tempfile
 import asyncio
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from citationclaw.app.config_manager import DATA_DIR
+from citationclaw.core.cache_store import IndexedJsonMap
 
-CACHE_FILE = Path("data/cache/metadata_cache.json")
+CACHE_FILE = DATA_DIR / "cache" / "metadata_cache.json"
 WRITE_EVERY = 10
 
 
@@ -23,6 +22,7 @@ class MetadataCache:
         self._pending = 0
         self._lock = None
         self._stats = {"hits": 0, "misses": 0, "updates": 0}
+        self._store = IndexedJsonMap("metadata", self._file)
         self._load()
 
     def _get_lock(self):
@@ -31,9 +31,7 @@ class MetadataCache:
         return self._lock
 
     def _load(self):
-        if self._file.exists():
-            with open(self._file, encoding="utf-8") as f:
-                self._data = json.load(f)
+        self._data = self._store.load_all()
 
     def _make_key(self, doi: str, title: str) -> str:
         if doi:
@@ -68,16 +66,7 @@ class MetadataCache:
                 self._pending = 0
 
     def _write(self):
-        self._file.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=self._file.parent, suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, self._file)
-        except Exception:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-            raise
+        self._store.save_all(self._data)
 
     def stats(self) -> dict:
         return dict(self._stats)

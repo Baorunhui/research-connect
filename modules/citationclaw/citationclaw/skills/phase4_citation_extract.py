@@ -264,7 +264,7 @@ class CitationExtractSkill:
         - Up to 2 retries if reviewer rejects.
         """
         try:
-            from openai import AsyncOpenAI
+            from research_connect_core.llm import create_async_openai_client as AsyncOpenAI
             from citationclaw.core.http_utils import make_async_client
 
             client = AsyncOpenAI(

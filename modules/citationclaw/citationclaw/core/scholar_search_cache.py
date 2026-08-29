@@ -4,20 +4,21 @@ Avoids re-querying the search LLM for papers already analyzed.
 Cache key: paper_title (lowercased, stripped).
 Cache value: list of scholar dicts [{name, tier, honors, affiliation, country, position}].
 """
-import json
 import asyncio
-import tempfile
 from pathlib import Path
 from typing import Optional, List
 from datetime import datetime, timezone
+from citationclaw.app.config_manager import DATA_DIR
+from citationclaw.core.cache_store import IndexedJsonMap
 
 
 class ScholarSearchCache:
     """File-based cache for scholar search results."""
 
-    def __init__(self, cache_file: Path = Path("data/cache/scholar_search_cache.json")):
+    def __init__(self, cache_file: Path = DATA_DIR / "cache" / "scholar_search_cache.json"):
         self.cache_file = cache_file
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
+        self._store = IndexedJsonMap("scholar-search", cache_file)
         self._data: dict = self._load()
         self._lock = asyncio.Lock()
         self._dirty = 0
@@ -25,27 +26,11 @@ class ScholarSearchCache:
         self._misses = 0
 
     def _load(self) -> dict:
-        if self.cache_file.exists():
-            try:
-                with open(self.cache_file, encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                return {}
-        return {}
+        return self._store.load_all()
 
     def _save(self):
         """Atomic write to disk."""
-        tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", dir=self.cache_file.parent,
-            delete=False, encoding="utf-8"
-        )
-        try:
-            json.dump(self._data, tmp, ensure_ascii=False, indent=2)
-            tmp.close()
-            Path(tmp.name).replace(self.cache_file)
-        except Exception:
-            tmp.close()
-            Path(tmp.name).unlink(missing_ok=True)
+        self._store.save_all(self._data)
 
     @staticmethod
     def _make_key(paper_title: str) -> str:

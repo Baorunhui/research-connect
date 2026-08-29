@@ -10,7 +10,7 @@ import asyncio
 import re
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict
-from openai import AsyncOpenAI
+from research_connect_core.llm import create_async_openai_client as AsyncOpenAI
 import httpx
 
 

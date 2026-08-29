@@ -6,15 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "research-connect-hub"
 version = "0.1.0"
 description = "Lightweight Feishu connector and OpenAI-compatible LLM gateway"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.14"
 dependencies = [
+  "research-connect-core==0.2.0",
   "lark-oapi==1.7.2",
-  "openai==1.109.1",
-  "python-dotenv==1.2.3",
+  "openai>=1.109.1,<2",
+  "python-dotenv>=1.2,<2",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==8.4.2"]
+dev = ["pytest>=9,<10"]
 
 [project.scripts]
 connect-hub = "connect_hub.cli:main"

@@ -15,7 +15,6 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 import re
 import sqlite3
 import sys
@@ -25,10 +24,9 @@ from typing import Optional
 from urllib.parse import quote
 
 import httpx
+from research_connect_core import DataPaths
 
-DB_PATH = Path(os.environ.get(
-    "CITATIONCLAW_DATA_DIR", str(Path.home() / ".citationclaw"),
-)) / "scholars.db"
+DB_PATH = DataPaths.for_module("citationclaw").state / "scholars.db"
 
 _CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS renowned_scholars (

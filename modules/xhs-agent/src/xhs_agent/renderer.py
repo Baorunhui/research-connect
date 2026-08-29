@@ -168,6 +168,8 @@ def screenshot_html_cards(
     out_dir: Path,
     selector: str,
 ) -> list[Path]:
+    from research_connect_core import configure_playwright_browsers
+    configure_playwright_browsers()
     from playwright.sync_api import sync_playwright
 
     paths: list[Path] = []

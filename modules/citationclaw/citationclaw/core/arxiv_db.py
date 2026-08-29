@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 import sqlite3
 import sys
@@ -37,10 +36,9 @@ import time
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
+from research_connect_core import DataPaths
 
-DB_PATH = Path(os.environ.get(
-    "CITATIONCLAW_DATA_DIR", str(Path.home() / ".citationclaw"),
-)) / "arxiv.db"
+DB_PATH = DataPaths.for_module("citationclaw").state / "arxiv.db"
 
 _CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS arxiv_papers (

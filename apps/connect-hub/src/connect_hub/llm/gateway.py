@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from openai import OpenAI
+from research_connect_core.llm import RetryPolicy, create_openai_client
 
 from connect_hub.config import ProviderSettings
 
@@ -36,12 +36,14 @@ class LLMGatewayError(RuntimeError):
 ClientFactory = Callable[[ProviderSettings], Any]
 
 
-def _default_client_factory(provider: ProviderSettings) -> OpenAI:
-    return OpenAI(
+def _default_client_factory(provider: ProviderSettings) -> Any:
+    return create_openai_client(
         api_key=provider.api_key,
         base_url=provider.base_url,
         timeout=provider.timeout_seconds,
-        max_retries=provider.max_retries,
+        max_concurrency=4,
+        retry_policy=RetryPolicy(max_attempts=max(1, provider.max_retries + 1)),
+        provider_name=provider.name,
     )
 
 
@@ -113,4 +115,3 @@ class LLMGateway:
                 logger.warning("LLM provider %s failed: %s", provider.name, exc)
                 errors.append(f"{provider.name}: {type(exc).__name__}: {exc}")
         raise LLMGatewayError("all LLM providers failed; " + " | ".join(errors))
-

@@ -7,17 +7,15 @@
 缓存 key：Google Scholar 引用页 URL（原始值，不做标准化）
 缓存永久有效，由用户手动清除缓存文件来重置。
 """
-import json
 import asyncio
 import logging
-import os
 import re
-import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
 from citationclaw.app.config_manager import DATA_DIR
+from citationclaw.core.cache_store import IndexedJsonMap
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +32,7 @@ class Phase1Cache:
         self._hits = 0
         self._misses = 0
         self._updates = 0
+        self._store = IndexedJsonMap("phase1", cache_file)
         self._load()
 
     def _get_lock(self):
@@ -44,16 +43,7 @@ class Phase1Cache:
     # ─── 内部 ────────────────────────────────────────────────────────────────
 
     def _load(self):
-        if self.cache_file.exists():
-            try:
-                raw = json.loads(self.cache_file.read_text(encoding="utf-8"))
-            except Exception as e:
-                logger.warning("Failed to load phase1 cache from %s: %s", self.cache_file, e)
-                self._data = {}
-                return
-        else:
-            self._data = {}
-            return
+        raw = self._store.load_all()
 
         migrated: dict = {}
         for stored_key, entry in raw.items():
@@ -77,20 +67,8 @@ class Phase1Cache:
 
     async def _save(self):
         """将内存数据写入磁盘（调用方须已持有 _lock）。使用原子写入。"""
-        self.cache_file.parent.mkdir(parents=True, exist_ok=True)
         data_snapshot = self._data.copy()
-
-        def _write():
-            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(self.cache_file.parent), suffix='.tmp')
-            try:
-                with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
-                    json.dump(data_snapshot, f, ensure_ascii=False, indent=2)
-                os.replace(tmp_path, str(self.cache_file))
-            except BaseException:
-                os.unlink(tmp_path)
-                raise
-
-        await asyncio.to_thread(_write)
+        await asyncio.to_thread(self._store.save_all, data_snapshot)
 
     @staticmethod
     def _paper_key(paper_link: str, paper_title: str) -> str:

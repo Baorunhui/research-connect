@@ -17,6 +17,7 @@ from connect_hub.tools.daily_paper import daily_paper_tools
 from connect_hub.tools.web import web_tools
 from connect_hub.tools.xhs import xhs_generate_tool
 from connect_hub.websearch import ExaMCPWebSearchProvider, JinaReaderProvider
+from research_connect_core import DataPaths
 
 
 def _build_runtime(*, interrupt_stale_jobs: bool = False) -> tuple[object, object, object, object]:
@@ -34,7 +35,7 @@ def _build_runtime(*, interrupt_stale_jobs: bool = False) -> tuple[object, objec
             xhs_generate_tool(
                 agent_dir=xhs_dir,
                 provider=settings.providers[0],
-                output_dir=settings.db_path.parent / "xhs_outputs",
+                output_dir=DataPaths.for_module("xhs-agent").artifacts,
                 timeout_seconds=settings.xhs_agent_timeout_seconds,
                 offline=settings.xhs_agent_offline,
             )
@@ -75,7 +76,7 @@ def _build_runtime(*, interrupt_stale_jobs: bool = False) -> tuple[object, objec
     if daily_paper.configured:
         for definition in daily_paper_tools(
             daily_paper,
-            output_dir=settings.db_path.parent / "daily_paper_reports",
+            output_dir=DataPaths.for_module("daily-paper-reader").artifacts,
             public_url=settings.daily_paper_public_url,
         ):
             tools.register(definition)

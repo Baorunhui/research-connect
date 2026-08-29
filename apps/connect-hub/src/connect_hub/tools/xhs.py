@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import uuid
+import sys
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -20,11 +21,9 @@ def xhs_generate_tool(
     offline: bool,
 ) -> ToolDefinition:
     resolved_agent_dir = agent_dir.resolve()
-    python_path = resolved_agent_dir / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    python_path = Path(sys.executable).resolve()
 
     def handler(arguments: Mapping[str, Any], context: ToolContext) -> dict[str, Any]:
-        if not python_path.exists():
-            raise RuntimeError(f"xhs_agent Python not found: {python_path}")
         request_id = f"feishu-{uuid.uuid4().hex[:12]}"
         materials = [
             {
@@ -79,6 +78,8 @@ def xhs_generate_tool(
                 "USTC_LLM_BASE_URL": provider.base_url.removesuffix("/v1"),
                 "USTC_LLM_TIMEOUT": str(provider.timeout_seconds),
                 "XHS_AGENT_RENDERER": "html-strict",
+                "CONNECT_JOB_ID": context.job_id,
+                "CONNECT_EMIT_EVENTS": "1",
             }
         )
         with tempfile.NamedTemporaryFile(

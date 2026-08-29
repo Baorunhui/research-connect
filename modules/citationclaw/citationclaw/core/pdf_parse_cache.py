@@ -3,28 +3,25 @@
 Maps paper_key -> {pdf_path, parsed_at, has_content_list, has_authors}
 Persisted as data/cache/pdf_parsed/index.json
 """
-import json
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone
+from citationclaw.app.config_manager import DATA_DIR
+from citationclaw.core.cache_store import IndexedJsonMap
 
 
 class PDFParseCache:
-    def __init__(self, base_dir: Path = Path("data/cache/pdf_parsed")):
+    def __init__(self, base_dir: Path = DATA_DIR / "cache" / "pdf_parsed"):
         self._base = base_dir
         self._base.mkdir(parents=True, exist_ok=True)
-        self._index_path = self._base / "index.json"
+        self._store = IndexedJsonMap("pdf-parse-index", self._base / "index.json")
         self._index = self._load_index()
 
     def _load_index(self) -> dict:
-        if self._index_path.exists():
-            with open(self._index_path, encoding="utf-8") as f:
-                return json.load(f)
-        return {}
+        return self._store.load_all()
 
     def _save_index(self):
-        with open(self._index_path, "w", encoding="utf-8") as f:
-            json.dump(self._index, f, ensure_ascii=False, indent=2)
+        self._store.save_all(self._index)
 
     def has(self, paper_key: str) -> bool:
         return paper_key in self._index
@@ -45,18 +42,13 @@ class PDFParseCache:
         """Store LLM-extracted authors for a paper."""
         out = self._base / paper_key
         out.mkdir(parents=True, exist_ok=True)
-        with open(out / "authors.json", "w", encoding="utf-8") as f:
-            json.dump(authors, f, ensure_ascii=False, indent=2)
+        self._store.index.put_json("pdf-parse-authors", paper_key, authors)
         if paper_key in self._index:
             self._index[paper_key]["has_authors"] = True
             self._save_index()
 
     def get_authors(self, paper_key: str) -> Optional[list]:
-        path = self._base / paper_key / "authors.json"
-        if path.exists():
-            with open(path, encoding="utf-8") as f:
-                return json.load(f)
-        return None
+        return self._store.index.get_json("pdf-parse-authors", paper_key)
 
     def stats(self) -> dict:
         return {

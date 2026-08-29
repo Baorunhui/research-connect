@@ -2,7 +2,7 @@ import json
 import asyncio
 from pathlib import Path
 from typing import Callable, Optional
-from openai import AsyncOpenAI
+from research_connect_core.llm import create_async_openai_client as AsyncOpenAI
 import httpx
 from citationclaw.core.author_cache import AuthorInfoCache
 from citationclaw.core.web_search_compat import web_search_extra

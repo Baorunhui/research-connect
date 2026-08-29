@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
+from research_connect_core import DataPaths
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+MONOREPO_ROOT = PROJECT_ROOT.parents[1]
 
 
 def _as_bool(value: str | None, default: bool = False) -> bool:
@@ -117,10 +119,16 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
     if domain not in {"feishu", "lark"}:
         raise ValueError("FEISHU_DOMAIN must be 'feishu' or 'lark'")
 
-    db_path = Path(str(os.getenv("CONNECT_HUB_DB_PATH") or "data/connect_hub.sqlite3"))
-    if not db_path.is_absolute():
+    configured_db = str(os.getenv("CONNECT_HUB_DB_PATH") or "").strip()
+    db_path = (
+        Path(configured_db)
+        if configured_db
+        else DataPaths.for_module("connect-hub").state / "connect_hub.sqlite3"
+    )
+    if configured_db and not db_path.is_absolute():
         db_path = PROJECT_ROOT / db_path
-    xhs_agent_dir = Path(str(os.getenv("XHS_AGENT_DIR") or "../xhs_agent"))
+    configured_xhs = str(os.getenv("XHS_AGENT_DIR") or "").strip()
+    xhs_agent_dir = Path(configured_xhs) if configured_xhs else MONOREPO_ROOT / "modules" / "xhs-agent"
     if not xhs_agent_dir.is_absolute():
         xhs_agent_dir = PROJECT_ROOT / xhs_agent_dir
 

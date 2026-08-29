@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
+
+from research_connect_core.llm import LLMProvider, RetryPolicy, UnifiedLLM
 
 
 class ChatModel(Protocol):
@@ -18,6 +18,7 @@ class ModelConfig:
     base_url: str = "https://api.llm.ustc.edu.cn"
     api_key: str | None = None
     timeout: int = 90
+    max_concurrency: int = 4
 
     @classmethod
     def from_env(cls) -> "ModelConfig":
@@ -25,6 +26,7 @@ class ModelConfig:
             base_url=os.getenv("USTC_LLM_BASE_URL", "https://api.llm.ustc.edu.cn").rstrip("/"),
             api_key=os.getenv("USTC_LLM_API_KEY"),
             timeout=int(os.getenv("USTC_LLM_TIMEOUT", "90")),
+            max_concurrency=int(os.getenv("LLM_MAX_CONCURRENCY", "4")),
         )
 
 
@@ -33,51 +35,45 @@ class USTCChatClient:
         self.config = config or ModelConfig.from_env()
         if not self.config.api_key:
             raise ValueError("USTC_LLM_API_KEY is required for USTCChatClient.")
+        self.client = UnifiedLLM(
+            [
+                LLMProvider(
+                    name="ustc",
+                    base_url=self.config.base_url,
+                    api_key=self.config.api_key,
+                    model="per-request",
+                    timeout_seconds=self.config.timeout,
+                    max_concurrency=self.config.max_concurrency,
+                    retry=RetryPolicy(max_attempts=4),
+                )
+            ]
+        )
 
     def complete_json(self, *, model: str, system: str, user: str, max_tokens: int = 1600) -> str:
-        payload = {
-            "model": model,
-            "messages": [
+        result = self.client.complete(
+            model=model,
+            messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": 0.4,
-            "max_tokens": max_tokens,
-            "response_format": {"type": "json_object"},
-        }
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self.config.base_url}/v1/chat/completions",
-            data=data,
-            method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.config.api_key}",
-            },
+            temperature=0.4,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
         )
-        try:
-            with urllib.request.urlopen(req, timeout=self.config.timeout) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"USTC API HTTP {exc.code}: {detail}") from exc
-
-        try:
-            message = body["choices"][0]["message"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError(f"Unexpected USTC API response: {body}") from exc
-
-        content = message.get("content")
+        content = result.content
         if content:
             return content
 
-        reasoning = message.get("reasoning_content")
+        try:
+            reasoning = getattr(result.raw.choices[0].message, "reasoning_content", None)
+        except (AttributeError, IndexError, TypeError):
+            reasoning = None
         if reasoning:
             raise RuntimeError(
                 "Model returned reasoning_content without JSON content. "
                 "Try deepseek-v4-pro/qwen3.6-chat or raise max_tokens."
             )
-        raise RuntimeError(f"Model returned empty content: {body}")
+        raise RuntimeError(f"Model returned empty content from {result.provider}/{result.model}")
 
 
 class FakeChatClient:

@@ -7,6 +7,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from research_connect_core import StandaloneJobRuntime, runtime_from_env
 
 try:
     from source_config import get_source_backend, load_config_with_source_migration
@@ -25,9 +26,12 @@ CONFIG_FILE = os.getenv("DPR_CONFIG_FILE") or os.path.join(ROOT_DIR, "config.yam
 LONG_RANGE_DAYS_THRESHOLD = 10
 MAIN_DEFAULT_DAYS = 9
 SKIMS_FETCH_DAYS_THRESHOLD = 11
+_JOB_RUNTIME: StandaloneJobRuntime | None = None
 
 
 def run_step(label: str, args: list[str], env: dict[str, str] | None = None) -> None:
+    if _JOB_RUNTIME is not None:
+        _JOB_RUNTIME.progress(label, stage=label)
     print(f"[INFO] {label}: {' '.join(args)}", flush=True)
     subprocess.run(args, check=True, env=env)
 
@@ -525,7 +529,7 @@ def print_trace_recommend(stage: str, path: str, trace_ids: list[str]) -> None:
         )
 
 
-def main() -> None:
+def _main_impl() -> None:
     parser = argparse.ArgumentParser(
         description="Daily Paper Reader pipeline (steps 0~6).",
     )
@@ -766,6 +770,16 @@ def main() -> None:
         ],
         env=resolve_summary_step_env(),
     )
+
+
+def main() -> None:
+    global _JOB_RUNTIME
+    with runtime_from_env("daily-paper-reader", "daily-paper.generate") as runtime:
+        _JOB_RUNTIME = runtime
+        try:
+            _main_impl()
+        finally:
+            _JOB_RUNTIME = None
 
 
 if __name__ == "__main__":

@@ -1,0 +1,31 @@
+# Direct dependency versions validated together on Python 3.11 (2026-08-29).
+# Transitive platform wheels remain resolver-managed for Windows/Linux.
+research-connect-core==0.2.0
+lark-oapi==1.7.2
+openai==1.109.1
+python-dotenv==1.2.3
+fastapi==0.141.1
+uvicorn==0.52.4
+jinja2==3.1.6
+python-multipart==0.0.32
+requests==2.32.5
+httpx==0.28.1
+tqdm==4.70.0
+pandas==2.3.3
+openpyxl==3.1.5
+beautifulsoup4==4.15.0
+websocket-client==1.9.0
+pycookiecheat==0.8.0
+pydantic==2.13.5
+PyMuPDF==1.28.2
+playwright==1.62.0
+PyYAML==6.0.3
+Pillow==12.3.0
+arxiv==2.4.1
+numpy==2.4.6
+scikit-learn==1.9.0
+psutil==7.2.2
+huggingface-hub==1.29.0
+tiktoken==0.14.0
+pytest==9.1.1
+pytest-cov==7.1.0

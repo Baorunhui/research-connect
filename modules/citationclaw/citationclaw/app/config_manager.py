@@ -2,15 +2,18 @@ import json
 from pathlib import Path
 from typing import List
 from pydantic import BaseModel, Field
+from research_connect_core import DataPaths
 
 # Project root: three levels up from this file (config_manager.py -> app -> citationclaw -> project root)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "config.json"
+_PATHS = DataPaths.for_module("citationclaw")
+_DEFAULT_CONFIG_PATH = _PATHS.state / "config.json"
+_LEGACY_CONFIG_PATH = _PROJECT_ROOT / "config.json"
 
 
 def _resolve_data_dir() -> Path:
     """Return the absolute path to the project data directory."""
-    return _PROJECT_ROOT / "data"
+    return _PATHS.root
 
 
 DATA_DIR = _resolve_data_dir()
@@ -185,6 +188,9 @@ class AppConfig(BaseModel):
 class ConfigManager:
     def __init__(self, config_path: str = str(_DEFAULT_CONFIG_PATH)):
         self.config_path = Path(config_path)
+        if self.config_path == _DEFAULT_CONFIG_PATH and not self.config_path.exists() and _LEGACY_CONFIG_PATH.exists():
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            self.config_path.write_bytes(_LEGACY_CONFIG_PATH.read_bytes())
         self.config = self._load()
 
     def _load(self) -> AppConfig:
@@ -204,6 +210,7 @@ class ConfigManager:
         """保存配置（enable_year_traverse 不持久化，每次启动重置为 False）"""
         data = config.model_dump()
         data.pop("enable_year_traverse", None)
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.config_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         self.config = config

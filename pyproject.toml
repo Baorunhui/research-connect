@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "research-connect"
+version = "0.2.0"
+description = "Unified runtime and shared infrastructure for Research Connect"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "research-connect-core==0.2.0",
+  "lark-oapi==1.7.2",
+  "openai>=1.109.1,<2",
+  "python-dotenv>=1.2,<2",
+  "fastapi>=0.141,<1",
+  "uvicorn[standard]>=0.52,<1",
+  "jinja2>=3.1.3,<4",
+  "python-multipart>=0.0.20,<1",
+  "requests>=2.31,<3",
+  "httpx>=0.28,<1",
+  "tqdm>=4.66,<5",
+  "pandas>=2.2.3,<3",
+  "openpyxl>=3.1.5,<4",
+  "beautifulsoup4>=4.12.3,<5",
+  "websocket-client>=1.8,<2",
+  "pycookiecheat>=0.8,<1",
+  "pydantic>=2.13,<3",
+  "PyMuPDF>=1.24,<2",
+  "playwright>=1.62,<2",
+  "PyYAML>=6,<7",
+  "Pillow>=12,<13",
+  "arxiv>=2,<3",
+  "numpy>=2,<3",
+  "scikit-learn>=1.5,<2",
+  "psutil>=6,<8",
+  "huggingface-hub>=0.30,<2",
+  "tiktoken>=0.9,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9,<10",
+  "pytest-cov>=6,<8",
+]
+docling = [
+  "docling==2.119.0",
+  "pypdfium2==5.12.1",
+  "dill>=0.3.8,<1",
+]
+
+[tool.setuptools]
+packages = []
+
+[tool.pytest.ini_options]
+testpaths = [
+  "packages/research-connect-core/tests",
+  "apps/connect-hub/tests",
+  "apps/report-hub/tests",
+  "modules/citationclaw/test",
+  "modules/xhs-agent/tests",
+]

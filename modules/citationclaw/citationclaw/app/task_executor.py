@@ -1160,7 +1160,7 @@ class TaskExecutor:
         )
 
         try:
-            from openai import AsyncOpenAI
+            from research_connect_core.llm import create_async_openai_client as AsyncOpenAI
             from citationclaw.core.http_utils import make_async_client
             client = AsyncOpenAI(
                 api_key=config.openai_api_key,
@@ -1344,7 +1344,7 @@ class TaskExecutor:
         if llm_fix_needed and light_api_key:
             llm_model = getattr(config, 'dashboard_model', '') or config.openai_model
             try:
-                from openai import AsyncOpenAI
+                from research_connect_core.llm import create_async_openai_client as AsyncOpenAI
                 from citationclaw.core.http_utils import make_async_client
                 client = AsyncOpenAI(
                     api_key=light_api_key,
@@ -2935,7 +2935,7 @@ class TaskExecutor:
         返回包含姓名和单位的完整文本，失败时返回空字符串（自引过滤将被跳过）。
         """
         try:
-            from openai import AsyncOpenAI
+            from research_connect_core.llm import create_async_openai_client as AsyncOpenAI
             import httpx
             client = AsyncOpenAI(
                 api_key=config.openai_api_key,

@@ -2,9 +2,6 @@
 通过 ScraperAPI 在 Google Scholar 搜索论文，提取"被引用次数"链接
 """
 import asyncio
-import json
-import os
-import tempfile
 import time
 import urllib.parse
 import requests
@@ -13,9 +10,11 @@ from difflib import SequenceMatcher
 from typing import Optional, Callable, List
 
 from citationclaw.app.config_manager import DATA_DIR
+from citationclaw.core.cache_store import IndexedJsonMap
 
 
 _URL_CACHE_FILE = DATA_DIR / "cache" / "url_finder_cache.json"
+_URL_CACHE = IndexedJsonMap("url-finder", _URL_CACHE_FILE)
 
 
 def _normalize_title_key(title: str) -> str:
@@ -23,27 +22,11 @@ def _normalize_title_key(title: str) -> str:
 
 
 def _load_url_cache() -> dict:
-    if _URL_CACHE_FILE.exists():
-        try:
-            return json.loads(_URL_CACHE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-    return {}
+    return _URL_CACHE.load_all()
 
 
 def _save_url_cache(data: dict) -> None:
-    _URL_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(_URL_CACHE_FILE.parent), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, str(_URL_CACHE_FILE))
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except Exception:
-            pass
-        raise
+    _URL_CACHE.save_all(data)
 
 
 class PaperURLFinder:

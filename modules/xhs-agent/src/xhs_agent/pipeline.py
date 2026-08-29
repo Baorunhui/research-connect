@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
+from research_connect_core import StandaloneJobRuntime
 
 from .density import evaluate_card_density
 from .json_tools import extract_json_object
@@ -31,9 +32,10 @@ class PipelineConfig:
 
 
 class XHSPipeline:
-    def __init__(self, client: ChatModel | None = None, config: PipelineConfig | None = None) -> None:
+    def __init__(self, client: ChatModel | None = None, config: PipelineConfig | None = None, runtime: StandaloneJobRuntime | None = None) -> None:
         self.client = client or USTCChatClient()
         self.config = config or PipelineConfig()
+        self.runtime = runtime
 
     @classmethod
     def offline(cls) -> "XHSPipeline":
@@ -60,6 +62,8 @@ class XHSPipeline:
         return PipelineResult(request=request, brief=brief, note=note, card_plan=card_plan, qa_report=qa_report)
 
     def _call_step(self, step: str, schema: type[Any], system: str, user: str, fallback):
+        if self.runtime:
+            self.runtime.progress(f"小红书生成：{step}", stage=step)
         last_error: Exception | None = None
         for _ in range(self.config.max_retries + 1):
             try:

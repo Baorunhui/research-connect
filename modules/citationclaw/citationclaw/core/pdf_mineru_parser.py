@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone
+from citationclaw.app.config_manager import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +27,14 @@ logger = logging.getLogger(__name__)
 # This avoids re-downloading ~2GB models on every fresh environment.
 # Priority: project-local models → ModelScope download (China-friendly)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_LOCAL_MODEL_DIR = _PROJECT_ROOT / "data" / "models" / "mineru"
+_LOCAL_MODEL_DIR = DATA_DIR / "models" / "mineru"
 _LOCAL_PIPELINE_DIR = _LOCAL_MODEL_DIR / "PDF-Extract-Kit-1.0"
 
 if _LOCAL_PIPELINE_DIR.exists():
     # Models found in project directory — use local mode (no download)
     os.environ["MINERU_MODEL_SOURCE"] = "local"
     # Write project-scoped config for MinerU to find models
-    _project_config = _PROJECT_ROOT / "data" / "models" / "mineru.json"
+    _project_config = DATA_DIR / "models" / "mineru.json"
     _config_data = {
         "models-dir": {
             "pipeline": str(_LOCAL_PIPELINE_DIR),
@@ -67,7 +68,7 @@ class MinerUParser:
 
     def __init__(
         self,
-        output_base: Path = Path("data/cache/pdf_parsed"),
+        output_base: Path = DATA_DIR / "cache" / "pdf_parsed",
         log_callback=None,
         mineru_api_token: str = "",
     ):

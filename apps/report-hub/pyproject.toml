@@ -6,15 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "research-connect-report-hub"
 version = "0.1.0"
 description = "Lightweight public progress and report host for Research Connect"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.14"
 dependencies = [
-  "fastapi>=0.109,<1",
-  "python-dotenv>=1.0,<2",
-  "uvicorn[standard]>=0.27,<1",
+  "research-connect-core==0.2.0",
+  "fastapi>=0.141,<1",
+  "python-dotenv>=1.2,<2",
+  "uvicorn[standard]>=0.52,<1",
 ]
 
 [project.optional-dependencies]
-dev = ["httpx>=0.26,<1", "pytest>=8,<9"]
+dev = ["httpx>=0.28,<1", "pytest>=9,<10"]
 
 [project.scripts]
 report-hub = "report_hub.cli:main"
@@ -27,4 +28,3 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 report_hub = ["static/*"]
-

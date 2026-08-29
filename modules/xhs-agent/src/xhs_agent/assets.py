@@ -55,7 +55,11 @@ def materialize_image_asset(asset: ImageAsset, assets_dir: Path) -> Path:
     else:
         src = Path(urllib.request.url2pathname(parsed.path)) if parsed.scheme == "file" else Path(asset.uri)
         if not src.is_absolute():
-            src = Path.cwd() / src
+            asset_root = Path(os.getenv("XHS_AGENT_ASSET_ROOT") or Path.cwd())
+            src = asset_root / src
+            if not src.exists():
+                # Bundled examples remain runnable from the monorepo root.
+                src = Path(__file__).resolve().parents[2] / asset.uri
         shutil.copy2(src, dest)
     with Image.open(dest) as image:
         image.verify()

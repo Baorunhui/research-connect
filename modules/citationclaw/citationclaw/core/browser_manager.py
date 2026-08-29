@@ -7,6 +7,9 @@ import os
 import asyncio
 from typing import Optional, Dict
 from urllib.parse import quote
+from research_connect_core import configure_playwright_browsers
+
+configure_playwright_browsers()
 
 try:
     from playwright.async_api import async_playwright, Browser, Page

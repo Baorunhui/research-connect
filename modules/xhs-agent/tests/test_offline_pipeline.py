@@ -4,9 +4,11 @@ from xhs_agent.package import write_package
 from xhs_agent.pipeline import XHSPipeline
 from xhs_agent.schemas import SocialContentRequest
 
+MODULE_ROOT = Path(__file__).resolve().parents[1]
+
 
 def test_offline_pipeline_writes_package(tmp_path: Path) -> None:
-    fixture = Path("fixtures/paper_promo.json").read_text(encoding="utf-8")
+    fixture = (MODULE_ROOT / "fixtures/paper_promo.json").read_text(encoding="utf-8")
     request = SocialContentRequest.model_validate_json(fixture)
     result = XHSPipeline.offline().run(request)
     response = write_package(result, tmp_path)

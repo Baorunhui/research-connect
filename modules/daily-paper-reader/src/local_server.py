@@ -19,6 +19,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+from research_connect_core.llm import RetryPolicy, create_openai_client
 
 try:
     import yaml  # type: ignore
@@ -1330,44 +1331,31 @@ def _fetch_chat_model_list(base_url: str, api_key: str) -> list[str]:
 
 def _probe_chat_completion(base_url: str, api_key: str, model: str) -> tuple[int, str]:
     """发一次最小 chat completion 测连通性。单次尝试不做重试，延迟才真实；异常向上抛。"""
-    import urllib.error
-    import urllib.request
-
     raw = str(base_url or "").strip().rstrip("/")
     if raw.lower().endswith("/chat/completions"):
-        url = raw
-    elif re.search(r"/v\d+$", raw, re.IGNORECASE):
-        url = f"{raw}/chat/completions"
-    else:
-        url = f"{raw}/v1/chat/completions"
-    body = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": "ping"}],
-        "max_tokens": 8,
-        "temperature": 0,
-        "stream": False,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-            "User-Agent": "daily-paper-reader/1.0",
-        },
-        method="POST",
+        raw = raw[: -len("/chat/completions")].rstrip("/")
+    if not re.search(r"/v\d+$", raw, re.IGNORECASE):
+        raw += "/v1"
+    client = create_openai_client(
+        api_key=api_key,
+        base_url=raw,
+        timeout=30,
+        max_concurrency=4,
+        retry_policy=RetryPolicy(max_attempts=1),
+        provider_name="daily-paper-probe",
     )
     t0 = time.time()
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        payload = resp.read(8192)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "ping"}],
+        max_tokens=8,
+        temperature=0,
+        stream=False,
+    )
     latency_ms = int((time.time() - t0) * 1000)
-    snippet = ""
     try:
-        data = json.loads(payload.decode("utf-8", errors="replace"))
-        choice = (data.get("choices") or [{}])[0]
-        message = choice.get("message") if isinstance(choice, dict) else None
-        snippet = str((message or {}).get("content") or "").strip()[:40]
-    except Exception:  # noqa: BLE001
+        snippet = str(response.choices[0].message.content or "").strip()[:40]
+    except (AttributeError, IndexError, TypeError):
         snippet = ""
     return latency_ms, snippet
 

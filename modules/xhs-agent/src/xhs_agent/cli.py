@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+from research_connect_core import runtime_from_env
 
 from .llm import ModelConfig, USTCChatClient
 from .package import write_package
@@ -57,17 +58,26 @@ def generate(args: argparse.Namespace):
         if value
     }
     config = PipelineConfig(models=models or None)
-    if args.offline:
-        pipeline = XHSPipeline.offline()
-        pipeline.config = config
-    else:
-        if args.api_key:
-            os.environ["USTC_LLM_API_KEY"] = args.api_key
-        if args.base_url:
-            os.environ["USTC_LLM_BASE_URL"] = args.base_url
-        pipeline = XHSPipeline(client=USTCChatClient(ModelConfig.from_env()), config=config)
-    result = pipeline.run(request)
-    return write_package(result, args.out, template_id=args.template_id)
+    with runtime_from_env("xhs-agent", "xhs.generate") as runtime:
+        if args.offline:
+            pipeline = XHSPipeline.offline()
+            pipeline.config = config
+            pipeline.runtime = runtime
+        else:
+            if args.api_key:
+                os.environ["USTC_LLM_API_KEY"] = args.api_key
+            if args.base_url:
+                os.environ["USTC_LLM_BASE_URL"] = args.base_url
+            pipeline = XHSPipeline(client=USTCChatClient(ModelConfig.from_env()), config=config, runtime=runtime)
+        result = pipeline.run(request)
+        package = write_package(result, args.out, template_id=args.template_id)
+        runtime.emit(
+            "job.artifact",
+            "小红书素材包已生成",
+            stage="artifacts",
+            payload={"output_dir": str(package.data.output_dir) if package.data else ""},
+        )
+        return package
 
 
 if __name__ == "__main__":

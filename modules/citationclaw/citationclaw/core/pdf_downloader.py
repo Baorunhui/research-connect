@@ -38,7 +38,9 @@ from urllib.parse import urlparse, quote
 from urllib.request import Request, urlopen
 
 import subprocess
-DEFAULT_CACHE_DIR = Path("data/cache/pdf_cache")
+from citationclaw.app.config_manager import DATA_DIR
+
+DEFAULT_CACHE_DIR = DATA_DIR / "cache" / "pdf_cache"
 
 _ARXIV_ID_RE_LOCAL = re.compile(r'^(\d{4})\.(\d{4,5})(v\d+)?$')
 
@@ -1232,7 +1234,7 @@ class PDFDownloader:
             return None
         http_client = None
         try:
-            from openai import AsyncOpenAI
+            from research_connect_core.llm import create_async_openai_client as AsyncOpenAI
             from citationclaw.core.http_utils import make_async_client
 
             links = re.findall(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>([^<]*)</a>', html[:50000])

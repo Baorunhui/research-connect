@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import pandas as pd
-from openai import OpenAI
+from research_connect_core.llm import create_openai_client as OpenAI
 
 
 def _escape(text):

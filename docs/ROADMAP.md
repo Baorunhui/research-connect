@@ -21,10 +21,10 @@
 
 ## P1：Python 安装
 
-- [ ] 统一 `setup`、`doctor`、`serve` 命令。
-- [ ] Linux Bash 安装/启动脚本。
-- [ ] Windows PowerShell 安装/启动脚本。
-- [ ] 自动创建核心 venv 和按需模块 venv。
+- [ ] 统一 `doctor`、`serve` 命令。
+- [x] Linux Bash 统一环境安装脚本。
+- [x] Windows PowerShell 统一环境安装脚本。
+- [x] 自动创建单一根目录 venv，统一 FastAPI/OpenAI/Playwright 等依赖版本。
 - [ ] 检查 Python、Playwright、Docling、字体、端口和 Report Hub 连通性。
 - [ ] CI 覆盖 `ubuntu-latest` 与 `windows-latest`。
 

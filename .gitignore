@@ -7,6 +7,7 @@ secret.private
 config.local.*
 
 # Python environments and build products
+.venv/
 **/.venv/
 **/venv/
 **/__pycache__/
@@ -47,4 +48,3 @@ modules/citationclaw/docs/pipeline-and-api-keys.md
 Thumbs.db
 .idea/
 .vscode/
-

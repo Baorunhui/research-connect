@@ -37,7 +37,7 @@ class PDFAuthorExtractor:
                                             first_page_text=first_page_text)
 
         try:
-            from openai import AsyncOpenAI
+            from research_connect_core.llm import create_async_openai_client as AsyncOpenAI
             client = AsyncOpenAI(
                 api_key=self._api_key,
                 base_url=self._base_url,

@@ -7,6 +7,9 @@ from xhs_agent.recipe_packs import render_recipe_pack_card
 from xhs_agent.renderer import split_bullet
 from xhs_agent.schemas import CardPlan, CardPlanItem, NoteDraft, SocialContentRequest
 
+MODULE_ROOT = Path(__file__).resolve().parents[1]
+IMAGE_FIXTURE = MODULE_ROOT / "fixtures/demo_paper_with_images.json"
+
 
 def test_split_bullet_does_not_split_chinese_comma() -> None:
     assert split_bullet("高效沟通，从准备开始") == ("高效沟通，从准备开始", "")
@@ -52,7 +55,7 @@ def test_recipe_packs_use_distinct_dom() -> None:
 
 def test_fix_card_plan_supports_image_recipes() -> None:
     request = SocialContentRequest.model_validate_json(
-        Path("fixtures/demo_paper_with_images.json").read_text(encoding="utf-8")
+        IMAGE_FIXTURE.read_text(encoding="utf-8")
     )
     plan = CardPlan(
         cards=[
@@ -76,7 +79,7 @@ def test_fix_card_plan_supports_image_recipes() -> None:
 
 def test_fix_card_plan_auto_attaches_method_asset() -> None:
     request = SocialContentRequest.model_validate_json(
-        Path("fixtures/demo_paper_with_images.json").read_text(encoding="utf-8")
+        IMAGE_FIXTURE.read_text(encoding="utf-8")
     )
     plan = CardPlan(
         cards=[
@@ -101,7 +104,7 @@ def test_fix_card_plan_auto_attaches_method_asset() -> None:
 
 def test_recipe_pack_renders_image_asset_html() -> None:
     request = SocialContentRequest.model_validate_json(
-        Path("fixtures/demo_paper_with_images.json").read_text(encoding="utf-8")
+        IMAGE_FIXTURE.read_text(encoding="utf-8")
     )
     card = CardPlanItem(
         page=2,
@@ -136,7 +139,7 @@ def test_recipe_pack_renders_image_asset_html() -> None:
 
 def test_recipe_pack_package_copies_image_assets(tmp_path: Path) -> None:
     request = SocialContentRequest.model_validate_json(
-        Path("fixtures/demo_paper_with_images.json").read_text(encoding="utf-8")
+        IMAGE_FIXTURE.read_text(encoding="utf-8")
     )
     plan = CardPlan(
         cards=[
@@ -157,7 +160,7 @@ def test_recipe_pack_package_copies_image_assets(tmp_path: Path) -> None:
 
 
 def test_xhs_template_manifest_paths_exist() -> None:
-    root = Path("templates/xhs")
+    root = MODULE_ROOT / "templates/xhs"
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
 
     assert manifest["canvas"] == {

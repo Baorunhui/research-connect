@@ -1284,35 +1284,34 @@ def test_resolve_chat_credentials_fallback_chain(monkeypatch):
 
 
 def test_probe_chat_completion_parses_reply_and_latency(monkeypatch):
-    import io
-    import json as _json
-    import urllib.request as _ur
+    from types import SimpleNamespace
 
     import src.local_server as ls
 
     captured = {}
+    completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="pong"))]
+    )
 
-    class FakeResp(io.BytesIO):
-        def __enter__(self):
-            return self
+    def fake_client(**kwargs):
+        captured["client"] = kwargs
 
-        def __exit__(self, *a):
-            return False
+        def create(**request):
+            captured["request"] = request
+            return completion
 
-    def fake_urlopen(req, timeout=0):
-        captured["url"] = req.full_url
-        captured["body"] = req.data
-        return FakeResp(_json.dumps({"choices": [{"message": {"content": "pong"}}]}).encode())
+        return SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        )
 
-    monkeypatch.setattr(_ur, "urlopen", fake_urlopen)
+    monkeypatch.setattr(ls, "create_openai_client", fake_client)
     latency, snippet = ls._probe_chat_completion("https://api.x.com", "sk-t", "m1")
     assert snippet == "pong"
     assert latency >= 0
-    assert captured["url"] == "https://api.x.com/v1/chat/completions"
-    body = _json.loads(captured["body"])
-    assert body["model"] == "m1"
-    assert body["max_tokens"] == 8
-    assert body["messages"][0]["content"] == "ping"
+    assert captured["client"]["base_url"] == "https://api.x.com/v1"
+    assert captured["request"]["model"] == "m1"
+    assert captured["request"]["max_tokens"] == 8
+    assert captured["request"]["messages"][0]["content"] == "ping"
 
 
 # --------------------------------------------------------------------------- #

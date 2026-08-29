@@ -5,6 +5,7 @@ import time
 from typing import List, Dict, Tuple, Any, Optional
 
 import requests
+from research_connect_core.llm import RetryPolicy, run_with_llm_policy
 
 """
 统一的 LLM 客户端封装。
@@ -537,13 +538,19 @@ class LLMClient:
             pass
 
         start_time = time.time()
-        request_bases = self._iter_retry_bases(total_attempts=6)
+        request_bases = self._iter_request_bases()
         last_error: Exception | None = None
         for attempt_idx, req_base in enumerate(request_bases, start=1):
             request_url = self._build_chat_completions_url(req_base)
             try:
-                response = requests.post(request_url, headers=headers, json=payload, timeout=120)
-                response.raise_for_status()
+                response = run_with_llm_policy(
+                    lambda: self._post_checked(request_url, headers, payload),
+                    api_key=self.api_key,
+                    base_url=req_base,
+                    provider_name=self._provider_name(req_base),
+                    max_concurrency=int(os.getenv("LLM_MAX_CONCURRENCY", "4")),
+                    retry_policy=RetryPolicy(max_attempts=4),
+                )
                 try:
                     response_data = response.json()
                 except ValueError:
@@ -690,6 +697,12 @@ class LLMClient:
         if last_error is not None:
             raise last_error
         raise RuntimeError("LLM 请求未命中可用 base")
+
+    @staticmethod
+    def _post_checked(request_url: str, headers: Dict[str, str], payload: Dict[str, Any]):
+        response = requests.post(request_url, headers=headers, json=payload, timeout=120)
+        response.raise_for_status()
+        return response
 
     def chat_structured(
         self,
