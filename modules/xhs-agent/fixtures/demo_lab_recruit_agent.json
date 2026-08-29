@@ -1,0 +1,63 @@
+{
+  "schema_version": "xhs_agent.request.v1",
+  "request_id": "demo-lab-agent-002",
+  "intent": "lab_recruit",
+  "mode": "generate_package",
+  "audience": {
+    "who": "想做科研智能体、代码智能或论文自动化的本科生/硕士生",
+    "context": "在小红书上了解实验室招新信息",
+    "question": "这个方向适不适合我，联系前要准备什么"
+  },
+  "goal": {
+    "takeaway": "读者知道实验室研究方向、适合人群和申请准备清单",
+    "action": "准备简历、项目经历和一段自我介绍后联系"
+  },
+  "source": {
+    "kind": "lab",
+    "title": "USTC Research Agent Group 2026 春季招新",
+    "summary": "课题组计划招收对科研智能体感兴趣的同学，方向包括 paper agent、citation agent、代码运行检查、论文宣发自动化和科研工作流评测。希望同学有 Python 基础，愿意读论文、跑实验，并能把复杂问题写清楚。",
+    "materials": [
+      {
+        "id": "L1",
+        "type": "direction",
+        "text": "研究方向包括论文理解、引用追踪、代码复现检查、科研内容生成和 agent 可靠性评测。"
+      },
+      {
+        "id": "L2",
+        "type": "candidate",
+        "text": "适合喜欢动手做系统、有基本机器学习基础、愿意长期打磨工具链的同学。"
+      },
+      {
+        "id": "L3",
+        "type": "preparation",
+        "text": "联系前建议准备简历、GitHub 或课程项目链接、最近读过的一篇相关论文和自己想做的问题。"
+      },
+      {
+        "id": "L4",
+        "type": "boundary",
+        "text": "招新信息不能承诺录取名额、奖学金或论文发表结果。"
+      }
+    ],
+    "links": [
+      {
+        "type": "contact",
+        "label": "联系邮箱",
+        "url": "mailto:agent-group@example.edu"
+      }
+    ],
+    "entities": {
+      "lab": "USTC Research Agent Group"
+    }
+  },
+  "requirements": {
+    "platform": "xiaohongshu",
+    "deliverables": ["note", "carousel"],
+    "card_count": 6,
+    "style": "真诚、清楚、有科研氛围，不制造焦虑",
+    "publish": false
+  },
+  "constraints": {
+    "must_include": ["方向", "适合的人", "联系前准备"],
+    "must_avoid": ["承诺录取", "承诺发论文", "贩卖焦虑", "夸大资源"]
+  }
+}

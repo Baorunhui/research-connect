@@ -1,0 +1,58 @@
+{
+  "schema_version": "xhs_agent.request.v1",
+  "request_id": "demo-lab-001",
+  "intent": "lab_recruit",
+  "mode": "generate_package",
+  "audience": {
+    "who": "准备保研/读博/进组做科研的同学",
+    "context": "在小红书上了解实验室方向和招新要求",
+    "question": "这个组适不适合我，我该怎么联系"
+  },
+  "goal": {
+    "takeaway": "读者知道实验室方向、适合的人和联系前要准备什么",
+    "action": "准备简历并邮件联系"
+  },
+  "source": {
+    "kind": "lab",
+    "title": "USTC Agent Lab 2026 春季招新",
+    "summary": "实验室关注科研智能体、多模态理解、代码智能和可信评测，欢迎有机器学习、系统实现或科研写作兴趣的同学联系。",
+    "materials": [
+      {
+        "id": "L1",
+        "type": "direction",
+        "text": "主要方向包括 paper agent、citation agent、多模态科研助手和 agent 评测。"
+      },
+      {
+        "id": "L2",
+        "type": "requirement",
+        "text": "希望申请者能稳定投入，有 Python 基础，愿意读论文和复现实验。"
+      },
+      {
+        "id": "L3",
+        "type": "benefit",
+        "text": "组内会提供选题讨论、代码 review 和投稿流程指导。"
+      }
+    ],
+    "links": [
+      {
+        "type": "contact",
+        "label": "联系邮箱",
+        "url": "mailto:agent-lab@example.edu"
+      }
+    ],
+    "entities": {
+      "lab": "USTC Agent Lab"
+    }
+  },
+  "requirements": {
+    "platform": "xiaohongshu",
+    "deliverables": ["note", "carousel"],
+    "card_count": 5,
+    "style": "真诚、清楚、有科研氛围",
+    "publish": false
+  },
+  "constraints": {
+    "must_include": ["研究方向", "适合的人", "联系前准备"],
+    "must_avoid": ["承诺录取", "夸大资源", "贩卖焦虑"]
+  }
+}

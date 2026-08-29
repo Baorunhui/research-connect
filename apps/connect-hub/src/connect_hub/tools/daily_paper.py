@@ -1,0 +1,224 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from connect_hub.adapters.daily_paper import DailyPaperAdapter, DailyPaperRequest
+from connect_hub.tools.base import ToolContext, ToolDefinition
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _papers(result: Mapping[str, Any], key: str) -> list[Mapping[str, Any]]:
+    value = result.get(key)
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+def _paper_markdown(paper: Mapping[str, Any], index: int) -> list[str]:
+    title = _text(paper.get("title")) or _text(paper.get("id")) or "未命名论文"
+    link = _text(paper.get("link"))
+    score = paper.get("llm_score")
+    score_text = f" · 评分 {score}" if score not in (None, "") else ""
+    heading = f"{index}. [{title}]({link}){score_text}" if link else f"{index}. {title}{score_text}"
+    tldr = _text(paper.get("llm_tldr_cn") or paper.get("llm_tldr_en"))
+    abstract = _text(paper.get("abstract"))
+    evidence = _text(paper.get("llm_evidence_cn") or paper.get("llm_evidence_en"))
+    lines = [heading]
+    if tldr:
+        lines.append(f"   - TLDR：{tldr}")
+    elif abstract:
+        preview = abstract if len(abstract) <= 600 else abstract[:600].rstrip() + "…"
+        lines.append(f"   - 原文摘要：{preview}")
+    if evidence and evidence != tldr:
+        lines.append(f"   - 推荐理由：{evidence}")
+    return lines
+
+
+def render_daily_paper_markdown(
+    *,
+    run_id: str,
+    result: Mapping[str, Any],
+    topics: Sequence[Mapping[str, Any]],
+    public_url: str = "",
+) -> str:
+    generated_at = _text(result.get("generated_at"))
+    mode = _text(result.get("mode")) or "standard"
+    topic_names = [
+        _text(item.get("tag")) for item in topics if _text(item.get("tag"))
+    ]
+    deep = _papers(result, "deep_dive")
+    quick = _papers(result, "quick_skim")
+    lines = [
+        "# 论文日报",
+        "",
+        f"- 任务：`{run_id}`",
+        f"- 主题：{', '.join(topic_names) or '未命名主题'}",
+        f"- 模式：{mode}",
+        f"- 生成时间：{generated_at or '未知'}",
+        f"- 结果：精读 {len(deep)} 篇，速读 {len(quick)} 篇",
+    ]
+    if public_url:
+        lines.append(f"- 网页站点：{public_url}")
+    lines.extend(["", "## 精读", ""])
+    if deep:
+        for index, paper in enumerate(deep, 1):
+            lines.extend(_paper_markdown(paper, index))
+    else:
+        lines.append("本次没有精读推荐。")
+    lines.extend(["", "## 速读", ""])
+    if quick:
+        for index, paper in enumerate(quick, 1):
+            lines.extend(_paper_markdown(paper, index))
+    else:
+        lines.append("本次没有速读推荐。")
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "此文件由 connect-hub 根据 Daily Paper 的召回、融合、专用 reranker 与 LLM 精筛结果生成。完整精读网页需由 Daily Paper Step 6 生成并单独托管。",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def daily_paper_tools(
+    adapter: DailyPaperAdapter,
+    *,
+    output_dir: Path,
+    public_url: str = "",
+) -> tuple[ToolDefinition, ...]:
+    output_dir = output_dir.resolve()
+
+    def generate(arguments: Mapping[str, Any], context: ToolContext) -> Mapping[str, Any]:
+        request_arguments = dict(arguments)
+        publish_web = bool(request_arguments.pop("publish_web", False))
+        source_links = [
+            _text(item)
+            for item in (request_arguments.pop("source_links", []) or [])
+            if _text(item)
+        ]
+        request_arguments["schema_version"] = "connect.job.v1"
+        request_arguments["job_id"] = context.job_id
+        record = adapter.invoke(
+            DailyPaperRequest("recommend_wait", request_arguments),
+            on_progress=context.report_progress,
+            on_event=lambda event: context.report_progress(
+                _text(event.get("message")) or "论文日报任务有新进度。",
+                stage=_text(event.get("stage")),
+                current=(event.get("current") if isinstance(event.get("current"), int) else None),
+                total=(event.get("total") if isinstance(event.get("total"), int) else None),
+                payload=(event.get("payload") if isinstance(event.get("payload"), Mapping) else None),
+            ),
+            is_cancelled=lambda: context.cancelled,
+        )
+        result = record.get("result")
+        if not isinstance(result, Mapping):
+            raise RuntimeError("Daily Paper completed without structured result")
+        run_id = _text(record.get("id")) or "daily-paper"
+        safe_id = re.sub(r"[^A-Za-z0-9_.-]+", "-", run_id).strip(".-")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_path = output_dir / f"{safe_id or 'daily-paper'}.md"
+        topics = arguments.get("topics")
+        safe_topics = (
+            [item for item in topics if isinstance(item, Mapping)]
+            if isinstance(topics, list)
+            else []
+        )
+        report_path.write_text(
+            render_daily_paper_markdown(
+                run_id=run_id,
+                result=result,
+                topics=safe_topics,
+                public_url=(public_url if publish_web else ""),
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "run_id": run_id,
+            "status": "completed",
+            "result": result,
+            "report_path": str(report_path),
+            "public_url": (public_url if publish_web else ""),
+            "enrichment_sources": source_links,
+        }
+
+    tool = ToolDefinition(
+        name="generate_daily_paper_report",
+        description=(
+            "按用户指定的研究主题运行论文推荐链：BM25、Embedding、RRF、专用 reranker、"
+            "LLM 精筛和最终选择，完成后返回排序结果和 Markdown 日报。这是耗时业务工具，"
+            "仅在用户明确要求生成论文日报或调研近期论文、且研究主题已能形成有效检索词时调用；"
+            "技术缩写含义不清时先搜索或自然询问。用户未指定时使用最近30天、standard、"
+            "不发布网页；不要为了补齐非关键偏好而强制确认。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "topics": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "tag": {"type": "string", "minLength": 1},
+                            "description": {"type": "string"},
+                            "keywords": {
+                                "type": "array",
+                                "minItems": 1,
+                                "items": {"type": "string", "minLength": 1},
+                            },
+                            "intent_queries": {"type": "array", "items": {"type": "string"}},
+                            "paper_sources": {
+                                "type": "array",
+                                "description": (
+                                    "当前 HTTP 论文池只支持 arxiv。CVPR、ICCV、ECCV 等会议名"
+                                    "应写入 keywords 或 intent_queries，不要作为数据源。"
+                                ),
+                                "items": {"type": "string", "enum": ["arxiv"]},
+                            },
+                        },
+                        "required": ["tag", "keywords"],
+                        "additionalProperties": False,
+                    },
+                },
+                "date": {
+                    "type": "string",
+                    "description": (
+                        "可选的目标日期，只能使用 YYYY-MM-DD 或 YYYYMMDD。"
+                        "用户只说最近N天时不要填写，由服务使用当前日期。"
+                    ),
+                },
+                "mode": {"type": "string", "enum": ["standard", "skims"]},
+                "fetch_days": {"type": "integer", "minimum": 1, "maximum": 30},
+                "publish_web": {
+                    "type": "boolean",
+                    "description": "是否在结果中附带已配置的公网日报地址。",
+                },
+                "source_links": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Connect Hub 联网富化时保留的来源 URL。",
+                },
+            },
+            "required": ["topics"],
+            "additionalProperties": False,
+        },
+        handler=generate,
+        timeout_seconds=adapter.timeout_seconds + 30,
+        progress_message=(
+            "论文日报任务已启动。将执行 BM25、Embedding、RRF、专用 reranker 和 LLM 精筛；"
+            "每进入一个步骤都会在这里汇报。"
+        ),
+        module_name="daily-paper",
+        module_version=adapter.manifest.module_version,
+        job_type="daily_report",
+        kind="business",
+    )
+    return (tool,)

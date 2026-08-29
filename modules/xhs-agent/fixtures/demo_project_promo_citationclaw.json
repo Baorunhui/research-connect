@@ -1,0 +1,62 @@
+{
+  "schema_version": "xhs_agent.request.v1",
+  "request_id": "demo-project-citationclaw-001",
+  "intent": "project_promo",
+  "mode": "generate_package",
+  "audience": {
+    "who": "需要查引用、追踪他人引用自己论文的博士生和青椒",
+    "context": "看到一个科研工具介绍，想判断能不能纳入自己的工作流",
+    "question": "这个工具解决什么痛点，怎么开始试用"
+  },
+  "goal": {
+    "takeaway": "读者理解 CitationClaw 的用途、边界和适合场景",
+    "action": "收藏工具介绍，后续用自己的论文标题或 DOI 做一次试用"
+  },
+  "source": {
+    "kind": "project",
+    "title": "CitationClaw: 面向科研人的引用追踪 Agent",
+    "summary": "CitationClaw 是一个面向科研工作流的引用追踪模块，目标是帮助用户查询论文他引、发现别人如何引用自己的工作，并把引用上下文整理成可审计的结构化结果。当前 MVP 依赖外部 API，存在请求限额，因此更适合作为人工确认前的线索收集工具。",
+    "materials": [
+      {
+        "id": "P1",
+        "type": "pain_point",
+        "text": "博士生和青椒经常需要知道自己的论文被谁引用、别人引用时关注了哪一点。"
+      },
+      {
+        "id": "P2",
+        "type": "feature",
+        "text": "模块会返回引用论文、引用句、上下文摘要、可能的引用意图和需要人工核对的链接。"
+      },
+      {
+        "id": "P3",
+        "type": "boundary",
+        "text": "API 请求有限额，结果不能替代人工检索和最终引用核查。"
+      },
+      {
+        "id": "P4",
+        "type": "integration",
+        "text": "后续可以和 paper_agent、xhs_agent 连接，把引用分析结果转成论文影响力小红书/公众号素材。"
+      }
+    ],
+    "links": [
+      {
+        "type": "code",
+        "url": "https://github.com/example/citationclaw"
+      }
+    ],
+    "entities": {
+      "lab": "Agent Startup Competition Team"
+    }
+  },
+  "requirements": {
+    "platform": "xiaohongshu",
+    "deliverables": ["note", "carousel"],
+    "card_count": 5,
+    "style": "科研工具分享，克制、实用、强调边界",
+    "publish": false
+  },
+  "constraints": {
+    "must_include": ["他引查询", "引用上下文", "API 限额", "人工核对"],
+    "must_avoid": ["声称完全准确", "承诺替代人工查文献", "编造真实用户案例"]
+  }
+}

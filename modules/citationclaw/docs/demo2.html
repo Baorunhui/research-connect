@@ -1,0 +1,2371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Crossearth: Geospatial vision foundation model for domain generalizable remote sensing semantic segmentation · 被引画像报告</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+:root {
+  --bg: #f7f8fc; --bg2: #eef0f8; --surface: #ffffff; --surface2: #f0f2fa;
+  --border: #dde2f0; --border-accent: #c5cceb;
+  --teal: #3b82c4; --teal-light: #e8f1fb; --teal-muted: #6ba3d6;
+  --sage: #4caf8a; --sage-light: #e6f6f0;
+  --amber: #d4892a; --amber-light: #fdf3e3;
+  --violet: #7c5cbf; --violet-light: #f0ecfb;
+  --rose: #c45a5a; --rose-light: #fdeaea;
+  --text: #2d3748; --text-muted: #718096; --text-light: #a0aec0; --text-bright: #1a202c;
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.06);
+  --shadow: 0 4px 16px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.10);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.6; }
+.header { background: linear-gradient(135deg, #1e3a5f 0%, #2d5a9e 50%, #1e4d7b 100%);
+  padding: 56px 64px 48px; position: relative; overflow: hidden; }
+.header::before { content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 80% at 85% 20%, rgba(100,160,255,0.15) 0%, transparent 60%),
+              radial-gradient(ellipse 40% 60% at 10% 80%, rgba(60,180,130,0.10) 0%, transparent 55%);
+  pointer-events: none; }
+.header-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase;
+  color: rgba(180,210,255,0.75); margin-bottom: 14px; }
+.header h1 { font-size: 36px; font-weight: 700; color: #fff; line-height: 1.15; margin-bottom: 14px; }
+.header h1 em { font-style: normal; color: #7db8f5; }
+.header-subtitle { font-size: 13.5px; color: rgba(200,220,255,0.70); white-space: nowrap; line-height: 1.75; }
+.header-divider { position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(120,180,255,0.6) 30%, rgba(80,200,160,0.5) 70%, transparent); }
+.header-targets { display: flex; flex-direction: column; gap: 6px; margin: 14px 0 16px; }
+.header-target-item { display: flex; align-items: baseline; gap: 10px; }
+.header-target-num { font-size: 10px; font-weight: 700; color: rgba(147,197,253,0.6);
+  letter-spacing: 1px; flex-shrink: 0; }
+.header-target-title { font-size: 16px; font-weight: 700; color: #60a5fa;
+  line-height: 1.5; word-break: break-word; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+.stats-bar { background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; overflow-x: auto; box-shadow: var(--shadow-sm); }
+.stat-item { flex: 1; min-width: 120px; padding: 22px 20px; text-align: center;
+  border-right: 1px solid var(--border); transition: background .2s; }
+.stat-item:last-child { border-right: none; }
+.stat-item:hover { background: var(--teal-light); }
+.stat-icon { font-size: 20px; margin-bottom: 6px; }
+.stat-num { font-size: 28px; font-weight: 700; color: var(--teal); line-height: 1.1; }
+.stat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; letter-spacing: .3px; }
+.download-bar { background: var(--surface2); border-bottom: 1px solid var(--border);
+  padding: 12px 48px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.download-bar span { font-size: 13px; color: var(--text-muted); }
+.download-bar a { display: inline-block; padding: 5px 14px; border-radius: 6px; font-size: 12px;
+  font-weight: 500; text-decoration: none; border: 1px solid var(--border);
+  background: var(--surface); color: var(--teal); transition: .15s; }
+.download-bar a:hover { background: var(--teal-light); border-color: var(--teal); }
+.main { max-width: 1480px; margin: 0 auto; padding: 36px 48px; }
+.section-header { display: flex; align-items: center; gap: 12px; margin: 40px 0 20px; }
+.section-num { font-size: 11px; font-weight: 700; color: var(--teal); letter-spacing: 2px;
+  background: var(--teal-light); padding: 2px 8px; border-radius: 4px; }
+.section-title { font-size: 15px; font-weight: 600; color: var(--text-bright); }
+.section-title[data-tooltip] { position: relative; cursor: default; }
+.section-title[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute; left: 50%; top: calc(100% + 6px); transform: translateX(-50%);
+  background: rgba(20,30,50,0.95); color: rgba(200,220,255,0.92); font-size: 11.5px;
+  font-weight: 400; white-space: nowrap; padding: 4px 10px; border-radius: 5px;
+  border: 1px solid rgba(100,160,255,0.2); pointer-events: none;
+  opacity: 0; transition: opacity 0.15s; z-index: 10;
+}
+.section-title[data-tooltip]:hover::after { opacity: 1; }
+.section-divider { flex: 1; height: 1px; background: var(--border); }
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; margin-bottom: 20px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 20px; margin-bottom: 20px; }
+.grid-1 { margin-bottom: 20px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 24px; box-shadow: var(--shadow-sm); transition: box-shadow .2s, transform .2s; }
+.card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.card-title { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: .8px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  margin-bottom: 16px; display: flex; align-items: center; gap: 7px; }
+.card-title-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); flex-shrink: 0; }
+.card-title-dot.sage { background: var(--sage); }
+.card-title-dot.amber { background: var(--amber); }
+.card-title-dot.violet { background: var(--violet); }
+.badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px;
+  font-weight: 500; white-space: nowrap; }
+.b-ys { background: #fff3e0; color: #d4892a; border: 1px solid #f0c070; }
+.b-ot { background: var(--sage-light); color: #357a62; border: 1px solid #a0d9c0; }
+.b-aw { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.b-fw { background: var(--teal-light); color: var(--teal); border: 1px solid #b3d4f0; }
+.b-nt { background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; }
+.b-il { background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc; }
+.b-ul { background: #fce7f3; color: #9d174d; border: 1px solid #f9a8d4; }
+.b-nm { background: var(--bg2); color: var(--text-muted); border: 1px solid var(--border); }
+.b-cn { background: #fff0f0; color: var(--rose); border: 1px solid #f0c0c0; }
+.b-int { background: var(--violet-light); color: var(--violet); border: 1px solid #c9b8ec; }
+.scholar-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.scholar-table thead th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600;
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px;
+  border-bottom: 2px solid var(--border); background: var(--bg2); }
+.scholar-table tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+.scholar-table tbody tr:hover { background: var(--teal-light); }
+.scholar-table td { padding: 10px 12px; vertical-align: middle; }
+.scholar-table .sname { font-weight: 600; color: var(--text-bright); cursor: default; }
+.scholar-tt { position: fixed; z-index: 9999; max-width: 420px; background: #1e2a3a;
+  border: 1px solid rgba(100,160,255,0.25); border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4); padding: 8px 6px; display: none; }
+.scholar-tt-item { display: block; padding: 6px 10px; font-size: 12px; line-height: 1.5;
+  color: rgba(200,220,255,0.85); border-radius: 5px; text-decoration: none;
+  transition: background .12s; }
+.scholar-tt-item:hover { background: rgba(100,160,255,0.12); color: #7dd8b0; }
+.scholar-tt-item-nolink { color: rgba(180,200,240,0.6); cursor: default; }
+.scholar-tt-item-nolink:hover { background: none; color: rgba(180,200,240,0.6); }
+.sname-hover { text-decoration: underline dotted rgba(100,180,255,0.4); cursor: pointer; }
+.scholar-table .stitle { color: var(--text-muted); font-size: 11.5px; line-height: 1.5; }
+.desc-btn { font-size: 11px; padding: 3px 10px; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--surface); color: var(--teal); cursor: pointer;
+  transition: .15s; white-space: nowrap; }
+.desc-btn:hover { background: var(--teal-light); border-color: var(--teal); }
+.desc-row td { background: var(--bg2); padding: 12px 16px;
+  word-wrap: break-word; }
+.paper-item { display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+  margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px;
+  border-left: 4px solid var(--teal); background: var(--surface); transition: box-shadow .2s, background .2s; }
+.paper-item:hover { background: var(--teal-light); box-shadow: var(--shadow-sm); }
+.paper-rank { font-size: 20px; font-weight: 800; color: #c5cceb; min-width: 32px; text-align: center; }
+.paper-info { flex: 1; }
+.paper-ttl { font-size: 13px; font-weight: 500; color: var(--text-bright); line-height: 1.5; margin-bottom: 3px; }
+.paper-meta { font-size: 11px; color: var(--text-muted); }
+.paper-cit-box { text-align: right; min-width: 64px; }
+.paper-cit-num { font-size: 24px; font-weight: 700; color: var(--teal); line-height: 1; }
+.paper-cit-lbl { font-size: 10px; color: var(--text-light); margin-top: 2px; }
+.kw-cloud { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; }
+.kw-tag { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; transition: transform .15s; cursor: default; }
+.kw-tag:hover { transform: translateY(-2px); }
+.cite-type-bar { display: flex; flex-direction: column; gap: 10px; }
+.ctb-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text); margin-bottom: 4px; }
+.ctb-label span:last-child { color: var(--text-muted); }
+.ctb-track { height: 7px; background: var(--bg2); border-radius: 10px; overflow: hidden; }
+.ctb-fill { height: 100%; border-radius: 10px; }
+.fill-teal   { background: linear-gradient(90deg, #3b82c4, #6ba3d6); }
+.fill-sage   { background: linear-gradient(90deg, #4caf8a, #7dcaaa); }
+.fill-amber  { background: linear-gradient(90deg, #d4892a, #e8a84a); }
+.fill-violet { background: linear-gradient(90deg, #7c5cbf, #a07fd8); }
+.fill-rose   { background: linear-gradient(90deg, #c45a5a, #d88080); }
+.fill-cyan   { background: linear-gradient(90deg, #0891b2, #06b6d4); }
+.fill-green  { background: linear-gradient(90deg, #16a34a, #22c55e); }
+.fill-purple { background: linear-gradient(90deg, #7c3aed, #a855f7); }
+.fill-orange { background: linear-gradient(90deg, #ea580c, #f97316); }
+.theme-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.theme-tag { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 12px; font-size: 12px; color: var(--text); transition: .15s; }
+.theme-tag:hover { border-color: var(--teal); background: var(--teal-light); color: var(--teal); }
+.sentiment-ring { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+.sring-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.sring-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.findings-list { margin-top: 4px; }
+.finding-item { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border);
+  font-size: 12.5px; color: var(--text); line-height: 1.6; }
+.finding-item:last-child { border-bottom: none; }
+.finding-num { width: 20px; height: 20px; border-radius: 50%; background: var(--teal-light);
+  color: var(--teal); font-size: 10px; font-weight: 700; display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0; margin-top: 1px; }
+.prediction-band { background: linear-gradient(135deg, #1e3a5f 0%, #1a4a8f 100%);
+  border-radius: 12px; padding: 28px; margin-bottom: 20px; position: relative; overflow: hidden; }
+.prediction-band::before { content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 50% 80% at 90% 10%, rgba(100,180,255,0.12) 0%, transparent 60%);
+  pointer-events: none; }
+.pred-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 20px; }
+.pred-card { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px; padding: 20px; backdrop-filter: blur(4px); }
+.pred-card-title { font-size: 13px; font-weight: 600; color: #e0eeff; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px; }
+.pred-tag { font-size: 9px; padding: 2px 7px; border-radius: 4px;
+  background: rgba(100,180,255,0.2); color: #90c0ff; letter-spacing: 1px; }
+.pred-metric { display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.pred-metric:last-child { border-bottom: none; }
+.pred-metric-label { font-size: 11.5px; color: rgba(180,210,255,0.75); }
+.pred-metric-val { font-size: 13px; font-weight: 700; color: #7dd8b0; }
+.pred-metric-note { font-size: 10px; color: rgba(150,190,255,0.55); margin-top: 1px; }
+.impact-bar-wrap { display: flex; flex-direction: column; gap: 11px; }
+.impact-row-label { display: flex; justify-content: space-between; font-size: 11.5px;
+  color: rgba(180,210,255,0.8); margin-bottom: 4px; }
+.impact-track { height: 6px; background: rgba(255,255,255,0.08); border-radius: 10px; overflow: hidden; }
+.impact-fill { height: 100%; border-radius: 10px; }
+.pred-commentary { margin-top: 14px; padding: 12px 14px; background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(100,180,255,0.2); border-radius: 6px; font-size: 12px;
+  line-height: 1.75; color: rgba(200,225,255,0.75); }
+.trend-wrap { position: relative; height: 200px; }
+.insights-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 40px; }
+.insight-card { border-radius: 10px; padding: 22px 24px; border: 1px solid var(--border);
+  background: var(--surface); border-left: 5px solid var(--teal); transition: box-shadow .2s; }
+.insight-card:hover { box-shadow: var(--shadow); }
+.insight-card.sage  { border-left-color: var(--sage); }
+.insight-card.amber { border-left-color: var(--amber); }
+.insight-card.violet{ border-left-color: var(--violet); }
+.insight-card h4 { font-size: 13.5px; font-weight: 600; color: var(--teal); margin-bottom: 8px; }
+.insight-card.sage h4  { color: var(--sage); }
+.insight-card.amber h4 { color: var(--amber); }
+.insight-card.violet h4{ color: var(--violet); }
+.insight-card p { font-size: 12.5px; color: var(--text-muted); line-height: 1.75; }
+.insight-card p strong { color: var(--text); }
+.citing-papers-section { background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 28px 48px; max-width: 100%; }
+.citing-papers-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.citing-papers-header-label { font-size: 11px; font-weight: 700; color: var(--teal); letter-spacing: 2px;
+  background: var(--teal-light); padding: 3px 10px; border-radius: 4px; white-space: nowrap; }
+.citing-papers-header-title { font-size: 14px; font-weight: 600; color: var(--text-bright); }
+.citing-papers-header-count { font-size: 12px; color: var(--text-muted); background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; white-space: nowrap; }
+.citing-papers-header-divider { flex: 1; height: 1px; background: var(--border); }
+.citing-papers-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 16px;
+  padding: 10px 14px; background: linear-gradient(90deg, var(--teal-light), transparent);
+  border-left: 3px solid var(--teal); border-radius: 0 6px 6px 0; line-height: 1.7; }
+.citing-papers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 8px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+.citing-paper-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg); transition: background .15s, border-color .15s; }
+.citing-paper-item:hover { background: var(--teal-light); border-color: var(--teal-muted); }
+.citing-paper-num { font-size: 11px; font-weight: 700; color: var(--text-light);
+  min-width: 22px; text-align: right; flex-shrink: 0; }
+.citing-paper-name { font-size: 12.5px; color: var(--text); line-height: 1.45; word-break: break-word; }
+.footer { text-align: center; padding: 28px; font-size: 11px; color: var(--text-light);
+  border-top: 1px solid var(--border); letter-spacing: .5px; }
+@keyframes fadeUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:none } }
+.card, .insight-card, .paper-item { animation: fadeUp .4s ease both; }
+.stat-sub { font-size: 10px; color: var(--text-light); margin-top: 2px; }
+.inst-section { margin-bottom: 20px; }
+.inst-category-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+.inst-tags { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+.inst-tag { padding: 5px 12px; border-radius: 20px; font-size: 12.5px; font-weight: 500;
+  cursor: pointer; transition: opacity .15s, transform .15s; user-select: none; }
+.inst-tag:hover { opacity: 0.85; transform: translateY(-1px); }
+.inst-count { font-size: 10px; font-weight: 400; opacity: 0.8; margin-left: 4px; }
+.inst-paper-list { display: none; width: 100%; margin-top: 8px; padding: 10px 14px;
+  background: var(--bg2); border-radius: 6px; border-left: 3px solid var(--border-accent); }
+.inst-paper-item { font-size: 12px; color: var(--text-muted); padding: 3px 0; line-height: 1.5; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 3px; }
+/* ── Paper Detail Items (PDI) ── */
+.pdi-scroll { max-height: 600px; overflow-y: auto; padding-right: 4px; }
+.pdi-scroll::-webkit-scrollbar { width: 5px; }
+.pdi-scroll::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 3px; }
+.pdi-item { display: flex; gap: 12px; padding: 14px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 8px; border-left: 4px solid var(--teal);
+  background: var(--surface); transition: box-shadow .2s, background .2s; }
+.pdi-item:hover { background: var(--teal-light); box-shadow: var(--shadow-sm); }
+.pdi-rank { font-size: 17px; font-weight: 800; min-width: 28px; text-align: center;
+  color: #c5cceb; line-height: 1; padding-top: 2px; }
+.pdi-body { flex: 1; min-width: 0; }
+.pdi-title { font-size: 12.5px; font-weight: 600; color: var(--text-bright); line-height: 1.5; margin-bottom: 4px; }
+.pdi-title-link { color: var(--teal); text-decoration: none; }
+.pdi-title-link:hover { text-decoration: underline; }
+.pdi-authors { font-size: 11px; color: var(--text-muted); margin-bottom: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pdi-meta-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.pdi-inst-tag { font-size: 10.5px; color: var(--text-muted); background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; }
+.pdi-country-tag { font-size: 10.5px; color: var(--violet); background: var(--violet-light);
+  border: 1px solid #c9b8ec; border-radius: 4px; padding: 1px 7px; }
+.pdi-footer { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pdi-year { font-size: 11px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 7px; color: var(--text-muted); }
+.pdi-cit { font-size: 12px; }
+.pdi-affil-btn { font-size: 10.5px; padding: 2px 9px; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--surface); color: var(--teal); cursor: pointer;
+  transition: .15s; white-space: nowrap; }
+.pdi-affil-btn:hover { background: var(--teal-light); border-color: var(--teal); }
+.pdi-affil-box { margin-top: 8px; padding: 10px 12px; background: var(--bg2);
+  border-radius: 6px; font-size: 11px; color: var(--text); line-height: 1.7;
+  word-break: break-word; border: 1px solid var(--border); }
+.md-content { font-size: 12.5px; line-height: 1.75; color: var(--text); }
+.md-content p { margin: 0 0 7px; }
+.md-content p:last-child { margin-bottom: 0; }
+.md-content ul, .md-content ol { margin: 0 0 7px 20px; padding: 0; }
+.md-content li { margin-bottom: 3px; }
+.md-content strong { font-weight: 600; }
+.md-content em { font-style: italic; color: var(--text-muted); }
+.md-content h1, .md-content h2 { font-size: 13px; font-weight: 700; margin: 10px 0 5px; border-bottom: 1px solid var(--border); padding-bottom: 3px; }
+.md-content h3, .md-content h4 { font-size: 12.5px; font-weight: 600; margin: 8px 0 4px; }
+.md-content code { font-family: 'Fira Code', 'Consolas', monospace; font-size: 11px;
+  background: var(--bg); padding: 1px 5px; border-radius: 4px; color: var(--teal); }
+.md-content pre { background: var(--bg); border-radius: 6px; padding: 8px 12px;
+  overflow-x: auto; margin: 6px 0; }
+.md-content pre code { background: none; padding: 0; color: var(--text); }
+.md-content blockquote { border-left: 3px solid var(--teal); margin: 6px 0;
+  padding: 3px 10px; background: var(--teal-light); color: var(--text-muted); font-style: italic; border-radius: 0 4px 4px 0; }
+.md-content hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+.md-content a { color: var(--teal); text-decoration: underline; }
+.cite-sum-card-title { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.cite-sum-preview { font-size: 12.5px; color: var(--text-muted); line-height: 1.75; padding: 8px 0 10px; border-bottom: 1px solid var(--border); margin: 0; }
+.cite-sum-body { padding-top: 14px; }
+.cite-sum-body .md-content blockquote { border-left: 4px solid var(--teal); background: var(--teal-light); color: var(--text); font-style: normal; padding: 8px 14px; margin: 8px 0; border-radius: 0 6px 6px 0; }
+.pdi-authors-pills { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }
+.author-pill { display: inline-block; padding: 2px 9px; border-radius: 12px;
+  font-size: 11px; background: var(--bg2); border: 1px solid var(--border);
+  color: var(--text-muted); text-decoration: none; white-space: nowrap;
+  transition: background .15s, border-color .15s; }
+a.author-pill:hover { background: var(--teal-light); border-color: var(--teal); color: var(--teal); }
+.kw-cn { font-size: 9px; color: inherit; opacity: 0.7; margin-left: 3px; }
+/* ── Balanced card layout (fill available height) ── */
+.card-flex { display: flex; flex-direction: column; }
+.chart-fill-wrap { flex: 1; position: relative; min-height: 200px; }
+.chart-fill-wrap canvas { position: absolute !important; inset: 0; width: 100% !important; height: 100% !important; }
+.chart-center-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; padding: 8px 0; }
+.chart-center-wrap canvas { max-width: min(100%, 320px) !important; }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<div class="header">
+  <div class="header-eyebrow">CitationClaw v2</div>
+  <h1>引用论文<em>多维画像</em>分析报告</h1>
+  <div class="header-targets"><div class="header-target-item"><span class="header-target-num">01</span><a href="https://scholar.google.com/scholar?q=Crossearth:+Geospatial+vision+foundation+model+for+domain+generalizable+remote+s" target="_blank" rel="noopener" class="header-target-title" style="text-decoration:none;border-bottom:1px dashed rgba(96,165,250,0.4)">Crossearth: Geospatial vision foundation model for domain generalizable remote sensing semantic segmentation</a></div></div>
+  <p class="header-subtitle">基于 29 篇引用论文与 22 位知名学者（含 10 位院士/Fellow）数据，结合大模型对引用描述的深度解读，全面呈现学术影响力格局</p>
+  <div class="header-divider"></div>
+</div>
+
+<!-- ═══ STATS BAR ═══ -->
+<div class="stats-bar">
+  <div class="stat-item"><div class="stat-icon">📄</div><div class="stat-num">29</div><div class="stat-label">引用论文总数</div><div class="stat-sub">含 6 篇自引</div></div>
+  <div class="stat-item"><div class="stat-icon">🎓</div><div class="stat-num">22</div><div class="stat-label">知名学者数量</div></div>
+  <div class="stat-item"><div class="stat-icon">🏅</div><div class="stat-num">10</div><div class="stat-label">院士 / Fellow</div></div>
+  <div class="stat-item"><div class="stat-icon">🌍</div><div class="stat-num">7</div><div class="stat-label">覆盖国家/地区</div></div>
+  <div class="stat-item"><div class="stat-icon">🔥</div><div class="stat-num">109</div><div class="stat-label">最高单篇被引量</div></div>
+</div>
+
+
+<div class="download-bar">
+  <span>📥 下载数据文件：</span>
+  <a href="/api/results/download/E:/Research/CitationClaw/CitationClaw-v2-preview/data/result-20260521_151823/paper_results_with_citing_desc.xlsx">完整数据（含引用描述）.xlsx</a>
+<a href="/api/results/download/E:/Research/CitationClaw/CitationClaw-v2-preview/data/result-20260521_151823/paper_results_all_renowned_scholar.xlsx">著名学者.xlsx</a>
+<a href="/api/results/download/E:/Research/CitationClaw/CitationClaw-v2-preview/data/result-20260521_151823/paper_results_top-tier_scholar.xlsx">顶尖学者.xlsx</a>
+
+</div>
+
+<!-- ═══ CITING PAPERS LIST ═══ -->
+<div class="citing-papers-section">
+  <div class="citing-papers-header">
+    <span class="citing-papers-header-label">SCOPE</span>
+    <span class="citing-papers-header-title">本报告分析范围：引用论文列表</span>
+    <span class="citing-papers-header-count">共 29 篇</span>
+    <div class="citing-papers-header-divider"></div>
+  </div>
+  <div class="citing-papers-desc">
+    以下论文均为主动引用目标论文的施引文献，本报告所有多维画像分析均基于全部 <strong>29</strong> 篇施引文献展开。
+  </div>
+  <div class="citing-papers-grid">
+    
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">01</span>
+          <span class="citing-paper-name"><a href="https://www.sciencedirect.com/science/article/pii/S1566253525002313" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">UAVs meet LLMs: Overviews and perspectives towards agentic low-altitude mobility</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">02</span>
+          <span class="citing-paper-name"><a href="https://ieeexplore.ieee.org/abstract/document/11367309/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">ATRNet-STAR: A large dataset and benchmark towards remote sensing object recognition in the wild</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">03</span>
+          <span class="citing-paper-name"><a href="https://arxiv.org/abs/2507.06231" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Rsrefseg 2: decoupling referring remote sensing image segmentation with foundation models</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">04</span>
+          <span class="citing-paper-name"><a href="https://openaccess.thecvf.com/content/ICCV2025/html/Jia_Can_Generative_Geospatial_Diffusion_Models_Excel_as_Discriminative_Geospatial_Foundation_ICCV_2025_paper.html" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Can generative geospatial diffusion models excel as discriminative geospatial foundation models?</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">05</span>
+          <span class="citing-paper-name"><a href="https://arxiv.org/abs/2505.15147" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">From pixels to images: Deep learning advances in remote sensing image semantic segmentation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">06</span>
+          <span class="citing-paper-name"><a href="https://arxiv.org/abs/2504.06220" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Earth-adapter: Bridge the geospatial domain gaps with mixture of frequency adaptation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">07</span>
+          <span class="citing-paper-name"><a href="https://www.sciencedirect.com/science/article/pii/S0924271625003569" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Domain generalization for semantic segmentation of remote sensing images via vision foundation model fine-tuning</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">08</span>
+          <span class="citing-paper-name"><a href="https://arxiv.org/abs/2510.15615" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Deep learning based domain adaptation methods in remote sensing: A comprehensive survey</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">09</span>
+          <span class="citing-paper-name"><a href="https://arxiv.org/abs/2511.22645" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">GeoZero: Incentivizing Reasoning from Scratch on Geospatial Scenes</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">10</span>
+          <span class="citing-paper-name"><a href="https://www.tandfonline.com/doi/abs/10.1080/10095020.2025.2597544" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Change-prior guided cross-scale interaction network for remote sensing image change detection</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">11</span>
+          <span class="citing-paper-name"><a href="https://ieeexplore.ieee.org/abstract/document/11435138/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Foundation Models in Remote Sensing: Evolving from unimodality to multimodality</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">12</span>
+          <span class="citing-paper-name"><a href="https://proceedings.neurips.cc/paper_files/paper/2025/hash/f681209306654a0c1f690f65810e8e45-Abstract-Conference.html" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Geolink: Empowering remote sensing foundation model with openstreetmap data</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">13</span>
+          <span class="citing-paper-name"><a href="https://arxiv.org/abs/2508.10801" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Object fidelity diffusion for remote sensing image generation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">14</span>
+          <span class="citing-paper-name"><a href="https://www.sciencedirect.com/science/article/pii/S0952197626002605" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Prototype-guided domain-invariant enhancement and domain-specific normalization for domain generalization semantic segmentation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">15</span>
+          <span class="citing-paper-name"><a href="https://www.nature.com/articles/s41598-025-24115-3" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Optimized loss and self attention for enhanced domain adaptation in remote sensing image classification</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">16</span>
+          <span class="citing-paper-name"><a href="https://ieeexplore.ieee.org/abstract/document/11433806/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">HieraRS: A Hierarchical Segmentation Paradigm for Remote Sensing Enabling Multi-Granularity Interpretation and Cross-Domain Transfer</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">17</span>
+          <span class="citing-paper-name"><a href="https://arxiv.org/abs/2602.19863" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Brewing stronger features: Dual-teacher distillation for multispectral Earth observation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">18</span>
+          <span class="citing-paper-name"><a href="https://ieeexplore.ieee.org/abstract/document/11272118/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">PANGAEA: Assessing Geospatial Foundation Models Capabilities through a Global and Inclusive Benchmark</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">19</span>
+          <span class="citing-paper-name"><a href="https://www.mdpi.com/2076-3417/16/2/695" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Research on Remote Sensing Image Object Segmentation Using a Hybrid Multi-Attention Mechanism</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">20</span>
+          <span class="citing-paper-name"><a href="https://www.mdpi.com/1424-8220/26/2/749" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">PriorSAM-DBNet: A SAM-Prior-Enhanced Dual-Branch Network for Efficient Semantic Segmentation of High-Resolution Remote Sensing Images</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">21</span>
+          <span class="citing-paper-name"><a href="https://www.sciengine.com/doi/10.12082/dqxxkx.2025.240630" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">遥感数据智能: 进展与思考</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">22</span>
+          <span class="citing-paper-name"><a href="https://www.sciencedirect.com/science/article/pii/S0925231226003334" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Multi-feature collaboration with spatial-frequency learning guided by vision foundation model for remote sensing image captioning</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">23</span>
+          <span class="citing-paper-name"><a href="https://arxiv.org/abs/2603.02554" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Generalizable Knowledge Distillation from Vision Foundation Models for Semantic Segmentation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">24</span>
+          <span class="citing-paper-name"><a href="https://www.mdpi.com/2072-4292/18/6/897" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Investigating Very-High-Resolution Land Cover Mapping in the Pearl River Delta with Remote Sensing Foundation Models and Multi-Source Data Bayesian …</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">25</span>
+          <span class="citing-paper-name"><a href="https://ieeexplore.ieee.org/abstract/document/11434537/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Bridge: Leveraging Vision Foundation Models for Efficient Cross-Domain Remote Sensing Segmentation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">26</span>
+          <span class="citing-paper-name"><a href="https://ieeexplore.ieee.org/abstract/document/11511776/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">D2FT-Net: Frequency-Spatial Dual Domain Fine-Tuning of Vision Foundation Models for Remote Sensing Domain Generalization Semantic Segmentation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">27</span>
+          <span class="citing-paper-name"><a href="https://arxiv.org/abs/2603.12008" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">CrossEarth-SAR: A SAR-Centric and Billion-Scale Geospatial Foundation Model for Domain Generalizable Semantic Segmentation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">28</span>
+          <span class="citing-paper-name"><a href="https://www.techrxiv.org/doi/full/10.36227/techrxiv.175832495.54081600" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">VFM-CAKD: Category-Aware Knowledge Distillation from Visual Foundation Model for Aerial Imagery Semantic Segmentation</a></span>
+        </div>
+        <div class="citing-paper-item">
+          <span class="citing-paper-num">29</span>
+          <span class="citing-paper-name"><a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6725082" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Earth Observation for Disaster Mapping: Benchmarks, Methods, Challenges and Future Perspectives</a></span>
+        </div>
+  </div>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div class="main">
+
+<!-- SECTION 01 -->
+<div class="section-header">
+  <span class="section-num">01</span>
+  <span class="section-title">引用时间 · 地域分布 · 学者层级</span>
+  <div class="section-divider"></div>
+</div>
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title"><div class="card-title-dot"></div>引用论文年份分布</div>
+    <div style="position:relative;height:200px"><canvas id="cYear"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><div class="card-title-dot amber"></div>知名学者头衔层级分布</div>
+    <div style="position:relative;height:200px"><canvas id="cFellow"></canvas></div>
+  </div>
+</div>
+<div class="grid-3">
+  <div class="card"><div class="card-title"><div class="card-title-dot sage"></div>第一作者国家/地区分布（全部施引文献）</div><div style="position:relative;height:200px"><canvas id="cCountryAll"></canvas></div></div>
+  <div class="card"><div class="card-title"><div class="card-title-dot"></div>知名学者国家/地区分布</div><div style="position:relative;height:200px"><canvas id="cCountryRenowned"></canvas></div></div>
+  <div class="card"><div class="card-title"><div class="card-title-dot amber"></div>顶尖学者国家/地区分布</div><div style="position:relative;height:200px"><canvas id="cCountryTop"></canvas></div></div>
+</div>
+
+
+<!-- SECTION 02 -->
+<div class="section-header">
+  <span class="section-num">02</span>
+  <span class="section-title">著名机构引用 · 大学 / 企业 / 研究院</span>
+  <div class="section-divider"></div>
+</div>
+<div class="card grid-1">
+  <div class="card-title"><div class="card-title-dot sage"></div>引用该论文的知名大学与科技机构<span style="font-size:10px;color:var(--text-light);font-weight:400;margin-left:8px">基于每位作者单位逐个匹配 · 点击机构名可查看官网 · 点击标签可展开论文列表</span></div>
+  <div class="inst-section"><div class="inst-category-label">国内顶尖高校/机构</div><div class="inst-tags"><span class="inst-tag" style="color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a44" onclick="toggleInst('inst_0')"><a href="https://www.google.com/search?q=中国科学院" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">中国科学院</a> <span class="inst-count">4篇</span></span><div id="inst_0" class="inst-paper-list"><div class="inst-paper-item">&middot; <a href="https://arxiv.org/abs/2510.15615" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Deep learning based domain adaptation methods in remote sensing: A comprehensive</a></div><div class="inst-paper-item">&middot; <a href="https://ieeexplore.ieee.org/abstract/document/11435138/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Foundation Models in Remote Sensing: Evolving from unimodality to multimodality</a></div><div class="inst-paper-item">&middot; <a href="https://www.sciencedirect.com/science/article/pii/S1566253525002313" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">UAVs meet LLMs: Overviews and perspectives towards agentic low-altitude mobility</a></div><div class="inst-paper-item">&middot; <a href="https://www.sciengine.com/doi/10.12082/dqxxkx.2025.240630" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">遥感数据智能: 进展与思考</a></div></div><span class="inst-tag" style="color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a44" onclick="toggleInst('inst_1')"><a href="https://www.google.com/search?q=国防科技大学" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">国防科技大学</a> <span class="inst-count">3篇</span></span><div id="inst_1" class="inst-paper-list"><div class="inst-paper-item">&middot; <a href="https://ieeexplore.ieee.org/abstract/document/11367309/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">ATRNet-STAR: A large dataset and benchmark towards remote sensing object recogni</a></div><div class="inst-paper-item">&middot; <a href="https://www.tandfonline.com/doi/abs/10.1080/10095020.2025.2597544" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Change-prior guided cross-scale interaction network for remote sensing image cha</a></div><div class="inst-paper-item">&middot; <a href="https://arxiv.org/abs/2511.22645" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">GeoZero: Incentivizing Reasoning from Scratch on Geospatial Scenes</a></div></div><span class="inst-tag" style="color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a44" onclick="toggleInst('inst_2')"><a href="https://www.google.com/search?q=清华大学" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">清华大学</a> <span class="inst-count">1篇</span></span><div id="inst_2" class="inst-paper-list"><div class="inst-paper-item">&middot; <a href="https://arxiv.org/abs/2603.02554" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Generalizable Knowledge Distillation from Vision Foundation Models for Semantic </a></div></div><span class="inst-tag" style="color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a44" onclick="toggleInst('inst_3')"><a href="https://www.google.com/search?q=北京大学" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">北京大学</a> <span class="inst-count">1篇</span></span><div id="inst_3" class="inst-paper-list"><div class="inst-paper-item">&middot; <a href="https://proceedings.neurips.cc/paper_files/paper/2025/hash/f681209306654a0c1f690f65810e8e45-Abstract-Conference.html" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Geolink: Empowering remote sensing foundation model with openstreetmap data</a></div></div><span class="inst-tag" style="color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a44" onclick="toggleInst('inst_4')"><a href="https://www.google.com/search?q=武汉大学" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">武汉大学</a> <span class="inst-count">1篇</span></span><div id="inst_4" class="inst-paper-list"><div class="inst-paper-item">&middot; <a href="https://www.tandfonline.com/doi/abs/10.1080/10095020.2025.2597544" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Change-prior guided cross-scale interaction network for remote sensing image cha</a></div></div><span class="inst-tag" style="color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a44" onclick="toggleInst('inst_5')"><a href="https://www.google.com/search?q=中山大学" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">中山大学</a> <span class="inst-count">1篇</span></span><div id="inst_5" class="inst-paper-list"><div class="inst-paper-item">&middot; <a href="https://www.mdpi.com/2072-4292/18/6/897" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Investigating Very-High-Resolution Land Cover Mapping in the Pearl River Delta w</a></div></div><span class="inst-tag" style="color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a44" onclick="toggleInst('inst_6')"><a href="https://www.google.com/search?q=北京航空航天大学" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">北京航空航天大学</a> <span class="inst-count">1篇</span></span><div id="inst_6" class="inst-paper-list"><div class="inst-paper-item">&middot; <a href="https://arxiv.org/abs/2507.06231" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Rsrefseg 2: decoupling referring remote sensing image segmentation with foundati</a></div></div></div></div>
+</div>
+
+<!-- SECTION 03 -->
+<div class="section-header">
+  <span class="section-num">03</span>
+  <span class="section-title">研究主题关键词（施引文献领域分析）</span>
+  <div class="section-divider"></div>
+</div>
+<div class="card grid-1">
+  <div class="card-title"><div class="card-title-dot violet"></div>关键词云（AI 动态提取 · 基于施引文献标题，反映施引文献所覆盖的研究范围）</div>
+  <div class="kw-cloud"><span class="kw-tag" style="font-size:18px;color:#3b82c4;background:#e8f1fb;border:1px solid #3b82c433;">Foundation Models<span class="kw-cn">(基础模型/大模型)</span></span><span class="kw-tag" style="font-size:18px;color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a33;">Remote Sensing Image Semantic Segmentation<span class="kw-cn">(遥感图像语义分割)</span></span><span class="kw-tag" style="font-size:17px;color:#7c5cbf;background:#f0ecfb;border:1px solid #7c5cbf33;">Domain Generalization<span class="kw-cn">(领域泛化)</span></span><span class="kw-tag" style="font-size:17px;color:#d4892a;background:#fdf3e3;border:1px solid #d4892a33;">Domain Adaptation<span class="kw-cn">(领域自适应)</span></span><span class="kw-tag" style="font-size:16px;color:#c45a5a;background:#fdeaea;border:1px solid #c45a5a33;">Vision Foundation Models (VFM)<span class="kw-cn">(视觉基础模型)</span></span><span class="kw-tag" style="font-size:16px;color:#3b82c4;background:#e8f1fb;border:1px solid #3b82c433;">Knowledge Distillation<span class="kw-cn">(知识蒸馏)</span></span><span class="kw-tag" style="font-size:15px;color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a33;">Multimodal Learning<span class="kw-cn">(多模态学习)</span></span><span class="kw-tag" style="font-size:15px;color:#7c5cbf;background:#f0ecfb;border:1px solid #7c5cbf33;">Object Detection/Recognition<span class="kw-cn">(目标检测与识别)</span></span><span class="kw-tag" style="font-size:15px;color:#d4892a;background:#fdf3e3;border:1px solid #d4892a33;">Deep Learning<span class="kw-cn">(深度学习)</span></span><span class="kw-tag" style="font-size:14px;color:#c45a5a;background:#fdeaea;border:1px solid #c45a5a33;">Transfer Learning<span class="kw-cn">(迁移学习)</span></span><span class="kw-tag" style="font-size:14px;color:#3b82c4;background:#e8f1fb;border:1px solid #3b82c433;">Diffusion Models<span class="kw-cn">(扩散模型)</span></span><span class="kw-tag" style="font-size:14px;color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a33;">Large Language Models (LLMs)<span class="kw-cn">(大语言模型)</span></span><span class="kw-tag" style="font-size:14px;color:#7c5cbf;background:#f0ecfb;border:1px solid #7c5cbf33;">Earth Observation<span class="kw-cn">(对地观测)</span></span><span class="kw-tag" style="font-size:14px;color:#d4892a;background:#fdf3e3;border:1px solid #d4892a33;">Change Detection<span class="kw-cn">(变化检测)</span></span><span class="kw-tag" style="font-size:14px;color:#c45a5a;background:#fdeaea;border:1px solid #c45a5a33;">Benchmark Dataset<span class="kw-cn">(基准数据集)</span></span><span class="kw-tag" style="font-size:13px;color:#3b82c4;background:#e8f1fb;border:1px solid #3b82c433;">UAV / Low-altitude Mobility<span class="kw-cn">(无人机/低空出行)</span></span><span class="kw-tag" style="font-size:13px;color:#4caf8a;background:#e6f6f0;border:1px solid #4caf8a33;">Geospatial Intelligence<span class="kw-cn">(遥感数据智能)</span></span><span class="kw-tag" style="font-size:13px;color:#7c5cbf;background:#f0ecfb;border:1px solid #7c5cbf33;">Image Generation<span class="kw-cn">(图像生成)</span></span><span class="kw-tag" style="font-size:12px;color:#d4892a;background:#fdf3e3;border:1px solid #d4892a33;">Self-Attention Mechanism<span class="kw-cn">(自注意力机制)</span></span><span class="kw-tag" style="font-size:12px;color:#c45a5a;background:#fdeaea;border:1px solid #c45a5a33;">Fine-tuning<span class="kw-cn">(微调)</span></span></div>
+</div>
+
+<!-- SECTION 04 -->
+<div class="section-header">
+  <span class="section-num">04</span>
+  <span class="section-title" data-tooltip="以下为施引作者">知名学者画像一览</span>
+  <div class="section-divider"></div>
+</div>
+<div class="card grid-1">
+  <div class="card-title"><div class="card-title-dot"></div>引用论文中出现的权威学者详细信息（AI搜索生成，已自动去重合并同一学者，仅供参考）</div>
+  <div style="overflow-x:auto">
+    <table class="scholar-table">
+      <thead><tr><th>#</th><th>学者</th><th>机构</th><th>国家/地区</th><th>层级</th><th>头衔 / 荣誉</th><th>施引论文</th><th>引用描述</th></tr></thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">01</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Xiang+Li" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Xiang Li</a></td>
+          <td><a href="https://www.google.com/search?q=College+of+Electronic+Science+and+Technology,+National+University+of+Defense+Technology,+Changsha+410073,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">College of Electronic Science and T…</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-ys">两院院士</span></td>
+          <td class="stitle">中国科学院院士、IEEE Fellow</td>
+          <td style="max-width:180px"><a href="https://ieeexplore.ieee.org/abstract/document/11367309/" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">ATRNet-STAR: A large dataset and benchmark to…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">02</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Deren+Li" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Deren Li</a></td>
+          <td><a href="https://www.google.com/search?q=Wuhan+University" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">Wuhan University</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-ys">两院院士</span></td>
+          <td class="stitle">中国科学院院士、中国工程院院士、2023年度国家最高科学技术奖获得者、国际欧亚科学院院士、国际宇航科学院院士、ISPRS荣誉会员</td>
+          <td style="max-width:180px"><a href="https://www.tandfonline.com/doi/abs/10.1080/10095020.2025.2597544" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Change-prior guided cross-scale interaction n…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">03</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Levente+Kov%C3%A1cs" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Levente Kovács</a></td>
+          <td><a href="https://www.google.com/search?q=John+von+Neumann+Faculty+of+Informatics,+Obuda+University,+Budapest,+H-1034,+Hungary" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">John von Neumann Faculty of Informa…</a></td>
+          <td><span class="badge b-int">匈牙利</span></td>
+          <td><span class="badge b-ot">其他院士</span></td>
+          <td class="stitle">IEEE Fellow、匈牙利工程院院士</td>
+          <td style="max-width:180px"><a href="https://www.sciencedirect.com/science/article/pii/S1566253525002313" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">UAVs meet LLMs: Overviews and perspectives to…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">04</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Fei-Yue+Wang" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Fei-Yue Wang</a></td>
+          <td><a href="https://www.google.com/search?q=The+State+Key+Laboratory+of+Multimodal+Artificial+Intelligence+Systems,+Institute+of+Automation,+Chinese+Academy+of+Sciences,+Beijing,+100190,+China;+Department+of+Engineering+Science,+Faculty+of+Innovation+Engineering,+Macau+University+of+Science+and+Technology,+Macau,+999078,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">The State Key Laboratory of Multimo…</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-ot">其他院士</span></td>
+          <td class="stitle">欧洲科学与艺术学院院士、IEEE Fellow、IFAC Fellow、ASME Fellow、AAAS Fellow、INCOSE Fellow、IAPR Fellow</td>
+          <td style="max-width:180px"><a href="https://www.sciencedirect.com/science/article/pii/S1566253525002313" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">UAVs meet LLMs: Overviews and perspectives to…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">05</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=N.+Sebe" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">N. Sebe</a></td>
+          <td><a href="https://www.google.com/search?q=Department+of+Information+Engineering+and+Computer+Science,+University+of+Trento,+Italy" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">Department of Information Engineeri…</a></td>
+          <td><span class="badge b-int">意大利</span></td>
+          <td><span class="badge b-ot">其他院士</span></td>
+          <td class="stitle">欧洲科学院院士（Member of Academia Europaea）、IEEE Fellow、IAPR Fellow、ACM Distinguished Member</td>
+          <td style="max-width:180px"><a href="https://arxiv.org/abs/2603.02554" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Generalizable Knowledge Distillation from Vis…</a></td>
+          <td><button class="desc-btn" onclick="toggleDesc('desc_5')">查看 ▾</button></td>
+        </tr>
+        <tr id="desc_5" class="desc-row" style="display:none">
+          <td colspan="8"><div class="md-content">[Experiments] Following existing DGSS methods [1, 9, 42], we employ three evaluation settings: GTAV → Citys + BDD + ...</div></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">06</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Peter+van+Oosterom" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Peter van Oosterom</a></td>
+          <td><a href="https://www.google.com/search?q=代尔夫特理工大学（Delft+University+of+Technology）" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">代尔夫特理工大学（Delft University of Techno…</a></td>
+          <td><span class="badge b-int">荷兰</span></td>
+          <td><span class="badge b-ot">其他院士</span></td>
+          <td class="stitle">欧洲科学院院士（Member of the Academia Europaea）</td>
+          <td style="max-width:180px"><a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6725082" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Earth Observation for Disaster Mapping: Bench…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">07</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=F.+Lin" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">F. Lin</a></td>
+          <td><a href="https://www.google.com/search?q=Department+of+Engineering+Science,+Faculty+of+Innovation+Engineering,+Macau+University+of+Science+and+Technology,+Macau,+999078,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">Department of Engineering Science, …</a></td>
+          <td><span class="badge b-cn">中国澳门</span></td>
+          <td><span class="badge b-fw">Fellow</span></td>
+          <td class="stitle">IEEE Fellow</td>
+          <td style="max-width:180px"><a href="https://www.sciencedirect.com/science/article/pii/S1566253525002313" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">UAVs meet LLMs: Overviews and perspectives to…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">08</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Li+Liu" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Li Liu</a></td>
+          <td><a href="https://www.google.com/search?q=College+of+Electronic+Science+and+Technology,+National+University+of+Defense+Technology,+Changsha+410073,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">College of Electronic Science and T…</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-fw">Fellow</span></td>
+          <td class="stitle">IEEE Fellow</td>
+          <td style="max-width:180px"><a href="https://ieeexplore.ieee.org/abstract/document/11367309/" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">ATRNet-STAR: A large dataset and benchmark to…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">09</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=J.+Chanussot" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">J. Chanussot</a></td>
+          <td><a href="https://www.google.com/search?q=Université+Grenoble+Alpes" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">Université Grenoble Alpes</a></td>
+          <td><span class="badge b-int">法国</span></td>
+          <td><span class="badge b-fw">Fellow</span></td>
+          <td class="stitle">IEEE Fellow、EURASIP Fellow、法国大学研究院（IUF）资深会员、IEEE GRSS杰出成就奖获得者</td>
+          <td style="max-width:180px"><a href="https://ieeexplore.ieee.org/abstract/document/11435138/" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Foundation Models in Remote Sensing: Evolving…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">10</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Wei+Xiang" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Wei Xiang</a></td>
+          <td><a href="https://www.google.com/search?q=School+of+Computing,+Engineering+and+Mathematical+Sciences,+La+Trobe+University" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">School of Computing, Engineering an…</a></td>
+          <td><span class="badge b-int">澳大利亚</span></td>
+          <td><span class="badge b-fw">Fellow</span></td>
+          <td class="stitle">IEEE Fellow、IET Fellow、澳洲工程师学会会士 (FIEAust)</td>
+          <td style="max-width:180px"><a href="https://arxiv.org/abs/2505.15147" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">From pixels to images: Deep learning advances…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">11</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Yongxiang+Liu" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Yongxiang Liu</a></td>
+          <td><a href="https://www.google.com/search?q=College+of+Electronic+Science+and+Technology,+National+University+of+Defense+Technology,+Changsha+410073,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">College of Electronic Science and T…</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nt">国家级人才</span></td>
+          <td class="stitle">国家杰出青年科学基金获得者（杰青）</td>
+          <td style="max-width:180px"><a href="https://ieeexplore.ieee.org/abstract/document/11367309/" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">ATRNet-STAR: A large dataset and benchmark to…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">12</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Zhen+Liu" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Zhen Liu</a></td>
+          <td><a href="https://www.google.com/search?q=College+of+Electronic+Science+and+Technology,+National+University+of+Defense+Technology,+Changsha+410073,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">College of Electronic Science and T…</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nt">国家级人才</span></td>
+          <td class="stitle">国家优秀青年科学基金获得者（优青）</td>
+          <td style="max-width:180px"><a href="https://ieeexplore.ieee.org/abstract/document/11367309/" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">ATRNet-STAR: A large dataset and benchmark to…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">13</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Danfeng+Hong" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Danfeng Hong</a></td>
+          <td><a href="https://www.google.com/search?q=Southeast+University" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">Southeast University</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nt">国家级人才</span></td>
+          <td class="stitle">国家自然科学基金优秀青年科学基金获得者（国家优青）</td>
+          <td style="max-width:180px"><a href="https://ieeexplore.ieee.org/abstract/document/11435138/" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Foundation Models in Remote Sensing: Evolving…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">14</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=%E5%AD%A3%E9%A1%BA%E5%B9%B3+(Shunping+Ji)" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">季顺平 (Shunping Ji)</a></td>
+          <td><a href="https://www.google.com/search?q=武汉大学+(Wuhan+University)" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">武汉大学 (Wuhan University)</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nt">国家级人才</span></td>
+          <td class="stitle">国家级人才（国家优秀青年科学基金获得者、国家“万人计划”青年拔尖人才）</td>
+          <td style="max-width:180px"><a href="https://www.sciencedirect.com/science/article/pii/S0924271625003569" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Domain generalization for semantic segmentati…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">15</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Shihong+Du" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Shihong Du</a></td>
+          <td><a href="https://www.google.com/search?q=College+of+Urban+and+Environmental+Sciences,+Peking+University,+Beijing,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">College of Urban and Environmental …</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nt">国家级人才</span></td>
+          <td class="stitle">教育部长江学者特聘教授、北京大学博雅特聘教授</td>
+          <td style="max-width:180px"><a href="https://proceedings.neurips.cc/paper_files/paper/2025/hash/f681209306654a0c1f690f65810e8e45-Abstract-Conference.html" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Geolink: Empowering remote sensing foundation…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">16</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Zhengxia+Zou" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Zhengxia Zou</a></td>
+          <td><a href="https://www.google.com/search?q=Beihang+University" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">Beihang University</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nt">国家级人才</span></td>
+          <td class="stitle">国家级青年人才（优青/海外优青）</td>
+          <td style="max-width:180px"><a href="https://arxiv.org/abs/2507.06231" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Rsrefseg 2: decoupling referring remote sensi…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">17</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Z.+Shi" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Z. Shi</a></td>
+          <td><a href="https://www.google.com/search?q=Beihang+University" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">Beihang University</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nt">国家级人才</span></td>
+          <td class="stitle">国家杰出青年科学基金获得者、教育部长江学者特聘教授</td>
+          <td style="max-width:180px"><a href="https://arxiv.org/abs/2507.06231" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Rsrefseg 2: decoupling referring remote sensi…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">18</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Shuang+Wang" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Shuang Wang</a></td>
+          <td><a href="https://www.google.com/search?q=School+of+Artificial+Intelligence,+Xidian+University,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">School of Artificial Intelligence, …</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nt">国家级人才</span></td>
+          <td class="stitle">国家杰出青年科学基金获得者、长江学者特聘教授</td>
+          <td style="max-width:180px"><a href="https://arxiv.org/abs/2603.02554" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Generalizable Knowledge Distillation from Vis…</a></td>
+          <td><button class="desc-btn" onclick="toggleDesc('desc_18')">查看 ▾</button></td>
+        </tr>
+        <tr id="desc_18" class="desc-row" style="display:none">
+          <td colspan="8"><div class="md-content">[Experiments] Following existing DGSS methods [1, 9, 42], we employ three evaluation settings: GTAV → Citys + BDD + ...</div></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">19</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Xiaoping+Liu" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Xiaoping Liu</a></td>
+          <td><a href="https://www.google.com/search?q=Sun+Yat-sen+University" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">Sun Yat-sen University</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nt">国家级人才</span></td>
+          <td class="stitle">国家杰出青年科学基金获得者（2022）、教育部长江学者奖励计划青年学者（2015）、科睿唯安全球高被引科学家</td>
+          <td style="max-width:180px"><a href="https://www.mdpi.com/2072-4292/18/6/897" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Investigating Very-High-Resolution Land Cover…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">20</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Jun+Huang" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Jun Huang</a></td>
+          <td><a href="https://www.google.com/search?q=Department+of+Engineering+Science,+Faculty+of+Innovation+Engineering,+Macau+University+of+Science+and+Technology,+Macau,+999078,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">Department of Engineering Science, …</a></td>
+          <td><span class="badge b-cn">中国澳门</span></td>
+          <td><span class="badge b-nm">知名学者</span></td>
+          <td class="stitle">国家自然科学基金优秀青年科学基金（港澳）获得者</td>
+          <td style="max-width:180px"><a href="https://www.sciencedirect.com/science/article/pii/S1566253525002313" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">UAVs meet LLMs: Overviews and perspectives to…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">21</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Yisheng+Lv" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Yisheng Lv</a></td>
+          <td><a href="https://www.google.com/search?q=The+State+Key+Laboratory+of+Multimodal+Artificial+Intelligence+Systems,+Institute+of+Automation,+Chinese+Academy+of+Sciences,+Beijing,+100190,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">The State Key Laboratory of Multimo…</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nm">知名学者</span></td>
+          <td class="stitle">国家杰出青年科学基金获得者</td>
+          <td style="max-width:180px"><a href="https://www.sciencedirect.com/science/article/pii/S1566253525002313" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">UAVs meet LLMs: Overviews and perspectives to…</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-light);font-size:11px">22</td>
+          <td class="sname"><a href="https://scholar.google.com/scholar?q=Zhun+Zhong" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">Zhun Zhong</a></td>
+          <td><a href="https://www.google.com/search?q=School+of+Computer+Science+and+Information+Engineering,+Hefei+University+of+Technology,+China" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-size:11.5px">School of Computer Science and Info…</a></td>
+          <td><span class="badge b-cn">中国</span></td>
+          <td><span class="badge b-nm">知名学者</span></td>
+          <td class="stitle">国家海外高层次青年人才</td>
+          <td style="max-width:180px"><a href="https://arxiv.org/abs/2603.02554" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Generalizable Knowledge Distillation from Vis…</a></td>
+          <td><button class="desc-btn" onclick="toggleDesc('desc_22')">查看 ▾</button></td>
+        </tr>
+        <tr id="desc_22" class="desc-row" style="display:none">
+          <td colspan="8"><div class="md-content">[Experiments] Following existing DGSS methods [1, 9, 42], we employ three evaluation settings: GTAV → Citys + BDD + ...</div></td>
+        </tr></tbody>
+    </table>
+  </div>
+</div>
+
+
+<!-- SECTION 05 -->
+<div class="section-header">
+  <span class="section-num">05</span>
+  <span class="section-title">引用描述综合分析</span>
+  <div class="section-divider"></div>
+</div>
+
+<div class="card grid-1">
+  <div class="card-title cite-sum-card-title">
+    <div style="display:flex;align-items:center;gap:7px">
+      <div class="card-title-dot teal"></div>引用描述综合总结
+      <span style="font-size:10px;color:var(--text-light);font-weight:400">AI 综合归纳 &nbsp;·&nbsp; 客观呈现 &nbsp;·&nbsp; 基于 8 条引用描述</span>
+    </div>
+    <button class="desc-btn" id="citeSumBtn" onclick="toggleCiteSummary()">展开全文 ▾</button>
+  </div>
+  <p class="cite-sum-preview">在 8 篇有效引用样本中，目标论文《CrossEarth》被广泛提及，涉及的研究领域主要集中在遥感图像处理、语义分割、域泛化（Domain Generalization）以及视觉基座模型（VFM）的应用。引用来源包括英文学术论文及中文综述性文章。</p>
+  <div id="citeSummaryContent" style="display:none">
+    <div class="cite-sum-body"><div class="md-content">## 引用规模与分布
+
+在 8 篇有效引用样本中，目标论文《CrossEarth》被广泛提及，涉及的研究领域主要集中在遥感图像处理、语义分割、域泛化（Domain Generalization）以及视觉基座模型（VFM）的应用。引用来源包括英文学术论文及中文综述性文章。
+
+## 主要引用用途
+
+引用者对该论文的使用主要体现为以下三个方面：
+1. **背景综述与领域定位**：多篇论文在相关工作（Related Work）中将其归类为基于掩码图像建模（MIM）技术的遥感视觉基座模型，或将其识别为遥感语义分割领域中探索域泛化的代表性工作（引用2、7、8）。
+2. **技术方案参考**：引用者详细描述了该论文的核心组成部分，如 Earth-Style Injection（地球风格注入）和 Multi-Task Training（多任务训练）策略，作为解决跨域泛化问题的技术依据（引用4）。
+3. **对比实验与性能验证**：通过可视化分类图对比，证明在该论文提出的框架下，使用其预训练模型能显著提升多粒度预测的精度，或将其作为域泛化语义分割（DGSS）研究的参考基准（引用1、6）。
+
+## 正面引用描述原文
+
+&gt; In the field of earth observation, Gong et al. (2024) introduce the first vision foundation model for remote sensing domain generalization in semantic segmentation, termed CrossEarth, achieving superior generalization ability across 32 cross-domain settings. ——《Prototype-guided domain-invariant enhancement and domain-specific normalization》
+
+&gt; Gong et al. proposed the CrossEarth model [13]. By designing two key components, namely the Earth-Style Injection and the Multi-Task Training, it effectively addresses the deficiencies in cross-domain generalization of existing remote sensing models. ——《Multi-feature collaboration with spatial-frequency learning guided by vision fou》
+
+&gt; Following existing DGSS studies [55], incorporating Bridge into a DGSS training paradigm is a promising future direction. ——《Bridge: Leveraging Vision Foundation Models for Efficient Cross-Domain Remote Se》
+
+## 综合说明
+
+在 8 篇有效引用样本中，该论文被视为遥感领域内解决语义分割跨域泛化问题的先行研究。引用模式以正面评价和方法论参考为主，重点关注其多任务训练策略及在 32 个跨域设置下的泛化表现，未见批评性或保留性描述。</div></div>
+  </div>
+</div>
+
+<div class="card grid-1">
+  <div class="card-title">
+    <div style="display:flex;align-items:center;gap:7px">
+      <div class="card-title-dot blue"></div>逐篇引文评述
+      <span style="font-size:10px;color:var(--text-light);font-weight:400">8 篇施引论文的实际评述（可点击标题跳转原文）</span>
+    </div>
+  </div>
+  <div style="overflow-x:auto">
+  <table class="scholar-table" style="width:100%">
+    <thead><tr>
+      <th style="min-width:200px">施引论文 / 刊物</th>
+      <th style="min-width:110px">知名学者</th>
+      <th style="min-width:240px">引文原文</th>
+      <th style="width:50px">态度</th>
+    </tr></thead>
+    <tbody>
+        <tr>
+          <td style="font-size:11px;max-width:280px;word-break:break-word;line-height:1.5">
+            <a href="https://ieeexplore.ieee.org/abstract/document/11433806/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">HieraRS: A Hierarchical Segmentation Paradigm for Remote Sensing Enabling Multi-Granularity Interpretation and Cross-Domain Transfer</a>
+            <br><span style="font-size:10px;color:var(--accent)">2026</span>
+          </td>
+          <td style="font-size:11px;max-width:140px"><span style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">-</span></td>
+          <td style="font-size:11px;max-width:350px;word-break:break-word;line-height:1.5;color:var(--text-body)">The visualization in Fig. 12 compares the classification maps generated by ConvNeXt-B [56] under the standard training baseline and the proposed TransLU framework, confirming that the cross-domain transfer of a pre-trained foundation model like CrossEarth [62] significantly improves the precision of multi-granularity predictions.</td>
+          <td style="text-align:center;white-space:nowrap"><span style="color:var(--text-light);font-size:11px">中性</span></td>
+        </tr>
+        <tr>
+          <td style="font-size:11px;max-width:280px;word-break:break-word;line-height:1.5">
+            <a href="https://arxiv.org/abs/2602.19863" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">Brewing stronger features: Dual-teacher distillation for multispectral Earth observation</a>
+            <br><span style="font-size:10px;color:var(--accent)">2026 · arXiv.org</span>
+          </td>
+          <td style="font-size:11px;max-width:140px"><span style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">-</span></td>
+          <td style="font-size:11px;max-width:350px;word-break:break-word;line-height:1.5;color:var(--text-body)">Most EOFM proposed in recent years were pretrained using MIM-based techniques [2, 16, 35, 37, 43, 56, 62] and an ever-increasing amount of unlabeled EO data.</td>
+          <td style="text-align:center;white-space:nowrap"><span style="color:var(--text-light);font-size:11px">中性</span></td>
+        </tr>
+        <tr>
+          <td style="font-size:11px;max-width:280px;word-break:break-word;line-height:1.5">
+            <a href="https://www.sciencedirect.com/science/article/pii/S0952197626002605" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">Prototype-guided domain-invariant enhancement and domain-specific normalization for domain generalization semantic segmentation</a>
+            <br><span style="font-size:10px;color:var(--accent)">2026 · Engineering applications of artificial intelligence</span>
+          </td>
+          <td style="font-size:11px;max-width:140px"><span style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">-</span></td>
+          <td style="font-size:11px;max-width:350px;word-break:break-word;line-height:1.5;color:var(--text-body)">In the field of earth observation, Gong et al. (2024) introduce the first vision foundation model for remote sensing domain generalization in semantic segmentation, termed CrossEarth, achieving superior generalization ability across 32 cross-domain settings.</td>
+          <td style="text-align:center;white-space:nowrap"><span style="color:#4ade80;font-size:11px;font-weight:600">正面</span></td>
+        </tr>
+        <tr>
+          <td style="font-size:11px;max-width:280px;word-break:break-word;line-height:1.5">
+            <a href="https://www.sciencedirect.com/science/article/pii/S0925231226003334" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">Multi-feature collaboration with spatial-frequency learning guided by vision foundation model for remote sensing image captioning</a>
+            <br><span style="font-size:10px;color:var(--accent)">2026 · SSRN Electronic Journal</span>
+          </td>
+          <td style="font-size:11px;max-width:140px"><span style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">-</span></td>
+          <td style="font-size:11px;max-width:350px;word-break:break-word;line-height:1.5;color:var(--text-body)">[2.2 . Vision foundation model] Gong et al. proposed the CrossEarth model [13]. By designing two key components, namely the Earth-Style Injection and the Multi-Task Training, it effectively addresses the deficiencies in cross-domain generalization of existing remote sensing models.</td>
+          <td style="text-align:center;white-space:nowrap"><span style="color:#4ade80;font-size:11px;font-weight:600">正面</span></td>
+        </tr>
+        <tr>
+          <td style="font-size:11px;max-width:280px;word-break:break-word;line-height:1.5">
+            <a href="https://arxiv.org/abs/2603.02554" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">Generalizable Knowledge Distillation from Vision Foundation Models for Semantic Segmentation</a>
+            <br><span style="font-size:10px;color:var(--accent)">2026 · ArXiv.org</span>
+          </td>
+          <td style="font-size:11px;max-width:140px"><a href="https://scholar.google.com/scholar?q=Shuang+Wang" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Shuang Wang (National Talent (China): 国家杰出青年科学基金获得</a><a href="https://scholar.google.com/scholar?q=N.+Sebe" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">N. Sebe (Academician: 欧洲科学院院士（Member of Academia E</a><a href="https://scholar.google.com/scholar?q=Zhun+Zhong" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">Zhun Zhong (Notable Scholar: 国家海外高层次青年人才)</a></td>
+          <td style="font-size:11px;max-width:350px;word-break:break-word;line-height:1.5;color:var(--text-body)">Following existing DGSS methods [1, 9, 42], we employ three evaluation settings: GTAV → Citys + BDD + ...</td>
+          <td style="text-align:center;white-space:nowrap"><span style="color:var(--text-light);font-size:11px">中性</span></td>
+        </tr>
+        <tr>
+          <td style="font-size:11px;max-width:280px;word-break:break-word;line-height:1.5">
+            <a href="https://ieeexplore.ieee.org/abstract/document/11434537/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">Bridge: Leveraging Vision Foundation Models for Efficient Cross-Domain Remote Sensing Segmentation</a>
+            <br><span style="font-size:10px;color:var(--accent)">2026 · IEEE Transactions on Geoscience and Remote Sensing</span>
+          </td>
+          <td style="font-size:11px;max-width:140px"><span style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">-</span></td>
+          <td style="font-size:11px;max-width:350px;word-break:break-word;line-height:1.5;color:var(--text-body)">Following existing DGSS studies [55], incorporating Bridge into a DGSS training paradigm is a promising future direction.</td>
+          <td style="text-align:center;white-space:nowrap"><span style="color:#4ade80;font-size:11px;font-weight:600">正面</span></td>
+        </tr>
+        <tr>
+          <td style="font-size:11px;max-width:280px;word-break:break-word;line-height:1.5">
+            <a href="https://ieeexplore.ieee.org/abstract/document/11511776/" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">D2FT-Net: Frequency-Spatial Dual Domain Fine-Tuning of Vision Foundation Models for Remote Sensing Domain Generalization Semantic Segmentation</a>
+            <br><span style="font-size:10px;color:var(--accent)">2026 · IEEE Transactions on Geoscience and Remote Sensing</span>
+          </td>
+          <td style="font-size:11px;max-width:140px"><span style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">-</span></td>
+          <td style="font-size:11px;max-width:350px;word-break:break-word;line-height:1.5;color:var(--text-body)">[A. Domain Generalization Semantic Segmentation] In the remote sensing domain, generalization semantic segmentation, CrossEarth [34] explores the potential of VFMs through a multitask training strategy tailored for geospatial scenarios.</td>
+          <td style="text-align:center;white-space:nowrap"><span style="color:var(--text-light);font-size:11px">中性</span></td>
+        </tr>
+        <tr>
+          <td style="font-size:11px;max-width:280px;word-break:break-word;line-height:1.5">
+            <a href="https://www.sciengine.com/doi/10.12082/dqxxkx.2025.240630" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">遥感数据智能: 进展与思考</a>
+            <br><span style="font-size:10px;color:var(--accent)">2025 · Medical Research and Practice</span>
+          </td>
+          <td style="font-size:11px;max-width:140px"><span style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">-</span></td>
+          <td style="font-size:11px;max-width:350px;word-break:break-word;line-height:1.5;color:var(--text-body)">[31] Gong Z Y, Wei Z X, Wang D, et al. CrossEarth: Geospatial vision foundation model for domain generalizable remote sensing semantic segmentation[EB/OL].</td>
+          <td style="text-align:center;white-space:nowrap"><span style="color:var(--text-light);font-size:11px">中性</span></td>
+        </tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title"><div class="card-title-dot"></div>引用类型分布</div>
+    <div class="cite-type-bar">
+        <div class="ctb-row">
+          <div class="ctb-label"><span>正面肯定</span><span>3 篇 (38%)</span></div>
+          <div class="ctb-track"><div class="ctb-fill fill-teal" style="width:38%"></div></div>
+        </div>
+        <div class="ctb-row">
+          <div class="ctb-label"><span>文献综述</span><span>3 篇 (38%)</span></div>
+          <div class="ctb-track"><div class="ctb-fill fill-sage" style="width:38%"></div></div>
+        </div>
+        <div class="ctb-row">
+          <div class="ctb-label"><span>背景铺垫</span><span>2 篇 (25%)</span></div>
+          <div class="ctb-track"><div class="ctb-fill fill-amber" style="width:25%"></div></div>
+        </div></div>
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+      <div class="card-title" style="margin-bottom:12px"><div class="card-title-dot sage"></div>引用情感倾向</div>
+      <canvas id="cSentiment" style="max-height:200px"></canvas>
+      
+        <div class="sentiment-ring">
+          <div class="sring-item"><div class="sring-dot" style="background:#4caf8a"></div>正面肯定 38%</div>
+          <div class="sring-item"><div class="sring-dot" style="background:#a0aec0"></div>中性引用 62%</div>
+          <div class="sring-item"><div class="sring-dot" style="background:#c45a5a"></div>批评探讨 0%</div>
+        </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title"><div class="card-title-dot amber"></div>引用出现位置分布</div>
+    <canvas id="cPosition" height="200"></canvas>
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+      <div class="card-title" style="margin-bottom:10px"><div class="card-title-dot violet"></div>高频引用主题词</div>
+      <div class="theme-tags"><span class="theme-tag" style="font-size:14px">遥感影像基础模型</span><span class="theme-tag" style="font-size:13px">跨域语义分割泛化</span><span class="theme-tag" style="font-size:11px">多任务训练策略</span><span class="theme-tag" style="font-size:11px">地球样式注入技术</span><span class="theme-tag" style="font-size:11px">MIM预训练技术</span></div>
+    </div>
+  </div>
+</div>
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title"><div class="card-title-dot violet"></div>引用深度结构（核心 vs 参考 vs 补充）</div>
+    <canvas id="cDepth" style="max-height:200px"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title"><div class="card-title-dot sage"></div>AI 引用洞察摘要</div>
+    <div class="findings-list">
+        <div class="finding-item">
+          <div class="finding-num">1</div>
+          <div>引用主要集中在相关工作章节，用于界定遥感基础模型的研究背景。</div>
+        </div>
+        <div class="finding-item">
+          <div class="finding-num">2</div>
+          <div>多数引用将CrossEarth识别为解决跨域泛化问题的首个或代表性视觉基础模型。</div>
+        </div>
+        <div class="finding-item">
+          <div class="finding-num">3</div>
+          <div>实验部分的引用侧重于将其作为高精度基准或遵循其设定的评估方案进行对比。</div>
+        </div></div>
+  </div>
+</div>
+
+<!-- SECTION 06 -->
+<div class="section-header">
+  <span class="section-num">06</span>
+  <span class="section-title">引用热度 · 高影响力引用论文 TOP 10</span>
+  <div class="section-divider"></div>
+</div>
+<div class="grid-1">
+  <div class="card">
+    <div class="card-title"><div class="card-title-dot"></div>引用论文被引次数 TOP 10</div>
+    <div style="position:relative;height:260px"><canvas id="cCite"></canvas></div>
+  </div>
+</div>
+<div class="grid-1">
+  <div class="card">
+    <div class="card-title"><div class="card-title-dot amber"></div>高影响力引用论文详细信息（按自身被引量排序）</div>
+    <div class="pdi-scroll">
+      <div class="pdi-item" style="border-left-color:#c45a5a">
+        <div class="pdi-rank" style="color:#c45a5a44">01</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://www.sciencedirect.com/science/article/pii/S1566253525002313" target="_blank" class="pdi-title-link">UAVs meet LLMs: Overviews and perspectives towards agentic low-altitude mobility</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:Yonglin+Tian
+The+State+Key+Laboratory+of" target="_blank" class="author-pill" style="opacity:0.7">Yonglin Tian
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China [PDF✓]
+F. Lin
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Yiduo Li
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Tengchao Zhang
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Qiyao Zhang
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Xuan Fu
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Jun Huang
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Xingyuan Dai
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China [PDF✓]
+Yutong Wang
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China [PDF✓]
+Chunwei Tian
+School of Software, Northwestern Polytechnical University, Xi’an, 710129, China [PDF✓]
+Bailin Li
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Yisheng Lv
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China [PDF✓]
+Levente Kovács
+John von Neumann Faculty of Informatics, Obuda University, Budapest, H-1034, Hungary [PDF✓]
+Fei-Yue Wang
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China; Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]</a></div>
+          <div class="pdi-meta-row"><a href="https://www.google.com/search?q=The+State+Key+Laboratory+of+Multimodal+Artificial+" target="_blank" rel="noopener" class="pdi-inst-tag" style="text-decoration:none;cursor:pointer">The State Key Laboratory of Multimodal Artificial Intel</a><span class="pdi-country-tag">中国</span></div>
+          <div class="pdi-footer">
+            <span class='pdi-year'>2025</span>
+            <span class="pdi-cit" style="color:#c45a5a">被引 <strong>109</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_0', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_0" class="pdi-affil-box" style="display:none"><div class="md-content">Yonglin Tian
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China [PDF✓]
+F. Lin
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Yiduo Li
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Tengchao Zhang
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Qiyao Zhang
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Xuan Fu
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Jun Huang
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Xingyuan Dai
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China [PDF✓]
+Yutong Wang
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China [PDF✓]
+Chunwei Tian
+School of Software, Northwestern Polytechnical University, Xi’an, 710129, China [PDF✓]
+Bailin Li
+Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]
+Yisheng Lv
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China [PDF✓]
+Levente Kovács
+John von Neumann Faculty of Informatics, Obuda University, Budapest, H-1034, Hungary [PDF✓]
+Fei-Yue Wang
+The State Key Laboratory of Multimodal Artificial Intelligence Systems, Institute of Automation, Chinese Academy of Sciences, Beijing, 100190, China; Department of Engineering Science, Faculty of Innovation Engineering, Macau University of Science and Technology, Macau, 999078, China [PDF✓]</div></div>
+        </div>
+      </div>
+      <div class="pdi-item" style="border-left-color:#d4892a">
+        <div class="pdi-rank" style="color:#d4892a44">02</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://ieeexplore.ieee.org/abstract/document/11367309/" target="_blank" class="pdi-title-link">ATRNet-STAR: A large dataset and benchmark towards remote sensing object recognition in the wild</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:Yongxiang+Liu
+College+of+Electronic+Scie" target="_blank" class="author-pill" style="opacity:0.7">Yongxiang Liu
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Wei-Jang Li
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Li Liu
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Jie Zhou
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Bowen Peng
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Yafei Song
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Xuying Xiong
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Wei Yang
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Tianpeng Liu
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Zhen Liu
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Xiang Li
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]</a></div>
+          <div class="pdi-meta-row"><a href="https://www.google.com/search?q=College+of+Electronic+Science+and+Technology,+Nati" target="_blank" rel="noopener" class="pdi-inst-tag" style="text-decoration:none;cursor:pointer">College of Electronic Science and Technology, National </a><span class="pdi-country-tag">中国</span></div>
+          <div class="pdi-footer">
+            <span class='pdi-year'>2026</span>
+            <span class="pdi-cit" style="color:#d4892a">被引 <strong>38</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_1', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_1" class="pdi-affil-box" style="display:none"><div class="md-content">Yongxiang Liu
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Wei-Jang Li
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Li Liu
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Jie Zhou
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Bowen Peng
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Yafei Song
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Xuying Xiong
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Wei Yang
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Tianpeng Liu
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Zhen Liu
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]
+Xiang Li
+College of Electronic Science and Technology, National University of Defense Technology, Changsha 410073, China [PDF✓]</div></div>
+        </div>
+      </div>
+      <div class="pdi-item" style="border-left-color:#3b82c4">
+        <div class="pdi-rank" style="color:#3b82c444">03</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://arxiv.org/abs/2507.06231" target="_blank" class="pdi-title-link">Rsrefseg 2: decoupling referring remote sensing image segmentation with foundation models</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:Keyan+Chen
+Beihang+University+[PDF✓]
+Che" target="_blank" class="author-pill" style="opacity:0.7">Keyan Chen
+Beihang University [PDF✓]
+Chenyang Liu
+Beihang University [PDF✓]
+Bo-Ying Chen
+Beihang University [PDF✓]
+Jiafan Zhang
+Beihang University [PDF✓]
+Zhengxia Zou
+Beihang University [PDF✓]
+Z. Shi
+Beihang University [PDF✓]</a></div>
+          <div class="pdi-meta-row"><a href="https://www.google.com/search?q=Beihang+University" target="_blank" rel="noopener" class="pdi-inst-tag" style="text-decoration:none;cursor:pointer">Beihang University</a><span class="pdi-country-tag">中国</span></div>
+          <div class="pdi-footer">
+            <span class='pdi-year'>2025</span>
+            <span class="pdi-cit" style="color:#3b82c4">被引 <strong>13</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_2', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_2" class="pdi-affil-box" style="display:none"><div class="md-content">Keyan Chen
+Beihang University [PDF✓]
+Chenyang Liu
+Beihang University [PDF✓]
+Bo-Ying Chen
+Beihang University [PDF✓]
+Jiafan Zhang
+Beihang University [PDF✓]
+Zhengxia Zou
+Beihang University [PDF✓]
+Z. Shi
+Beihang University [PDF✓]</div></div>
+        </div>
+      </div>
+      <div class="pdi-item" style="border-left-color:#3b82c4">
+        <div class="pdi-rank" style="color:#3b82c444">04</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://openaccess.thecvf.com/content/ICCV2025/html/Jia_Can_Generative_Geospatial_Diffusion_Models_Excel_as_Discriminative_Geospatial_Foundation_ICCV_2025_paper.html" target="_blank" class="pdi-title-link">Can generative geospatial diffusion models excel as discriminative geospatial foundation models?</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:Y+Jia
+未知机构
+V+Marsocci
+未知机构
+Z+Gong
+未知机构
+X" target="_blank" class="author-pill" style="opacity:0.7">Y Jia
+未知机构
+V Marsocci
+未知机构
+Z Gong
+未知机构
+X Yang
+未知机构</a></div>
+          
+          <div class="pdi-footer">
+            <span class='pdi-year'>2025</span>
+            <span class="pdi-cit" style="color:#3b82c4">被引 <strong>12</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_3', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_3" class="pdi-affil-box" style="display:none"><div class="md-content">Y Jia
+未知机构
+V Marsocci
+未知机构
+Z Gong
+未知机构
+X Yang
+未知机构</div></div>
+        </div>
+      </div>
+      <div class="pdi-item" style="border-left-color:#3b82c4">
+        <div class="pdi-rank" style="color:#3b82c444">05</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://arxiv.org/abs/2505.15147" target="_blank" class="pdi-title-link">From pixels to images: Deep learning advances in remote sensing image semantic segmentation</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:Quanwei+Liu
+College+of+Science+and+Engin" target="_blank" class="author-pill" style="opacity:0.7">Quanwei Liu
+College of Science and Engineering and Centre for AI and Data Science Innovation, James Cook University [PDF✓]
+Tao Huang
+College of Science and Engineering and Centre for AI and Data Science Innovation, James Cook University [PDF✓]
+Yanni Dong
+未知机构
+Jiaqi Yang
+未知机构
+Wei Xiang
+School of Computing, Engineering and Mathematical Sciences, La Trobe University [PDF✓]
+Zhang, Jiaqi
+Department of Forest and Wildlife Ecology, University of Wisconsin-Madison</a></div>
+          <div class="pdi-meta-row"><a href="https://www.google.com/search?q=College+of+Science+and+Engineering+and+Centre+for+" target="_blank" rel="noopener" class="pdi-inst-tag" style="text-decoration:none;cursor:pointer">College of Science and Engineering and Centre for AI an</a></div>
+          <div class="pdi-footer">
+            <span class='pdi-year'>2025</span>
+            <span class="pdi-cit" style="color:#3b82c4">被引 <strong>10</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_4', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_4" class="pdi-affil-box" style="display:none"><div class="md-content">Quanwei Liu
+College of Science and Engineering and Centre for AI and Data Science Innovation, James Cook University [PDF✓]
+Tao Huang
+College of Science and Engineering and Centre for AI and Data Science Innovation, James Cook University [PDF✓]
+Yanni Dong
+未知机构
+Jiaqi Yang
+未知机构
+Wei Xiang
+School of Computing, Engineering and Mathematical Sciences, La Trobe University [PDF✓]
+Zhang, Jiaqi
+Department of Forest and Wildlife Ecology, University of Wisconsin-Madison</div></div>
+        </div>
+      </div>
+      <div class="pdi-item" style="border-left-color:#3b82c4">
+        <div class="pdi-rank" style="color:#3b82c444">06</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://arxiv.org/abs/2504.06220" target="_blank" class="pdi-title-link">Earth-adapter: Bridge the geospatial domain gaps with mixture of frequency adaptation</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:Xiaoxing+Hu
+未知机构
+Ziyang+Gong
+未知机构
+Yupei+" target="_blank" class="author-pill" style="opacity:0.7">Xiaoxing Hu
+未知机构
+Ziyang Gong
+未知机构
+Yupei Wang
+Beijing Institute of Technology
+Yuru Jia
+American Society for Photogrammetry and Remote Sensing
+Gen Luo
+Ministry of Education of the People's Republic of China
+Xue Yang
+Guizhou University</a></div>
+          
+          <div class="pdi-footer">
+            <span class='pdi-year'>2025</span>
+            <span class="pdi-cit" style="color:#3b82c4">被引 <strong>10</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_5', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_5" class="pdi-affil-box" style="display:none"><div class="md-content">Xiaoxing Hu
+未知机构
+Ziyang Gong
+未知机构
+Yupei Wang
+Beijing Institute of Technology
+Yuru Jia
+American Society for Photogrammetry and Remote Sensing
+Gen Luo
+Ministry of Education of the People's Republic of China
+Xue Yang
+Guizhou University</div></div>
+        </div>
+      </div>
+      <div class="pdi-item" style="border-left-color:#3b82c4">
+        <div class="pdi-rank" style="color:#3b82c444">07</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://www.sciencedirect.com/science/article/pii/S0924271625003569" target="_blank" class="pdi-title-link">Domain generalization for semantic segmentation of remote sensing images via vision foundation model fine-tuning</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:M.+Luo
+未知机构
+Yujie+Zan
+未知机构
+K.+Khoshelham" target="_blank" class="author-pill" style="opacity:0.7">M. Luo
+未知机构
+Yujie Zan
+未知机构
+K. Khoshelham
+未知机构
+Shunping Ji
+未知机构</a></div>
+          
+          <div class="pdi-footer">
+            <span class='pdi-year'>2025</span>
+            <span class="pdi-cit" style="color:#3b82c4">被引 <strong>9</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_6', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_6" class="pdi-affil-box" style="display:none"><div class="md-content">M. Luo
+未知机构
+Yujie Zan
+未知机构
+K. Khoshelham
+未知机构
+Shunping Ji
+未知机构</div></div>
+        </div>
+      </div>
+      <div class="pdi-item" style="border-left-color:#7c5cbf">
+        <div class="pdi-rank" style="color:#7c5cbf44">08</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://arxiv.org/abs/2510.15615" target="_blank" class="pdi-title-link">Deep learning based domain adaptation methods in remote sensing: A comprehensive survey</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:Shuchang+Lyu
+Hospital+of+Hebei+Province
+" target="_blank" class="author-pill" style="opacity:0.7">Shuchang Lyu
+Hospital of Hebei Province
+Qi Zhao
+AT&T (United States)
+Zheng Zhou
+Chongqing University of Posts and Telecommunications
+Meng Li
+Roosevelt University
+You Zhou
+North Sichuan Medical University
+Dingding Yao
+Chinese Academy of Sciences
+Guangliang Cheng
+University of Liverpool
+Huiyu Zhou
+Xihua University
+Z. Shi
+Jiangnan University</a></div>
+          <div class="pdi-meta-row"><a href="https://www.google.com/search?q=Hospital+of+Hebei+Province" target="_blank" rel="noopener" class="pdi-inst-tag" style="text-decoration:none;cursor:pointer">Hospital of Hebei Province</a></div>
+          <div class="pdi-footer">
+            <span class='pdi-year'>2025</span>
+            <span class="pdi-cit" style="color:#7c5cbf">被引 <strong>6</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_7', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_7" class="pdi-affil-box" style="display:none"><div class="md-content">Shuchang Lyu
+Hospital of Hebei Province
+Qi Zhao
+AT&T (United States)
+Zheng Zhou
+Chongqing University of Posts and Telecommunications
+Meng Li
+Roosevelt University
+You Zhou
+North Sichuan Medical University
+Dingding Yao
+Chinese Academy of Sciences
+Guangliang Cheng
+University of Liverpool
+Huiyu Zhou
+Xihua University
+Z. Shi
+Jiangnan University</div></div>
+        </div>
+      </div>
+      <div class="pdi-item" style="border-left-color:#7c5cbf">
+        <div class="pdi-rank" style="color:#7c5cbf44">09</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://arxiv.org/abs/2511.22645" target="_blank" class="pdi-title-link">GeoZero: Incentivizing Reasoning from Scratch on Geospatial Scenes</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:Di+Wang
+未知机构
+Shunyu+Liu
+Hong+Kong+Polyte" target="_blank" class="author-pill" style="opacity:0.7">Di Wang
+未知机构
+Shunyu Liu
+Hong Kong Polytechnic University
+Wentao Jiang
+South China Agricultural University
+Fengxiang Wang
+National University of Defense Technology
+Yi Liu
+Hong Kong Polytechnic University
+Xiaolei Qin
+Xidian University
+Zhiming Luo
+Western University
+Chaoyang Zhou
+National Defense University
+Haonan Guo
+Xi'an University of Architecture and Technology
+Jing Zhang
+Kanazawa University
+Bo Du
+Harbin Medical University
+Dacheng Tao
+University of Technology Sydney
+Liangpei Zhang
+Hong Kong Polytechnic University</a></div>
+          
+          <div class="pdi-footer">
+            <span class='pdi-year'>2025</span>
+            <span class="pdi-cit" style="color:#7c5cbf">被引 <strong>5</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_8', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_8" class="pdi-affil-box" style="display:none"><div class="md-content">Di Wang
+未知机构
+Shunyu Liu
+Hong Kong Polytechnic University
+Wentao Jiang
+South China Agricultural University
+Fengxiang Wang
+National University of Defense Technology
+Yi Liu
+Hong Kong Polytechnic University
+Xiaolei Qin
+Xidian University
+Zhiming Luo
+Western University
+Chaoyang Zhou
+National Defense University
+Haonan Guo
+Xi'an University of Architecture and Technology
+Jing Zhang
+Kanazawa University
+Bo Du
+Harbin Medical University
+Dacheng Tao
+University of Technology Sydney
+Liangpei Zhang
+Hong Kong Polytechnic University</div></div>
+        </div>
+      </div>
+      <div class="pdi-item" style="border-left-color:#7c5cbf">
+        <div class="pdi-rank" style="color:#7c5cbf44">10</div>
+        <div class="pdi-body">
+          <div class="pdi-title"><a href="https://www.tandfonline.com/doi/abs/10.1080/10095020.2025.2597544" target="_blank" class="pdi-title-link">Change-prior guided cross-scale interaction network for remote sensing image change detection</a></div>
+          <div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div><div class="pdi-authors-pills"><a href="https://scholar.google.com/scholar?q=author:Song+Gao
+Wuhan+University
+Deren+Li
+Wuhan" target="_blank" class="author-pill" style="opacity:0.7">Song Gao
+Wuhan University
+Deren Li
+Wuhan University
+Erting Pan
+National University of Defense Technology
+Haonan Guo
+Wuhan University
+Jingjiang Wei
+Wuhan University
+Junyi Liu
+Wuhan University
+Zijie Chen
+Shihezi University
+Kaimin Sun
+Wuhan University</a></div>
+          <div class="pdi-meta-row"><a href="https://www.google.com/search?q=Wuhan+University" target="_blank" rel="noopener" class="pdi-inst-tag" style="text-decoration:none;cursor:pointer">Wuhan University</a><span class="pdi-country-tag">中国</span></div>
+          <div class="pdi-footer">
+            <span class='pdi-year'>2025</span>
+            <span class="pdi-cit" style="color:#7c5cbf">被引 <strong>5</strong> 次</span>
+            <button class="pdi-affil-btn" onclick="toggleAffil('pdi_9', this)">作者信息 ▾</button>
+          </div>
+          <div id="pdi_9" class="pdi-affil-box" style="display:none"><div class="md-content">Song Gao
+Wuhan University
+Deren Li
+Wuhan University
+Erting Pan
+National University of Defense Technology
+Haonan Guo
+Wuhan University
+Jingjiang Wei
+Wuhan University
+Junyi Liu
+Wuhan University
+Zijie Chen
+Shihezi University
+Kaimin Sun
+Wuhan University</div></div>
+        </div>
+      </div></div>
+  </div>
+</div>
+
+<!-- SECTION 06 -->
+<div class="section-header">
+  <span class="section-num">07</span>
+  <span class="section-title">影响力预测分析</span>
+  <div class="section-divider"></div>
+</div>
+<div class="prediction-band">
+  <div class="pred-grid">
+    <div class="pred-card">
+      <div class="pred-card-title">📈 引用趋势预测 <span class="pred-tag">FORECAST · 线性回归</span></div>
+      <div class="trend-wrap"><canvas id="cTrend"></canvas></div>
+      
+        <div class="pred-metric">
+          <div>
+            <div class="pred-metric-label">预计2026年引用量</div>
+            <div class="pred-metric-note">综合实际数据与增长势头预测</div>
+          </div>
+          <div class="pred-metric-val">~18</div>
+        </div>
+        <div class="pred-metric">
+          <div>
+            <div class="pred-metric-label">预计2027年引用量</div>
+            <div class="pred-metric-note">基于扩散效应的指数级增长预测</div>
+          </div>
+          <div class="pred-metric-val">~26</div>
+        </div>
+        <div class="pred-metric">
+          <div>
+            <div class="pred-metric-label">引用年增速 (YoY)</div>
+            <div class="pred-metric-note">2026年同比2025年增长显著</div>
+          </div>
+          <div class="pred-metric-val">+28.6%</div>
+        </div>
+    </div>
+    <div class="pred-card">
+      <div class="pred-card-title">🚀 施引文献影响力扩散评估 <span class="pred-tag">IMPACT</span></div>
+      <div style="font-size:10.5px;color:rgba(180,210,255,0.5);margin-bottom:10px">以下评分基于施引文献群体特征，反映影响力在各维度的扩散潜力</div>
+      <div class="impact-bar-wrap">
+        <div>
+          <div class="impact-row-label"><span>学术权威认可度</span><span style="color:#7dd8b0">92%</span></div>
+          <div class="impact-track"><div class="impact-fill fill-cyan" style="width:92%"></div></div>
+        </div>
+        <div>
+          <div class="impact-row-label"><span>核心期刊覆盖率</span><span style="color:#7dd8b0">85%</span></div>
+          <div class="impact-track"><div class="impact-fill fill-green" style="width:85%"></div></div>
+        </div>
+        <div>
+          <div class="impact-row-label"><span>前沿技术关联性</span><span style="color:#7dd8b0">88%</span></div>
+          <div class="impact-track"><div class="impact-fill fill-purple" style="width:88%"></div></div>
+        </div>
+        <div>
+          <div class="impact-row-label"><span>跨学科扩散潜力</span><span style="color:#7dd8b0">76%</span></div>
+          <div class="impact-track"><div class="impact-fill fill-orange" style="width:76%"></div></div>
+        </div></div>
+      <div class="pred-commentary">该论文在发表初期即表现出强劲的增长势头，2026年实际引用量已超越2025年，且施引文献中包含多位院士及Fellow，显示出极高的学术起点。由于最高单篇施引文献被引量破百，预示该论文已切入无人机与大模型结合的热点领域。随着头部学者引用的示范效应扩散，预计2027年将进入引用爆发期，呈现持续的高增长态势，学术影响力处于顶尖水平。</div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 07 -->
+<div class="section-header">
+  <span class="section-num">08</span>
+  <span class="section-title">数据洞察与画像总结</span>
+  <div class="section-divider"></div>
+</div>
+<div class="insights-grid">
+      <div class="insight-card teal">
+        <h4>📈 前瞻性引力强劲，学术热度持续攀升</h4>
+        <p>本项研究在 <strong>2025年及2026年</strong> 已累计获得 <strong>29次</strong> 引用，展现出极强的前瞻学术影响力。其中单篇引用论文最高被引量达 <strong>109次</strong>，表明研究成果正处于该领域学术讨论的核心地带，并在未来科研产出中保持着持续的增长势头与扩散潜力。</p>
+      </div>
+      <div class="insight-card sage">
+        <h4>🌏 国际学术认可，以中国学者为核心辐射</h4>
+        <p>研究在国际学术界引起广泛关注，引用来源覆盖 <strong>中国、印度、意大利</strong> 等国家，其中中国学者贡献了 <strong>13次</strong> 引用，构成了主要影响力阵地。这种跨国界的学术关注验证了该模型在全球遥感基础模型研究背景下的普适性价值与技术参考意义。</p>
+      </div>
+      <div class="insight-card amber">
+        <h4>🏆 顶级专家背书，学术层级优势显著</h4>
+        <p>在 <strong>22位</strong> 知名引用学者中，包含 <strong>院士及IEEE/ACM Fellow共10人</strong>，高层次人才占比近 <strong>45%</strong>。顶级专家的密集引用与背书，不仅界定了 CrossEarth 作为跨域泛化视觉基础模型的首创地位，更确立了其在遥感领域公认的学术权威性与技术标杆作用。</p>
+      </div>
+      <div class="insight-card violet">
+        <h4>🔬 深度融入科研范式，成为行业测评基准</h4>
+        <p>定性分析显示，引用已深度渗透至 <strong>实验对比与评估方案</strong> 中。多数学者将其作为 <strong>高精度基准（Baseline）</strong> 或遵循其评估协议进行对比，证明该研究不仅在理论背景界定上具有代表性，更在实操层面成为了该领域界定研究范式与衡量算法性能的标准化参考。</p>
+      </div></div>
+
+
+<!-- SECTION 09 -->
+<div class="section-header">
+  <span class="section-num">09</span>
+  <span class="section-title">知识图谱 · 引用关系可视化</span>
+  <div class="section-divider"></div>
+</div>
+<div class="card grid-1">
+  <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+    <div style="display:flex;align-items:center;gap:7px">
+      <div class="card-title-dot teal"></div>
+      以目标论文为中心的引用关系图谱（支持拖拽节点 · 滚轮缩放 · 点击打开论文）
+    </div>
+    <button id="kg-reset-btn" style="font-size:10px;padding:3px 12px;border:1px solid rgba(66,153,225,0.45);background:rgba(66,153,225,0.1);color:#bee3f8;border-radius:5px;cursor:pointer;transition:background .2s" onmouseover="this.style.background='rgba(66,153,225,0.25)'" onmouseout="this.style.background='rgba(66,153,225,0.1)'">重置视图</button>
+  </div>
+  <div id="kg-container" style="width:100%;height:580px;background:#0c1220;border-radius:12px;overflow:hidden;position:relative;border:1px solid rgba(66,153,225,0.12)">
+    <div id="kg-loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(180,210,255,0.35);font-size:13px;pointer-events:none">正在渲染知识图谱…</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:22px;margin-top:12px;flex-wrap:wrap;font-size:11px;color:var(--text-light)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="color:#a0aec0">节点颜色 = 年份：</span>
+      <svg id="kg-legend-svg" width="160" height="12" style="border-radius:3px;vertical-align:middle"></svg>
+      <span id="kg-year-min" style="color:#9f7aea;font-size:10px"></span>
+      <span style="color:#718096">→</span>
+      <span id="kg-year-max" style="color:#48bb78;font-size:10px"></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <svg width="44" height="14" style="vertical-align:middle">
+        <circle cx="6" cy="7" r="4" fill="rgba(72,187,120,0.65)"></circle>
+        <circle cx="28" cy="7" r="7" fill="rgba(72,187,120,0.65)"></circle>
+      </svg>
+      <span style="color:#a0aec0">节点大小 = 施引论文被引量</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <svg width="16" height="16"><circle cx="8" cy="8" r="7" fill="#0f2744" stroke="#4299e1" stroke-width="2.5"></circle></svg>
+      <span style="color:#a0aec0">蓝色大节点 = 目标论文</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="color:#718096;font-size:10px">内圈 = 较旧 · 外圈 = 较新</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+<div class="footer">
+  Citation Intelligence Dashboard &nbsp;·&nbsp; Generated 2026.05.21 &nbsp;·&nbsp; Powered by AI Analysis
+</div>
+
+<script>
+function renderMdInside(container) {
+  container.querySelectorAll('.md-content').forEach(function(el) {
+    if (el._mdDone) return;
+    el._mdDone = true;
+    var raw = el.textContent;
+    el.innerHTML = (typeof marked !== 'undefined') ? marked.parse(raw) : el.innerHTML;
+  });
+}
+function toggleDesc(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = (el.style.display === 'none') ? 'table-row' : 'none';
+  if (el.style.display !== 'none') renderMdInside(el);
+}
+function toggleAffil(id, btn) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    if (btn) btn.textContent = '作者信息 ▴';
+    renderMdInside(el);
+  } else {
+    el.style.display = 'none';
+    if (btn) btn.textContent = '作者信息 ▾';
+  }
+}
+function toggleCiteSummary() {
+  var el = document.getElementById('citeSummaryContent');
+  var btn = document.getElementById('citeSumBtn');
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    if (btn) btn.textContent = '折叠 ▴';
+    renderMdInside(el);
+  } else {
+    el.style.display = 'none';
+    if (btn) btn.textContent = '展开全文 ▾';
+  }
+}
+function toggleInst(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
+}
+
+Chart.defaults.color = '#718096';
+Chart.defaults.borderColor = 'rgba(180,190,220,0.35)';
+Chart.defaults.font.family = "'Noto Sans SC', sans-serif";
+Chart.defaults.font.size = 11;
+// Register datalabels plugin globally only for year chart (unregister after)
+Chart.register(ChartDataLabels);
+
+const TEAL='#3b82c4', SAGE='#4caf8a', AMBER='#d4892a', VIO='#7c5cbf', ROSE='#c45a5a';
+const TEAL_L='rgba(59,130,196,0.15)', SAGE_L='rgba(76,175,138,0.15)';
+const VIO_L='rgba(124,92,191,0.15)', AMBER_L='rgba(212,137,42,0.15)';
+const COUNTRY_COLORS = [TEAL+'cc',SAGE+'aa',VIO+'aa',AMBER+'aa',ROSE+'aa',
+                        TEAL+'66',SAGE+'66',VIO+'66',AMBER+'66',ROSE+'66'];
+
+// Year chart: bars with count labels + red dashed connector line through bar tops
+new Chart(document.getElementById('cYear'), {
+  type: 'bar',
+  data: { labels: [2025, 2026], datasets: [
+    { type: 'bar', label: '引用数量', data: [14, 15],
+      backgroundColor: TEAL+'99', borderColor: TEAL, borderWidth: 2, borderRadius: 5,
+      order: 1,
+      datalabels: { anchor: 'end', align: 'end', color: TEAL, font: { size: 10, weight: '600' },
+        formatter: v => v } },
+    { type: 'line', label: '趋势连线', data: [14, 15],
+      borderColor: '#e53e3e', backgroundColor: 'transparent',
+      pointRadius: 4, pointBackgroundColor: '#e53e3e',
+      borderWidth: 2, tension: 0, borderDash: [5, 3], order: 0,
+      datalabels: { display: false } }
+  ] },
+  options: { responsive: true, maintainAspectRatio: false,
+    layout: { padding: { top: 20 } },
+    plugins: {
+      legend: { display: true, position: 'bottom', labels: { padding: 8, font: { size: 10 }, usePointStyle: true, pointStyle: 'line' } },
+      tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.raw } },
+      datalabels: { }
+    },
+    scales: { y: { beginAtZero: true, grid: { color: 'rgba(180,190,220,0.2)' } },
+      x: { grid: { display: false } } } }
+});
+Chart.unregister(ChartDataLabels);
+
+function makeCountryChart(id, labels, data) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels: labels, datasets: [{ data: data,
+      backgroundColor: COUNTRY_COLORS, borderWidth: 0, borderRadius: 4 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: c => c.raw + ' 篇/人' } } },
+      scales: { x: { beginAtZero: true, grid: { color: 'rgba(180,190,220,0.2)' } },
+        y: { grid: { display: false } } } }
+  });
+}
+makeCountryChart('cCountryAll', ["中国", "印度", "意大利"], [13, 1, 1]);
+makeCountryChart('cCountryRenowned', ["中国", "中国澳门", "匈牙利", "法国", "澳大利亚", "意大利", "荷兰"], [15, 2, 1, 1, 1, 1, 1]);
+makeCountryChart('cCountryTop', ["中国", "中国澳门", "匈牙利", "法国", "澳大利亚", "意大利", "荷兰"], [4, 1, 1, 1, 1, 1, 1]);
+
+new Chart(document.getElementById('cFellow'), {
+  type: 'doughnut',
+  data: { labels: ["两院院士 2人", "其他院士 4人", "Fellow 4人", "国家级人才 9人", "其他知名学者 3人"], datasets: [{ data: [2, 4, 4, 9, 3],
+    backgroundColor: ['rgba(239,68,68,0.6)','rgba(249,115,22,0.6)','rgba(59,130,246,0.6)','rgba(139,92,246,0.6)','rgba(148,163,184,0.5)'],
+    borderColor: ['#ef4444','#f97316','#3b82f6','#8b5cf6','#94a3b8'], borderWidth: 2, hoverOffset: 8 }] },
+  options: { cutout: '62%', responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: 'bottom', labels: { padding: 10, font: { size: 10 } } },
+      tooltip: { callbacks: { label: c=>`${c.label}: ${Math.round(c.raw/22*100)}%` } } } }
+});
+
+const citeData = [109, 38, 13, 12, 10, 10, 9, 6, 5, 5];
+const totalCitAll = 238;
+new Chart(document.getElementById('cCite'), {
+  type: 'bar',
+  data: { labels: ["UAVs meet LLMs: Overviews and perspectives towar…", "ATRNet-STAR: A large dataset and benchmark towar…", "Rsrefseg 2: decoupling referring remote sensing …", "Can generative geospatial diffusion models excel…", "From pixels to images: Deep learning advances in…", "Earth-adapter: Bridge the geospatial domain gaps…", "Domain generalization for semantic segmentation …", "Deep learning based domain adaptation methods in…", "GeoZero: Incentivizing Reasoning from Scratch on…", "Change-prior guided cross-scale interaction netw…"], datasets: [{ data: citeData,
+    backgroundColor: citeData.map(v=>v>=50?ROSE+'cc':v>=20?AMBER+'cc':v>=8?TEAL+'99':VIO+'88'),
+    borderColor: citeData.map(v=>v>=50?ROSE:v>=20?AMBER:v>=8?TEAL:VIO),
+    borderWidth: 2, borderRadius: 4 }] },
+  options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false },
+      tooltip: { callbacks: { label: c=>`被引 ${c.raw} 次 (${Math.round(c.raw/(totalCitAll||1)*100)}%)` } } },
+    scales: { x: { beginAtZero: true, grid: { color: 'rgba(180,190,220,0.2)' } },
+      y: { grid: { display: false }, ticks: { font: { size: 10 } } } } }
+});
+
+if (document.getElementById('cPosition')) {
+new Chart(document.getElementById('cPosition'), {
+  type: 'bar',
+  data: { labels: ["Related Work", "Experiments", "Body/Future Works"], datasets: [{ data: [4, 2, 2],
+    backgroundColor: [AMBER+'cc',TEAL+'cc',SAGE+'cc',VIO+'cc',ROSE+'cc',AMBER+'88'],
+    borderWidth: 0, borderRadius: 5 }] },
+  options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+    scales: { x: { beginAtZero: true, grid: { color:'rgba(180,190,220,0.2)' } }, y: { grid: { display: false } } } }
+});
+}
+
+if (document.getElementById('cSentiment')) {
+new Chart(document.getElementById('cSentiment'), {
+  type: 'doughnut',
+  data: { labels: ['正面引用','中性引用','批评探讨'],
+    datasets: [{ data: [38,62,0],
+      backgroundColor: [SAGE+'cc','rgba(160,174,192,0.5)',ROSE+'aa'],
+      borderColor: [SAGE,'#a0aec0',ROSE], borderWidth: 2, hoverOffset: 6 }] },
+  options: { cutout:'60%', responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{ position:'bottom', labels:{ padding:8,font:{size:10} } } } }
+});
+}
+
+if (document.getElementById('cDepth')) {
+new Chart(document.getElementById('cDepth'), {
+  type: 'doughnut',
+  data: { labels: ['核心引用 (方法依据)','参考引用 (背景对比)','补充说明'],
+    datasets: [{ data: [25, 63, 12], backgroundColor: [TEAL+'cc',SAGE+'cc',VIO+'88'],
+      borderColor: [TEAL, SAGE, VIO], borderWidth: 2, hoverOffset: 8 }] },
+  options: { cutout:'55%', responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{ position:'bottom', labels:{ padding:10,font:{size:10} } } } }
+});
+}
+
+new Chart(document.getElementById('cTrend'), {
+  type: 'line',
+  data: { labels: ["2025", "2026", "2027"], datasets: [
+    { label: '实际引用', data: [14, 15, null], borderColor: '#7db8f5', backgroundColor: 'transparent',
+      pointBackgroundColor: '#7db8f5', pointRadius: 5, tension: .4, borderWidth: 2 },
+    { label: '趋势预测', data: [null, 18, 26], borderColor: '#7dd8b0', backgroundColor: 'rgba(125,216,176,0.10)',
+      borderDash: [6,4], pointBackgroundColor: '#7dd8b0', pointRadius: 4, tension: .3, borderWidth: 2, fill: true }
+  ] },
+  options: { responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position:'bottom', labels:{ padding:8, color:'rgba(200,220,255,0.7)', font:{size:10} } } },
+    scales: { y: { beginAtZero:true, grid:{ color:'rgba(255,255,255,0.06)' },
+        ticks:{ color:'rgba(180,210,255,0.7)', font:{size:10} } },
+      x: { grid:{ color:'rgba(255,255,255,0.04)' }, ticks:{ color:'rgba(180,210,255,0.7)', font:{size:9}, maxRotation:30 } } } }
+});
+// ── Scholar name tooltip ──────────────────────────────────────────────────
+(function() {
+  var tt = document.createElement('div');
+  tt.id = 'scholar-tt';
+  tt.className = 'scholar-tt';
+  document.body.appendChild(tt);
+  var hideTimer = null;
+
+  function positionAndShow(anchor) {
+    var papers = JSON.parse(anchor.getAttribute('data-papers') || '[]');
+    if (!papers.length) return;
+    tt.innerHTML = papers.map(function(p) {
+      var safeT = p.t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      if (p.l) {
+        var safeL = p.l.replace(/"/g,'&quot;');
+        return '<a href="' + safeL + '" target="_blank" class="scholar-tt-item">' + safeT + '</a>';
+      }
+      return '<span class="scholar-tt-item scholar-tt-item-nolink">' + safeT + '</span>';
+    }).join('');
+    tt.style.display = 'block';
+    var r = anchor.getBoundingClientRect();
+    var top = r.bottom + 6;
+    var left = r.left;
+    tt.style.top = top + 'px';
+    tt.style.left = left + 'px';
+    // Clamp to viewport right edge
+    var w = tt.offsetWidth;
+    if (left + w > window.innerWidth - 12) {
+      tt.style.left = Math.max(8, window.innerWidth - w - 12) + 'px';
+    }
+    // Clamp to viewport bottom edge — flip above the row if not enough space
+    if (top + tt.offsetHeight > window.innerHeight - 12) {
+      tt.style.top = (r.top - tt.offsetHeight - 6) + 'px';
+    }
+  }
+
+  document.addEventListener('mouseover', function(e) {
+    var anchor = e.target.closest('.sname[data-papers]');
+    if (anchor) {
+      clearTimeout(hideTimer);
+      positionAndShow(anchor);
+      return;
+    }
+    if (e.target.closest('#scholar-tt')) {
+      clearTimeout(hideTimer);
+      return;
+    }
+    hideTimer = setTimeout(function() { tt.style.display = 'none'; }, 180);
+  });
+})();
+</script>
+<script>
+
+(function() {
+  var data = {"nodes": [{"id": "c0", "type": "center", "title": "Crossearth: Geospatial vision foundation model for domain generalizable remote s", "year": null, "citations": null, "link": "", "country": "", "institution": ""}, {"id": "p0", "type": "paper", "title": "UAVs meet LLMs: Overviews and perspectives towards agentic low-altitude mobility", "year": 2025, "citations": 109, "link": "https://www.sciencedirect.com/science/article/pii/S1566253525002313", "country": "中国", "institution": "The State Key Laboratory of Multimodal Artificial Intel"}, {"id": "p1", "type": "paper", "title": "ATRNet-STAR: A large dataset and benchmark towards remote sensing object recogni", "year": 2026, "citations": 38, "link": "https://ieeexplore.ieee.org/abstract/document/11367309/", "country": "中国", "institution": "College of Electronic Science and Technology, National "}, {"id": "p2", "type": "paper", "title": "Rsrefseg 2: decoupling referring remote sensing image segmentation with foundati", "year": 2025, "citations": 13, "link": "https://arxiv.org/abs/2507.06231", "country": "中国", "institution": "Beihang University"}, {"id": "p3", "type": "paper", "title": "Can generative geospatial diffusion models excel as discriminative geospatial fo", "year": 2025, "citations": 12, "link": "https://openaccess.thecvf.com/content/ICCV2025/html/Jia_Can_Generative_Geospatial_Diffusion_Models_Excel_as_Discriminative_Geospatial_Foundation_ICCV_2025_paper.html", "country": "", "institution": ""}, {"id": "p4", "type": "paper", "title": "From pixels to images: Deep learning advances in remote sensing image semantic s", "year": 2025, "citations": 10, "link": "https://arxiv.org/abs/2505.15147", "country": "", "institution": "College of Science and Engineering and Centre for AI an"}, {"id": "p5", "type": "paper", "title": "Earth-adapter: Bridge the geospatial domain gaps with mixture of frequency adapt", "year": 2025, "citations": 10, "link": "https://arxiv.org/abs/2504.06220", "country": "", "institution": ""}, {"id": "p6", "type": "paper", "title": "Domain generalization for semantic segmentation of remote sensing images via vis", "year": 2025, "citations": 9, "link": "https://www.sciencedirect.com/science/article/pii/S0924271625003569", "country": "", "institution": ""}, {"id": "p7", "type": "paper", "title": "Deep learning based domain adaptation methods in remote sensing: A comprehensive", "year": 2025, "citations": 6, "link": "https://arxiv.org/abs/2510.15615", "country": "", "institution": "Hospital of Hebei Province"}, {"id": "p8", "type": "paper", "title": "GeoZero: Incentivizing Reasoning from Scratch on Geospatial Scenes", "year": 2025, "citations": 5, "link": "https://arxiv.org/abs/2511.22645", "country": "", "institution": ""}, {"id": "p9", "type": "paper", "title": "Change-prior guided cross-scale interaction network for remote sensing image cha", "year": 2025, "citations": 5, "link": "https://www.tandfonline.com/doi/abs/10.1080/10095020.2025.2597544", "country": "中国", "institution": "Wuhan University"}, {"id": "p10", "type": "paper", "title": "Foundation Models in Remote Sensing: Evolving from unimodality to multimodality", "year": 2026, "citations": 4, "link": "https://ieeexplore.ieee.org/abstract/document/11435138/", "country": "中国", "institution": "Southeast University"}, {"id": "p11", "type": "paper", "title": "Geolink: Empowering remote sensing foundation model with openstreetmap data", "year": 2026, "citations": 3, "link": "https://proceedings.neurips.cc/paper_files/paper/2025/hash/f681209306654a0c1f690f65810e8e45-Abstract-Conference.html", "country": "中国", "institution": "School of Earth and Space Sciences, Peking University, "}, {"id": "p12", "type": "paper", "title": "Object fidelity diffusion for remote sensing image generation", "year": 2025, "citations": 3, "link": "https://arxiv.org/abs/2508.10801", "country": "", "institution": ""}, {"id": "p13", "type": "paper", "title": "Prototype-guided domain-invariant enhancement and domain-specific normalization ", "year": 2026, "citations": 3, "link": "https://www.sciencedirect.com/science/article/pii/S0952197626002605", "country": "中国", "institution": "School of Computer Science and Engineering, Jiangxi Agr"}, {"id": "p14", "type": "paper", "title": "Optimized loss and self attention for enhanced domain adaptation in remote sensi", "year": 2025, "citations": 2, "link": "https://www.nature.com/articles/s41598-025-24115-3", "country": "印度", "institution": "Department of Computer Science and Engineering, Indian "}, {"id": "p15", "type": "paper", "title": "HieraRS: A Hierarchical Segmentation Paradigm for Remote Sensing Enabling Multi-", "year": 2026, "citations": 1, "link": "https://ieeexplore.ieee.org/abstract/document/11433806/", "country": "", "institution": "Senior Member, IEEE"}, {"id": "p16", "type": "paper", "title": "Brewing stronger features: Dual-teacher distillation for multispectral Earth obs", "year": 2026, "citations": 1, "link": "https://arxiv.org/abs/2602.19863", "country": "", "institution": "University of Ljubljana, Faculty of Computer and Inform"}, {"id": "p17", "type": "paper", "title": "PANGAEA: Assessing Geospatial Foundation Models Capabilities through a Global an", "year": 2025, "citations": 1, "link": "https://ieeexplore.ieee.org/abstract/document/11272118/", "country": "意大利", "institution": "European Space Research Institute"}, {"id": "p18", "type": "paper", "title": "Research on Remote Sensing Image Object Segmentation Using a Hybrid Multi-Attent", "year": 2026, "citations": 1, "link": "https://www.mdpi.com/2076-3417/16/2/695", "country": "中国", "institution": "Beijing Jiaotong University"}, {"id": "p19", "type": "paper", "title": "PriorSAM-DBNet: A SAM-Prior-Enhanced Dual-Branch Network for Efficient Semantic ", "year": 2026, "citations": 1, "link": "https://www.mdpi.com/1424-8220/26/2/749", "country": "中国", "institution": "Guizhou University"}, {"id": "p20", "type": "paper", "title": "遥感数据智能: 进展与思考", "year": 2025, "citations": 1, "link": "https://www.sciengine.com/doi/10.12082/dqxxkx.2025.240630", "country": "", "institution": ""}, {"id": "p21", "type": "paper", "title": "Multi-feature collaboration with spatial-frequency learning guided by vision fou", "year": 2026, "citations": 0, "link": "https://www.sciencedirect.com/science/article/pii/S0925231226003334", "country": "中国", "institution": "School of Information and Communication Engineering, Un"}, {"id": "p22", "type": "paper", "title": "Generalizable Knowledge Distillation from Vision Foundation Models for Semantic ", "year": 2026, "citations": 0, "link": "https://arxiv.org/abs/2603.02554", "country": "中国", "institution": "School of Artificial Intelligence, Xidian University, C"}, {"id": "p23", "type": "paper", "title": "Investigating Very-High-Resolution Land Cover Mapping in the Pearl River Delta w", "year": 2026, "citations": 0, "link": "https://www.mdpi.com/2072-4292/18/6/897", "country": "中国", "institution": "Sun Yat-sen University"}, {"id": "p24", "type": "paper", "title": "Bridge: Leveraging Vision Foundation Models for Efficient Cross-Domain Remote Se", "year": 2026, "citations": 0, "link": "https://ieeexplore.ieee.org/abstract/document/11434537/", "country": "中国", "institution": "IEEE"}, {"id": "p25", "type": "paper", "title": "D2FT-Net: Frequency-Spatial Dual Domain Fine-Tuning of Vision Foundation Models ", "year": 2026, "citations": 0, "link": "https://ieeexplore.ieee.org/abstract/document/11511776/", "country": "", "institution": "IEEE"}, {"id": "p26", "type": "paper", "title": "CrossEarth-SAR: A SAR-Centric and Billion-Scale Geospatial Foundation Model for ", "year": 2026, "citations": 0, "link": "https://arxiv.org/abs/2603.12008", "country": "", "institution": ""}, {"id": "p27", "type": "paper", "title": "VFM-CAKD: Category-Aware Knowledge Distillation from Visual Foundation Model for", "year": 2025, "citations": 0, "link": "https://www.techrxiv.org/doi/full/10.36227/techrxiv.175832495.54081600", "country": "", "institution": ""}, {"id": "p28", "type": "paper", "title": "Earth Observation for Disaster Mapping: Benchmarks, Methods, Challenges and Futu", "year": 2026, "citations": 0, "link": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6725082", "country": "", "institution": ""}], "links": [{"source": "p0", "target": "c0"}, {"source": "p1", "target": "c0"}, {"source": "p2", "target": "c0"}, {"source": "p3", "target": "c0"}, {"source": "p4", "target": "c0"}, {"source": "p5", "target": "c0"}, {"source": "p6", "target": "c0"}, {"source": "p7", "target": "c0"}, {"source": "p8", "target": "c0"}, {"source": "p9", "target": "c0"}, {"source": "p10", "target": "c0"}, {"source": "p11", "target": "c0"}, {"source": "p12", "target": "c0"}, {"source": "p13", "target": "c0"}, {"source": "p14", "target": "c0"}, {"source": "p15", "target": "c0"}, {"source": "p16", "target": "c0"}, {"source": "p17", "target": "c0"}, {"source": "p18", "target": "c0"}, {"source": "p19", "target": "c0"}, {"source": "p20", "target": "c0"}, {"source": "p21", "target": "c0"}, {"source": "p22", "target": "c0"}, {"source": "p23", "target": "c0"}, {"source": "p24", "target": "c0"}, {"source": "p25", "target": "c0"}, {"source": "p26", "target": "c0"}, {"source": "p27", "target": "c0"}, {"source": "p28", "target": "c0"}]};
+  var container = document.getElementById('kg-container');
+  if (!container || !window.d3 || !data.nodes.length) return;
+  var loading = document.getElementById('kg-loading');
+  if (loading) loading.style.display = 'none';
+
+  var W = container.clientWidth || 820;
+  var H = 580;
+
+  var svg = d3.select(container).append('svg')
+    .attr('width', W).attr('height', H).style('display', 'block');
+
+  /* ── Glow filter ── */
+  var defs = svg.append('defs');
+  var flt = defs.append('filter').attr('id', 'kg-glow')
+    .attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%');
+  flt.append('feGaussianBlur').attr('stdDeviation', '5').attr('result', 'blur');
+  var fm = flt.append('feMerge');
+  fm.append('feMergeNode').attr('in', 'blur');
+  fm.append('feMergeNode').attr('in', 'SourceGraphic');
+
+  var flt2 = defs.append('filter').attr('id', 'kg-glow2')
+    .attr('x', '-40%').attr('y', '-40%').attr('width', '180%').attr('height', '180%');
+  flt2.append('feGaussianBlur').attr('stdDeviation', '2.5').attr('result', 'blur2');
+  var fm2 = flt2.append('feMerge');
+  fm2.append('feMergeNode').attr('in', 'blur2');
+  fm2.append('feMergeNode').attr('in', 'SourceGraphic');
+
+  /* ── Background ── */
+  svg.append('rect').attr('width', W).attr('height', H)
+    .attr('fill', '#0c1220').attr('rx', 11);
+
+  /* subtle grid */
+  var gridG = svg.append('g').attr('opacity', 0.025);
+  for (var gx = 0; gx <= W; gx += 50)
+    gridG.append('line').attr('x1', gx).attr('y1', 0).attr('x2', gx).attr('y2', H)
+      .attr('stroke', '#4299e1').attr('stroke-width', 0.5);
+  for (var gy = 0; gy <= H; gy += 50)
+    gridG.append('line').attr('x1', 0).attr('y1', gy).attr('x2', W).attr('y2', gy)
+      .attr('stroke', '#4299e1').attr('stroke-width', 0.5);
+
+  var g = svg.append('g');
+
+  /* ── Zoom ── */
+  var zoom = d3.zoom().scaleExtent([0.12, 9]).on('zoom', function(event) {
+    g.attr('transform', event.transform);
+  });
+  svg.call(zoom).on('dblclick.zoom', null);
+
+  /* ── Year color scale ── */
+  var paperNodes = data.nodes.filter(function(n) { return n.type === 'paper'; });
+  var years = paperNodes.map(function(n) { return n.year; }).filter(Boolean);
+  var minY = years.length ? Math.min.apply(null, years) : 2015;
+  var maxY = years.length ? Math.max.apply(null, years) : 2024;
+
+  function yearColor(y) {
+    if (!y) return '#4299e1';
+    var t = Math.max(0, Math.min(1, (y - minY) / Math.max(maxY - minY, 1)));
+    var r, gr, b;
+    if (t < 0.5) {
+      var tt = t * 2;
+      r = Math.round(159 * (1 - tt) + 66 * tt);
+      gr = Math.round(122 * (1 - tt) + 153 * tt);
+      b = Math.round(234 * (1 - tt) + 225 * tt);
+    } else {
+      var tt = (t - 0.5) * 2;
+      r = Math.round(66 * (1 - tt) + 72 * tt);
+      gr = Math.round(153 * (1 - tt) + 187 * tt);
+      b = Math.round(225 * (1 - tt) + 120 * tt);
+    }
+    return 'rgb(' + r + ',' + gr + ',' + b + ')';
+  }
+
+  /* ── Node radius ── */
+  var allCits = paperNodes.map(function(n) { return n.citations || 0; });
+  var maxCit = allCits.length ? Math.max.apply(null, allCits) : 1;
+
+  function nodeRadius(d) {
+    if (d.type === 'center') return 36;
+    var cit = d.citations || 0;
+    return 5 + Math.pow(cit / Math.max(maxCit, 1), 0.42) * 25;
+  }
+
+  /* ── Fix center nodes at symmetric positions ── */
+  var centerNodes = data.nodes.filter(function(n) { return n.type === 'center'; });
+  var nC = centerNodes.length;
+  var cx = W / 2, cy = H / 2;
+  var centerSpread = Math.min(W, H) * 0.22;
+  centerNodes.forEach(function(n, i) {
+    var angle = (2 * Math.PI * i / nC) - Math.PI / 2;
+    n.fx = nC === 1 ? cx : cx + centerSpread * Math.cos(angle);
+    n.fy = nC === 1 ? cy : cy + centerSpread * Math.sin(angle);
+    n.x  = n.fx; n.y = n.fy;
+  });
+  /* centroid of centers (for radial force anchor) */
+  var rcx = centerNodes.reduce(function(s, n) { return s + n.fx; }, 0) / Math.max(nC, 1);
+  var rcy = centerNodes.reduce(function(s, n) { return s + n.fy; }, 0) / Math.max(nC, 1);
+
+  /* ── Force simulation ── */
+  var sim = d3.forceSimulation(data.nodes)
+    .force('link', d3.forceLink(data.links)
+      .id(function(d) { return d.id; })
+      .distance(function(d) {
+        var src = typeof d.source === 'object' ? d.source : {};
+        var tgt = typeof d.target === 'object' ? d.target : {};
+        if (src.type === 'center' && tgt.type === 'center') return centerSpread * 2;
+        var cit = src.citations || 0;
+        return 95 + (1 - Math.pow(cit / Math.max(maxCit, 1), 0.38)) * 150;
+      })
+      .strength(function(d) {
+        var src = typeof d.source === 'object' ? d.source : {};
+        var tgt = typeof d.target === 'object' ? d.target : {};
+        return (src.type === 'center' && tgt.type === 'center') ? 1 : 0.28;
+      }))
+    .force('charge', d3.forceManyBody().strength(function(d) {
+      return d.type === 'center' ? -500 : -45;
+    }))
+    .force('center', d3.forceCenter(cx, cy).strength(0.04))
+    .force('radial', d3.forceRadial(function(d) {
+      if (d.type === 'center') return 0;
+      var t = d.year ? Math.max(0, Math.min(1, (d.year - minY) / Math.max(maxY - minY, 1))) : 0.5;
+      return 90 + t * 210;
+    }, rcx, rcy).strength(0.18))
+    .force('collision', d3.forceCollide().radius(function(d) {
+      return nodeRadius(d) + 4;
+    }).strength(0.75))
+    .alphaDecay(0.013);
+
+  /* ── Links ── */
+  var paperLinks  = data.links.filter(function(l) { return !l.center_edge; });
+  var centerLinks = data.links.filter(function(l) { return  l.center_edge; });
+
+  /* center-to-center edges: thick dashed */
+  var centerLink = g.append('g').selectAll('line').data(centerLinks).join('line')
+    .attr('stroke', 'rgba(66,153,225,0.55)')
+    .attr('stroke-width', 2)
+    .attr('stroke-dasharray', '6,4');
+
+  /* paper-to-center edges: thin */
+  var link = g.append('g').selectAll('line').data(paperLinks).join('line')
+    .attr('stroke', 'rgba(66,153,225,0.09)')
+    .attr('stroke-width', 0.85);
+
+  /* ── Drag behavior ── */
+  var drag = d3.drag()
+    .on('start', function(event, d) {
+      if (!event.active) sim.alphaTarget(0.3).restart();
+      d.fx = d.x; d.fy = d.y;
+    })
+    .on('drag', function(event, d) { d.fx = event.x; d.fy = event.y; })
+    .on('end', function(event, d) {
+      if (!event.active) sim.alphaTarget(0);
+      d.fx = null; d.fy = null;
+    });
+
+  /* ── Nodes ── */
+  var node = g.append('g').selectAll('g').data(data.nodes).join('g')
+    .style('cursor', function(d) {
+      return (d.link && d.type === 'paper') ? 'pointer' : 'default';
+    })
+    .call(drag);
+
+  /* Center: outer glow ring */
+  node.filter(function(d) { return d.type === 'center'; })
+    .append('circle').attr('r', 54)
+    .attr('fill', 'none').attr('stroke', 'rgba(66,153,225,0.12)').attr('stroke-width', 1);
+
+  node.filter(function(d) { return d.type === 'center'; })
+    .append('circle').attr('r', 44)
+    .attr('fill', 'none').attr('stroke', 'rgba(66,153,225,0.2)').attr('stroke-width', 1);
+
+  node.filter(function(d) { return d.type === 'center'; })
+    .append('circle').attr('r', 36)
+    .attr('fill', '#0f2744').attr('stroke', '#4299e1').attr('stroke-width', 2.5)
+    .style('filter', 'url(#kg-glow)');
+
+  /* Center label */
+  node.filter(function(d) { return d.type === 'center'; })
+    .each(function(d) {
+      var el = d3.select(this);
+      el.append('text').text('🎯')
+        .attr('text-anchor', 'middle').attr('dy', '-22px').attr('font-size', '15px')
+        .style('pointer-events', 'none');
+      var words = d.title.split(' ');
+      var lines = [''];
+      words.forEach(function(w) {
+        if ((lines[lines.length - 1] + ' ' + w).trim().length > 13) {
+          lines.push(w);
+        } else {
+          lines[lines.length - 1] = (lines[lines.length - 1] + ' ' + w).trim();
+        }
+      });
+      lines = lines.slice(0, 4);
+      var textEl = el.append('text')
+        .attr('text-anchor', 'middle').attr('fill', '#bee3f8')
+        .attr('font-size', 8).attr('font-weight', '600')
+        .style('pointer-events', 'none');
+      lines.forEach(function(l, i) {
+        textEl.append('tspan').attr('x', 0)
+          .attr('dy', i === 0 ? (-(lines.length - 1) * 6) + 'px' : '12px')
+          .text(l);
+      });
+    });
+
+  /* Paper nodes: outer glow for high-citation */
+  node.filter(function(d) { return d.type === 'paper' && d.citations > maxCit * 0.5; })
+    .append('circle')
+    .attr('r', function(d) { return nodeRadius(d) + 4; })
+    .attr('fill', 'none')
+    .attr('stroke', function(d) { return yearColor(d.year); })
+    .attr('stroke-width', 0.5).attr('stroke-opacity', 0.5)
+    .style('filter', 'url(#kg-glow2)');
+
+  /* Paper nodes: main circle */
+  node.filter(function(d) { return d.type === 'paper'; })
+    .append('circle')
+    .attr('r', nodeRadius)
+    .attr('fill', function(d) { return yearColor(d.year); })
+    .attr('fill-opacity', 0.72)
+    .attr('stroke', function(d) { return yearColor(d.year); })
+    .attr('stroke-width', 1.2).attr('stroke-opacity', 0.9);
+
+  /* ── Tooltip ── */
+  var tt = d3.select('body').append('div').attr('id', 'kg-tt')
+    .style('position', 'fixed').style('display', 'none')
+    .style('background', 'rgba(8,14,28,0.97)')
+    .style('border', '1px solid rgba(66,153,225,0.4)')
+    .style('border-radius', '10px').style('padding', '10px 14px')
+    .style('max-width', '310px').style('pointer-events', 'none')
+    .style('z-index', '9999').style('font-size', '11px')
+    .style('font-family', "'Noto Sans SC', sans-serif")
+    .style('line-height', '1.6')
+    .style('box-shadow', '0 6px 28px rgba(0,0,0,0.7)');
+
+  function posT(event) {
+    var x = event.clientX + 14, y = event.clientY - 10;
+    if (x + 320 > window.innerWidth) x = event.clientX - 322;
+    if (y + 130 > window.innerHeight) y = event.clientY - 130;
+    tt.style('left', x + 'px').style('top', y + 'px');
+  }
+
+  node.on('mouseover', function(event, d) {
+    var html = '';
+    if (d.type === 'center') {
+      html = '<div style="color:#63b3ed;font-weight:700;margin-bottom:5px;font-size:12px">🎯 目标论文</div>' +
+             '<div style="color:#e2e8f0;font-size:11px">' + d.title + '</div>';
+    } else {
+      var col = yearColor(d.year);
+      html = '<div style="color:#e2e8f0;font-weight:600;margin-bottom:6px;font-size:11px;line-height:1.5">' + d.title + '</div>';
+      var meta = [];
+      if (d.year) meta.push('<span style="color:#a0aec0">📅 ' + d.year + '</span>');
+      if (d.citations) meta.push('<span style="color:#68d391">📊 被引 ' + d.citations + ' 次</span>');
+      if (d.country) meta.push('<span style="color:#fbd38d">🌍 ' + d.country + '</span>');
+      if (meta.length)
+        html += '<div style="font-size:10px;display:flex;flex-wrap:wrap;gap:6px;margin-bottom:3px">' + meta.join('') + '</div>';
+      if (d.institution)
+        html += '<div style="color:#718096;font-size:10px">' + d.institution + '</div>';
+      if (d.link)
+        html += '<div style="color:#63b3ed;font-size:10px;margin-top:5px">点击打开论文链接 →</div>';
+    }
+    tt.style('display', 'block').html(html);
+    posT(event);
+    d3.select(this).select('circle:last-of-type').attr('fill-opacity', d.type === 'paper' ? 1 : null);
+  }).on('mousemove', posT)
+    .on('mouseout', function(event, d) {
+      tt.style('display', 'none');
+      d3.select(this).select('circle:last-of-type').attr('fill-opacity', d.type === 'paper' ? 0.72 : null);
+    })
+    .on('click', function(event, d) {
+      if (d.link && d.type === 'paper') {
+        event.stopPropagation();
+        window.open(d.link, '_blank');
+      }
+    });
+
+  /* ── Tick ── */
+  sim.on('tick', function() {
+    function setLine(sel) {
+      sel.attr('x1', function(d) { return d.source.x; })
+         .attr('y1', function(d) { return d.source.y; })
+         .attr('x2', function(d) { return d.target.x; })
+         .attr('y2', function(d) { return d.target.y; });
+    }
+    setLine(link);
+    setLine(centerLink);
+    node.attr('transform', function(d) {
+      return 'translate(' + d.x + ',' + d.y + ')';
+    });
+  });
+
+  /* ── Reset button ── */
+  var resetBtn = document.getElementById('kg-reset-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', function() {
+      svg.transition().duration(650)
+        .call(zoom.transform, d3.zoomIdentity.translate(0, 0).scale(1));
+    });
+  }
+
+  /* ── Year legend ── */
+  var legSvg = d3.select('#kg-legend-svg');
+  if (!legSvg.empty()) {
+    var lgDefs = legSvg.append('defs');
+    var grad = lgDefs.append('linearGradient').attr('id', 'kg-leg-grad')
+      .attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '0%');
+    grad.append('stop').attr('offset', '0%').attr('stop-color', '#9f7aea');
+    grad.append('stop').attr('offset', '50%').attr('stop-color', '#4299e1');
+    grad.append('stop').attr('offset', '100%').attr('stop-color', '#48bb78');
+    legSvg.append('rect').attr('width', 160).attr('height', 12).attr('rx', 3)
+      .attr('fill', 'url(#kg-leg-grad)');
+  }
+  var minYEl = document.getElementById('kg-year-min');
+  var maxYEl = document.getElementById('kg-year-max');
+  if (minYEl) minYEl.textContent = minY;
+  if (maxYEl) maxYEl.textContent = maxY;
+})();
+
+</script>
+
+<!-- ═══ CHAT WIDGET ═══ -->
+<style>
+#cc-fab{position:fixed;right:24px;bottom:24px;width:70px;height:70px;border-radius:50%;
+  background:#fff;border:none;cursor:pointer;
+  font-size:26px;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 20px rgba(0,0,0,0.18);z-index:10000;transition:transform .2s,box-shadow .2s;
+  color:#333;line-height:1}
+#cc-fab:hover{transform:scale(1.1);box-shadow:0 6px 28px rgba(0,0,0,0.28)}
+#cc-win{position:fixed;right:24px;bottom:90px;width:400px;height:530px;
+  background:#0d1421;border:1px solid rgba(66,153,225,0.35);border-radius:16px;
+  display:flex;flex-direction:column;z-index:9999;
+  box-shadow:0 12px 48px rgba(0,0,0,0.7);
+  animation:ccSlideUp .25s ease;overflow:hidden}
+@keyframes ccSlideUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+#cc-header{display:flex;align-items:center;justify-content:space-between;
+  padding:13px 16px;background:rgba(37,99,235,0.15);
+  border-bottom:1px solid rgba(66,153,225,0.2);flex-shrink:0}
+#cc-header-title{display:flex;align-items:center;gap:8px;font-size:14px;
+  font-weight:600;color:#bee3f8}
+#cc-header-sub{font-size:10px;color:rgba(180,210,255,0.5);margin-top:1px}
+#cc-close{background:none;border:none;color:rgba(180,210,255,0.5);
+  cursor:pointer;font-size:18px;padding:0 2px;line-height:1}
+#cc-close:hover{color:#fff}
+#cc-msgs{flex:1;overflow-y:auto;padding:14px 14px 6px;display:flex;
+  flex-direction:column;gap:10px;scroll-behavior:smooth}
+#cc-msgs::-webkit-scrollbar{width:4px}
+#cc-msgs::-webkit-scrollbar-thumb{background:rgba(66,153,225,0.3);border-radius:2px}
+.cc-bubble{max-width:88%;padding:9px 13px;border-radius:12px;font-size:12.5px;
+  line-height:1.6;word-break:break-word;white-space:pre-wrap}
+.cc-bubble.user{align-self:flex-end;background:rgba(37,99,235,0.35);
+  color:#e2e8f0;border-bottom-right-radius:3px}
+.cc-bubble.ai{align-self:flex-start;background:rgba(255,255,255,0.05);
+  color:#cbd5e0;border-bottom-left-radius:3px;border:1px solid rgba(66,153,225,0.12)}
+.cc-bubble.ai.typing::after{content:'▌';animation:ccBlink .7s step-end infinite}
+@keyframes ccBlink{0%,100%{opacity:1}50%{opacity:0}}
+.cc-bubble.ai.md-rendered{white-space:normal}
+.cc-bubble.ai p{margin:0 0 5px}.cc-bubble.ai p:last-child{margin-bottom:0}
+.cc-bubble.ai ul,.cc-bubble.ai ol{padding-left:16px;margin:4px 0}
+.cc-bubble.ai li{margin:2px 0}
+.cc-bubble.ai strong{color:#e2e8f0;font-weight:600}
+.cc-bubble.ai a{color:#63b3ed;text-decoration:underline}
+.cc-bubble.ai code{background:rgba(0,0,0,0.25);padding:1px 5px;border-radius:3px;font-size:11px;font-family:monospace}
+.cc-bubble.ai pre{background:rgba(0,0,0,0.3);border:1px solid rgba(66,153,225,0.2);padding:8px 10px;border-radius:6px;overflow-x:auto;margin:6px 0}
+.cc-bubble.ai pre code{background:none;padding:0}
+.cc-bubble.ai h1,.cc-bubble.ai h2,.cc-bubble.ai h3{font-size:13px;font-weight:700;margin:8px 0 4px;color:#bee3f8}
+#cc-offline{text-align:center;padding:16px 12px;font-size:11.5px;color:rgba(180,210,255,0.5);
+  background:rgba(255,200,0,0.06);border-top:1px solid rgba(255,200,0,0.15);
+  margin:8px 14px;border-radius:8px;display:none}
+#cc-input-row{display:flex;gap:8px;padding:10px 12px;
+  border-top:1px solid rgba(66,153,225,0.15);flex-shrink:0}
+#cc-input{flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(66,153,225,0.25);
+  border-radius:8px;padding:8px 12px;color:#e2e8f0;font-size:12.5px;
+  font-family:'Noto Sans SC',sans-serif;resize:none;outline:none;
+  transition:border-color .2s}
+#cc-input:focus{border-color:rgba(66,153,225,0.6)}
+#cc-input::placeholder{color:rgba(180,210,255,0.3)}
+#cc-send{background:linear-gradient(135deg,#2563eb,#1e40af);border:none;
+  border-radius:8px;padding:8px 14px;color:#fff;font-size:12px;cursor:pointer;
+  flex-shrink:0;transition:opacity .2s;font-family:'Noto Sans SC',sans-serif}
+#cc-send:hover{opacity:0.85}
+#cc-send:disabled{opacity:0.4;cursor:default}
+</style>
+
+<button id="cc-fab" title="CitationClaw v2 智能助手"><img src="assets/head_logo.png" style="width:56px;height:56px;border-radius:50%;object-fit:cover;pointer-events:none"></button>
+<div id="cc-win" style="display:none">
+  <div id="cc-header">
+    <div>
+      <div id="cc-header-title">🦞 CitationClaw v2 智能助手</div>
+      <div id="cc-header-sub">基于本报告数据 · AI 驱动</div>
+    </div>
+    <button id="cc-close">✕</button>
+  </div>
+  <div id="cc-msgs">
+    <div class="cc-bubble ai">你好！我是 CitationClaw v2 智能助手🦞，已读取本报告所有数据。<br>你可以问我：引用趋势、知名学者、关键词分析、各类统计数据等任何问题。</div>
+  </div>
+  <div id="cc-offline">⚠️ 离线模式：请通过 CitationClaw v2 应用打开报告以启用 AI 问答功能。</div>
+  <div id="cc-input-row">
+    <textarea id="cc-input" rows="2" placeholder="问我关于这份报告的问题…（Enter 发送，Shift+Enter 换行）"></textarea>
+    <button id="cc-send">发送</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  try {
+  var CTX = {"target_papers": ["Crossearth: Geospatial vision foundation model for domain generalizable remote sensing semantic segmentation"], "stats": {"total": 29, "scholars": 22, "fellows": 10, "countries": 7, "max_cit": 109}, "scholars": [{"name": "F. Lin", "level": "Fellow", "country": "中国澳门"}, {"name": "Jun Huang", "level": NaN, "country": "中国澳门"}, {"name": "Yisheng Lv", "level": NaN, "country": "中国"}, {"name": "Levente Kovács", "level": "其他院士", "country": "匈牙利"}, {"name": "Fei-Yue Wang", "level": "其他院士", "country": "中国"}, {"name": "Yongxiang Liu", "level": "国家级人才", "country": "中国"}, {"name": "Li Liu", "level": "Fellow", "country": "中国"}, {"name": "Zhen Liu", "level": "国家级人才", "country": "中国"}, {"name": "Xiang Li", "level": "院士", "country": "中国"}, {"name": "Danfeng Hong", "level": "国家级人才", "country": "中国"}, {"name": "J. Chanussot", "level": "Fellow", "country": "法国"}, {"name": "季顺平 (Shunping Ji)", "level": "国家级人才", "country": "中国"}, {"name": "Shihong Du", "level": "国家级人才", "country": "中国"}, {"name": "Wei Xiang", "level": "Fellow", "country": "澳大利亚"}, {"name": "Zhengxia Zou", "level": "国家级人才", "country": "中国"}, {"name": "Z. Shi", "level": "国家级人才", "country": "中国"}, {"name": "Deren Li", "level": "院士", "country": "中国"}, {"name": "Shuang Wang", "level": "国家级人才", "country": "中国"}, {"name": "N. Sebe", "level": "其他院士", "country": "意大利"}, {"name": "Zhun Zhong", "level": NaN, "country": "中国"}, {"name": "Xiaoping Liu", "level": "国家级人才", "country": "中国"}, {"name": "Peter van Oosterom", "level": "其他院士", "country": "荷兰"}], "keywords": [{"keyword": "Foundation Models", "keyword_cn": "基础模型/大模型"}, {"keyword": "Remote Sensing Image Semantic Segmentation", "keyword_cn": "遥感图像语义分割"}, {"keyword": "Domain Generalization", "keyword_cn": "领域泛化"}, {"keyword": "Domain Adaptation", "keyword_cn": "领域自适应"}, {"keyword": "Vision Foundation Models (VFM)", "keyword_cn": "视觉基础模型"}, {"keyword": "Knowledge Distillation", "keyword_cn": "知识蒸馏"}, {"keyword": "Multimodal Learning", "keyword_cn": "多模态学习"}, {"keyword": "Object Detection/Recognition", "keyword_cn": "目标检测与识别"}, {"keyword": "Deep Learning", "keyword_cn": "深度学习"}, {"keyword": "Transfer Learning", "keyword_cn": "迁移学习"}, {"keyword": "Diffusion Models", "keyword_cn": "扩散模型"}, {"keyword": "Large Language Models (LLMs)", "keyword_cn": "大语言模型"}, {"keyword": "Earth Observation", "keyword_cn": "对地观测"}, {"keyword": "Change Detection", "keyword_cn": "变化检测"}, {"keyword": "Benchmark Dataset", "keyword_cn": "基准数据集"}, {"keyword": "UAV / Low-altitude Mobility", "keyword_cn": "无人机/低空出行"}, {"keyword": "Geospatial Intelligence", "keyword_cn": "遥感数据智能"}, {"keyword": "Image Generation", "keyword_cn": "图像生成"}, {"keyword": "Self-Attention Mechanism", "keyword_cn": "自注意力机制"}, {"keyword": "Fine-tuning", "keyword_cn": "微调"}], "top_papers": [{"title": "UAVs meet LLMs: Overviews and perspectives towards agentic low-altitude mobility", "year": 2025, "citations": 109, "country": "中国"}, {"title": "ATRNet-STAR: A large dataset and benchmark towards remote sensing object recogni", "year": 2026, "citations": 38, "country": "中国"}, {"title": "Rsrefseg 2: decoupling referring remote sensing image segmentation with foundati", "year": 2025, "citations": 13, "country": "中国"}, {"title": "Can generative geospatial diffusion models excel as discriminative geospatial fo", "year": 2025, "citations": 12, "country": ""}, {"title": "From pixels to images: Deep learning advances in remote sensing image semantic s", "year": 2025, "citations": 10, "country": ""}, {"title": "Earth-adapter: Bridge the geospatial domain gaps with mixture of frequency adapt", "year": 2025, "citations": 10, "country": ""}, {"title": "Domain generalization for semantic segmentation of remote sensing images via vis", "year": 2025, "citations": 9, "country": ""}, {"title": "Deep learning based domain adaptation methods in remote sensing: A comprehensive", "year": 2025, "citations": 6, "country": ""}, {"title": "GeoZero: Incentivizing Reasoning from Scratch on Geospatial Scenes", "year": 2025, "citations": 5, "country": ""}, {"title": "Change-prior guided cross-scale interaction network for remote sensing image cha", "year": 2025, "citations": 5, "country": "中国"}, {"title": "Foundation Models in Remote Sensing: Evolving from unimodality to multimodality", "year": 2026, "citations": 4, "country": "中国"}, {"title": "Geolink: Empowering remote sensing foundation model with openstreetmap data", "year": 2026, "citations": 3, "country": "中国"}, {"title": "Object fidelity diffusion for remote sensing image generation", "year": 2025, "citations": 3, "country": ""}, {"title": "Prototype-guided domain-invariant enhancement and domain-specific normalization ", "year": 2026, "citations": 3, "country": "中国"}, {"title": "Optimized loss and self attention for enhanced domain adaptation in remote sensi", "year": 2025, "citations": 2, "country": "印度"}, {"title": "HieraRS: A Hierarchical Segmentation Paradigm for Remote Sensing Enabling Multi-", "year": 2026, "citations": 1, "country": ""}, {"title": "Brewing stronger features: Dual-teacher distillation for multispectral Earth obs", "year": 2026, "citations": 1, "country": ""}, {"title": "PANGAEA: Assessing Geospatial Foundation Models Capabilities through a Global an", "year": 2025, "citations": 1, "country": "意大利"}, {"title": "Research on Remote Sensing Image Object Segmentation Using a Hybrid Multi-Attent", "year": 2026, "citations": 1, "country": "中国"}, {"title": "PriorSAM-DBNet: A SAM-Prior-Enhanced Dual-Branch Network for Efficient Semantic ", "year": 2026, "citations": 1, "country": "中国"}], "year_dist": {"2025": 14, "2026": 15}, "citation_types": [{"type": "正面肯定", "count": 3, "description": "明确肯定了该模型在跨域泛化能力、预测精度提升及解决现有模型缺陷方面的贡献。"}, {"type": "文献综述", "count": 3, "description": "将该论文作为领域内的代表性模型进行归类，如MIM预训练技术或遥感基础模型。"}, {"type": "背景铺垫", "count": 2, "description": "通过引用该论文的研究设定或未来工作方向，引出作者自己的研究课题。"}], "citation_positions": [{"position": "Related Work", "count": 4}, {"position": "Experiments", "count": 2}, {"position": "Body/Future Works", "count": 2}], "key_findings": ["引用主要集中在相关工作章节，用于界定遥感基础模型的研究背景。", "多数引用将CrossEarth识别为解决跨域泛化问题的首个或代表性视觉基础模型。", "实验部分的引用侧重于将其作为高精度基准或遵循其设定的评估方案进行对比。"], "insights": [{"title": "前瞻性引力强劲，学术热度持续攀升", "body": "本项研究在 <strong>2025年及2026年<\/strong> 已累计获得 <strong>29次<\/strong> 引用，展现出极强的前瞻学术影响力。其中单篇引用论文最高被引量达 <strong>109次<\/strong>，表明研究成果正处于该领域学术讨论的核心地带，并在未来科研产出中保持着持续的增长势头与扩散潜力。"}, {"title": "国际学术认可，以中国学者为核心辐射", "body": "研究在国际学术界引起广泛关注，引用来源覆盖 <strong>中国、印度、意大利<\/strong> 等国家，其中中国学者贡献了 <strong>13次<\/strong> 引用，构成了主要影响力阵地。这种跨国界的学术关注验证了该模型在全球遥感基础模型研究背景下的普适性价值与技术参考意义。"}, {"title": "顶级专家背书，学术层级优势显著", "body": "在 <strong>22位<\/strong> 知名引用学者中，包含 <strong>院士及IEEE/ACM Fellow共10人<\/strong>，高层次人才占比近 <strong>45%<\/strong>。顶级专家的密集引用与背书，不仅界定了 CrossEarth 作为跨域泛化视觉基础模型的首创地位，更确立了其在遥感领域公认的学术权威性与技术标杆作用。"}, {"title": "深度融入科研范式，成为行业测评基准", "body": "定性分析显示，引用已深度渗透至 <strong>实验对比与评估方案<\/strong> 中。多数学者将其作为 <strong>高精度基准（Baseline）<\/strong> 或遵循其评估协议进行对比，证明该研究不仅在理论背景界定上具有代表性，更在实操层面成为了该领域界定研究范式与衡量算法性能的标准化参考。"}]};
+  var history = [];
+  var isOpen = false;
+  var isStreaming = false;
+
+  /* ── Toggle window ── */
+  function ccToggle() {
+    isOpen = !isOpen;
+    var win = document.getElementById('cc-win');
+    var fab = document.getElementById('cc-fab');
+    win.style.display = isOpen ? 'flex' : 'none';
+    fab.innerHTML = isOpen ? '✕' : '<img src="assets/head_logo.png" style="width:56px;height:56px;border-radius:50%;object-fit:cover;pointer-events:none">';
+    fab.style.fontSize = isOpen ? '20px' : '';
+    if (isOpen) {
+      var offline = window.location.protocol === 'file:';
+      document.getElementById('cc-offline').style.display = offline ? 'block' : 'none';
+      var input = document.getElementById('cc-input');
+      if (input) input.focus();
+    }
+  }
+
+  /* ── Wire up buttons (script is at bottom of body — elements exist) ── */
+  document.getElementById('cc-fab').addEventListener('click', ccToggle);
+  document.getElementById('cc-close').addEventListener('click', ccToggle);
+  document.getElementById('cc-send').addEventListener('click', function() { ccSend(); });
+  document.getElementById('cc-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ccSend(); }
+  });
+
+  /* ── Append message bubble ── */
+  function addBubble(role, text, streaming) {
+    var msgs = document.getElementById('cc-msgs');
+    var div = document.createElement('div');
+    div.className = 'cc-bubble ' + role + (streaming ? ' typing' : '');
+    div.textContent = text;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  /* ── Send ── */
+  function renderMd(el, text) {
+    el.classList.add('md-rendered');
+    el.innerHTML = (typeof marked !== 'undefined') ? marked.parse(text) : text;
+  }
+
+  function ccSend() {
+    if (isStreaming) return;
+    if (window.location.protocol === 'file:') return;
+    var inp = document.getElementById('cc-input');
+    var msg = (inp.value || '').trim();
+    if (!msg) return;
+    inp.value = '';
+
+    addBubble('user', msg, false);
+    history.push({ role: 'user', content: msg });
+
+    var aiBubble = addBubble('ai', '', true);
+    isStreaming = true;
+    var sendBtn = document.getElementById('cc-send');
+    if (sendBtn) sendBtn.disabled = true;
+
+    var fullText = '';
+
+    fetch('/api/chat/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: history, context: CTX })
+    }).then(function(res) {
+      if (!res.ok) {
+        return res.text().then(function(t) {
+          aiBubble.classList.remove('typing');
+          aiBubble.textContent = '请求失败：' + t;
+          isStreaming = false;
+          if (sendBtn) sendBtn.disabled = false;
+        });
+      }
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder('utf-8');
+      var searchIndicator = null;
+      var buf = '';
+      var searchHandled = false;
+
+      function ensureSearchIndicator() {
+        if (!searchIndicator) {
+          searchIndicator = document.createElement('div');
+          searchIndicator.style.cssText = 'font-size:11px;color:rgba(99,179,237,0.8);padding:4px 0;';
+          searchIndicator.textContent = '🔍 正在联网搜索…';
+          aiBubble.parentNode.insertBefore(searchIndicator, aiBubble);
+        }
+      }
+      function removeSearchIndicator() {
+        if (searchIndicator) { searchIndicator.remove(); searchIndicator = null; }
+      }
+
+      function read() {
+        reader.read().then(function(result) {
+          if (result.done) {
+            aiBubble.classList.remove('typing');
+            removeSearchIndicator();
+            renderMd(aiBubble, fullText);
+            if (fullText) history.push({ role: 'assistant', content: fullText });
+            isStreaming = false;
+            if (sendBtn) sendBtn.disabled = false;
+            return;
+          }
+          var chunk = decoder.decode(result.value, { stream: true });
+          if (!searchHandled) {
+            buf += chunk;
+            if (buf.indexOf('__SEARCHING__') !== -1) {
+              searchHandled = true;
+              ensureSearchIndicator();
+              var rest = buf.replace('__SEARCHING__\n', '').replace('__SEARCHING__', '');
+              if (rest) { fullText += rest; aiBubble.textContent = fullText; }
+            } else if (buf.length > 30) {
+              searchHandled = true;
+              fullText += buf; aiBubble.textContent = fullText; buf = '';
+            }
+          } else {
+            removeSearchIndicator();
+            fullText += chunk;
+            aiBubble.textContent = fullText;
+          }
+          document.getElementById('cc-msgs').scrollTop = 9999;
+          read();
+        }).catch(function(err) {
+          aiBubble.classList.remove('typing');
+          removeSearchIndicator();
+          aiBubble.textContent = fullText + '\n[读取中断：' + err + ']';
+          isStreaming = false;
+          if (sendBtn) sendBtn.disabled = false;
+        });
+      }
+      read();
+    }).catch(function(err) {
+      aiBubble.classList.remove('typing');
+      aiBubble.textContent = '网络错误：' + err;
+      isStreaming = false;
+      if (sendBtn) sendBtn.disabled = false;
+    });
+  };
+  } catch(e) {
+    console.error('[CitationClaw v2] Chat widget error:', e);
+  }
+})();
+</script>
+</body>
+</html>

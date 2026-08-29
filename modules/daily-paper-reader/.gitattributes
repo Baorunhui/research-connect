@@ -1,0 +1,20 @@
+# Fork 用户运行态文件。`merge=ours` 只在本地显式配置同名 merge driver 时生效；
+# GitHub 网页 Sync fork 不会依赖该规则，主仓库仍必须避免修改这些运行态路径。
+config.yaml merge=ours
+docs/config.yaml merge=ours
+docs/README.md merge=ours
+docs/_sidebar.md merge=ours
+docs/_home_notice.md merge=ours
+docs/_home_promo.md merge=ours
+docs/.repo-owner.json merge=ours
+
+# 推荐结果与运行状态属于用户数据，避免上游更新覆盖用户历史。
+archive/carryover.json merge=ours
+archive/crawl_state.json merge=ours
+archive/arxiv_seen.json merge=ours
+archive/*_crawl_state.json merge=ours
+archive/*_seen.json merge=ours
+archive/*/recommend/*.json merge=ours
+
+# 本地密钥文件不应由上游同步覆盖。
+secret.private merge=ours

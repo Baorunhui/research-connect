@@ -1,0 +1,66 @@
+name: Reset docs content
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_code:
+        description: "危险操作确认码（前端已校验，调试可留空）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reset-content
+  cancel-in-progress: false
+
+jobs:
+  reset-content:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Reset docs and clear archive
+        run: |
+          set -euo pipefail
+
+          TS="$(date +%Y%m%d_%H%M%S)"
+          if [ ! -d "docs_init" ]; then
+            echo "::error::docs_init 目录不存在，无法执行重置。"
+            exit 1
+          fi
+
+          if [ -d "docs" ]; then
+            mv "docs" "docs_backup_${TS}"
+          else
+            echo "docs 目录不存在，跳过备份。"
+          fi
+
+          mkdir -p docs
+          cp -a "docs_init/." "docs/"
+          mkdir -p archive
+          rm -rf archive/*
+
+          echo "Reset done."
+
+      - name: Commit reset result
+        if: github.repository != 'ziwenhahaha/daily-paper-reader'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          echo '{"owner":"'"$GITHUB_REPOSITORY_OWNER"'","repo":"'"${GITHUB_REPOSITORY#*/}"'"}' > docs/.repo-owner.json
+          git add -A docs archive
+          if git diff --cached --quiet; then
+            echo "No change to commit."
+            exit 0
+          fi
+
+          git commit -m "[fix] reset docs from docs_init and clear archive"
+          git push

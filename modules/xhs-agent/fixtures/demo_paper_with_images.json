@@ -1,0 +1,81 @@
+{
+  "schema_version": "xhs_agent.request.v1",
+  "request_id": "demo-paper-images-001",
+  "intent": "paper_promo",
+  "mode": "generate_package",
+  "audience": {
+    "who": "AI研究生/博士生/青椒",
+    "context": "刷小红书时快速看懂一篇科研工作",
+    "question": "这篇论文的方法图到底在讲什么"
+  },
+  "goal": {
+    "takeaway": "读者能通过一张图理解方法流程和适用场景",
+    "action": "收藏并在发布前核对原论文图注"
+  },
+  "source": {
+    "kind": "paper",
+    "title": "FigureAgent: Evidence-Grounded Scientific Figure Understanding",
+    "summary": "该工作关注科研图表理解：先把图像、图注和结构化摘要对齐，再让 agent 生成可核查的讲解卡片。这里使用公开素材模拟论文方法图和实验室宣传图。",
+    "materials": [
+      {
+        "id": "P1",
+        "type": "problem",
+        "text": "很多论文速读只复述摘要，读者仍然看不懂方法图中的流程和证据。"
+      },
+      {
+        "id": "P2",
+        "type": "method",
+        "text": "上游 paper_agent 提供方法图、图注、结构化步骤和人工核对边界，宣发 agent 只负责转成可读卡片。"
+      },
+      {
+        "id": "P3",
+        "type": "risk",
+        "text": "图中具体数值、坐标含义和论文原始结论必须发布前人工核对。"
+      }
+    ],
+    "assets": [
+      {
+        "id": "method_fig",
+        "type": "image",
+        "uri": "fixtures/assets/scientific_method.png",
+        "label": "论文方法图示例",
+        "caption": "方法图示例：Scientific Method simple diagram",
+        "kind": "method_figure",
+        "fit": "contain",
+        "source_url": "https://commons.wikimedia.org/wiki/File:The_Scientific_Method_(simple).png"
+      },
+      {
+        "id": "lab_photo",
+        "type": "image",
+        "uri": "fixtures/assets/lab_bench.jpg",
+        "label": "实验室场景图",
+        "caption": "实验室照片示例：Lab bench",
+        "kind": "photo",
+        "fit": "cover",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Lab_bench.jpg"
+      }
+    ],
+    "links": [
+      {
+        "type": "paper",
+        "url": "https://arxiv.org/abs/2603.00042"
+      }
+    ],
+    "entities": {
+      "authors": ["Demo Researcher"],
+      "venue": "arXiv 2026",
+      "lab": "USTC Agent Lab"
+    }
+  },
+  "requirements": {
+    "platform": "xiaohongshu",
+    "deliverables": ["note", "carousel"],
+    "card_count": 5,
+    "style": "专业但像真人科研分享，方法图要讲清楚",
+    "publish": false
+  },
+  "constraints": {
+    "must_include": ["方法图", "结构化步骤", "发布前核对图注"],
+    "must_avoid": ["把示例图说成真实论文原图", "编造实验数值", "声称已经自动上传"]
+  }
+}

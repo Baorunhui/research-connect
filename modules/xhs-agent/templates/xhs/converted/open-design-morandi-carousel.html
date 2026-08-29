@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1080, initial-scale=1">
+  <title>{{TITLE}}</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1080px; height: 1440px; }
+    body { font-family: "Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", sans-serif; }
+    .card { width: 1080px; height: 1440px; padding: 92px 76px 64px; position: relative; overflow: hidden; background: linear-gradient(145deg, #f5eee8, #edf2ef 48%, #e8eef5); color: #23302c; }
+    .badge { display: inline-flex; align-items: center; height: 54px; padding: 0 28px; border-radius: 999px; background: rgba(255,255,255,.72); color: #6d7f78; font-size: 24px; font-weight: 700; }
+    h1 { margin: 110px 0 0; font-size: 82px; line-height: 1.14; letter-spacing: 0; max-width: 900px; }
+    .subtitle { margin-top: 28px; max-width: 780px; font-size: 36px; line-height: 1.4; color: #647872; }
+    .points { margin-top: 120px; display: grid; gap: 28px; }
+    .point { display: grid; grid-template-columns: 74px 1fr; align-items: center; min-height: 116px; padding: 26px 32px; border-radius: 28px; background: rgba(255,255,255,.68); box-shadow: 0 18px 48px rgba(68,80,74,.08); }
+    .point span { width: 42px; height: 42px; border-radius: 50%; background: #d8e6df; display: grid; place-items: center; font-size: 20px; color: #45675c; font-weight: 800; }
+    .point strong { font-size: 36px; line-height: 1.3; }
+    .watermark { position: absolute; right: -120px; bottom: 160px; width: 420px; height: 420px; border-radius: 50%; border: 2px solid rgba(69,103,92,.12); }
+    footer { position: absolute; left: 76px; right: 76px; bottom: 64px; color: #7c8c86; font-size: 24px; }
+  </style>
+</head>
+<body>
+  <section class="card">
+    <div class="badge">{{BADGE}}</div>
+    <h1>{{TITLE}}</h1>
+    <p class="subtitle">{{SUBTITLE}}</p>
+    <div class="points">
+      <div class="point"><span>1</span><strong>{{POINT_1}}</strong></div>
+      <div class="point"><span>2</span><strong>{{POINT_2}}</strong></div>
+      <div class="point"><span>3</span><strong>{{POINT_3}}</strong></div>
+    </div>
+    <div class="watermark"></div>
+    <footer>{{FOOTER}} · {{PAGE}}/{{TOTAL}}</footer>
+  </section>
+</body>
+</html>

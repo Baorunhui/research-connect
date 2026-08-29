@@ -1,0 +1,390 @@
+name: conference-paper-retrieval
+
+on:
+  workflow_dispatch:
+    inputs:
+      conference:
+        description: "会议名：NIPS/NeurIPS、ICML、ICLR、AAAI、CVPR、ECCV、IJCAI、ACL、EMNLP、OSDI、SOSP、IEEE S&P 或 NDSS"
+        required: true
+        default: "ICML"
+      years:
+        description: "年份列表，例如 2024,2025"
+        required: true
+        default: "2025"
+      conference_pairs:
+        description: "精确会议年份列表，例如 iclr:2025,neurips:2024；填写后优先于 conference/years"
+        required: false
+        default: ""
+      top_k:
+        description: "BM25 / Embedding 每个查询候选数"
+        required: false
+        default: "50"
+      rrf_top_n:
+        description: "RRF 每个查询保留候选数"
+        required: false
+        default: "200"
+      run_rerank:
+        description: "是否继续运行 Qwen3 reranker（true/false）"
+        required: false
+        default: "true"
+      reranker_profile:
+        description: "Reranker：默认 public-sinksilk-rerank；可改 public-zwwen-rerank / local-qwen3-0.6b / siliconflow-qwen3-0.6b"
+        required: false
+        default: "public-sinksilk-rerank"
+      run_llm_refine:
+        description: "是否继续运行 DeepSeek 相关性打分（true/false）"
+        required: false
+        default: "true"
+      llm_min_star:
+        description: "DeepSeek 打分前保留的 rerank 星级下限"
+        required: false
+        default: "4"
+      profile_tag:
+        description: "仅运行指定词条 tag；留空表示全量词条"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: conference-${{ github.event.inputs.conference }}-${{ github.event.inputs.years }}-${{ github.event.inputs.conference_pairs }}
+  cancel-in-progress: false
+
+jobs:
+  retrieve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DPR_ENABLE_NEURIPS_BACKEND: "1"
+      DPR_NEURIPS_ENABLED: "1"
+      DPR_NEURIPS_PAPERS_TABLE: neurips_openreview_papers
+      DPR_NEURIPS_VECTOR_RPC_EXACT: match_neurips_openreview_papers_exact
+      DPR_NEURIPS_BM25_RPC: match_neurips_openreview_papers_bm25
+      DPR_ENABLE_ICML_BACKEND: "1"
+      DPR_ICML_ENABLED: "1"
+      DPR_ICML_PAPERS_TABLE: icml_openreview_papers
+      DPR_ICML_VECTOR_RPC_EXACT: match_icml_openreview_papers_exact
+      DPR_ICML_BM25_RPC: match_icml_openreview_papers_bm25
+      DPR_ENABLE_ICLR_BACKEND: "1"
+      DPR_ICLR_ENABLED: "1"
+      DPR_ICLR_PAPERS_TABLE: iclr_openreview_papers
+      DPR_ICLR_VECTOR_RPC_EXACT: match_iclr_openreview_papers_exact
+      DPR_ICLR_BM25_RPC: match_iclr_openreview_papers_bm25
+      DPR_ENABLE_AAAI_BACKEND: "1"
+      DPR_AAAI_ENABLED: "1"
+      DPR_AAAI_PAPERS_TABLE: aaai_papers
+      DPR_AAAI_VECTOR_RPC_EXACT: match_aaai_papers_exact
+      DPR_AAAI_BM25_RPC: match_aaai_papers_bm25
+      DPR_ENABLE_CVPR_BACKEND: "1"
+      DPR_CVPR_ENABLED: "1"
+      DPR_CVPR_PAPERS_TABLE: cvpr_papers
+      DPR_CVPR_VECTOR_RPC_EXACT: match_cvpr_papers_exact
+      DPR_CVPR_BM25_RPC: match_cvpr_papers_bm25
+      DPR_ENABLE_ECCV_BACKEND: "1"
+      DPR_ECCV_ENABLED: "1"
+      DPR_ECCV_PAPERS_TABLE: eccv_papers
+      DPR_ECCV_VECTOR_RPC_EXACT: match_eccv_papers_exact
+      DPR_ECCV_BM25_RPC: match_eccv_papers_bm25
+      DPR_ENABLE_IJCAI_BACKEND: "1"
+      DPR_IJCAI_ENABLED: "1"
+      DPR_IJCAI_PAPERS_TABLE: ijcai_papers
+      DPR_IJCAI_VECTOR_RPC_EXACT: match_ijcai_papers_exact
+      DPR_IJCAI_BM25_RPC: match_ijcai_papers_bm25
+      DPR_ENABLE_ACL_BACKEND: "1"
+      DPR_ACL_ENABLED: "1"
+      DPR_ACL_PAPERS_TABLE: acl_papers
+      DPR_ACL_VECTOR_RPC_EXACT: match_acl_papers_exact
+      DPR_ACL_BM25_RPC: match_acl_papers_bm25
+      DPR_ENABLE_EMNLP_BACKEND: "1"
+      DPR_EMNLP_ENABLED: "1"
+      DPR_EMNLP_PAPERS_TABLE: emnlp_papers
+      DPR_EMNLP_VECTOR_RPC_EXACT: match_emnlp_papers_exact
+      DPR_EMNLP_BM25_RPC: match_emnlp_papers_bm25
+      DPR_ENABLE_OSDI_BACKEND: "1"
+      DPR_OSDI_ENABLED: "1"
+      DPR_OSDI_PAPERS_TABLE: osdi_papers
+      DPR_OSDI_VECTOR_RPC_EXACT: match_osdi_papers_exact
+      DPR_OSDI_BM25_RPC: match_osdi_papers_bm25
+      DPR_ENABLE_SOSP_BACKEND: "1"
+      DPR_SOSP_ENABLED: "1"
+      DPR_SOSP_PAPERS_TABLE: sosp_papers
+      DPR_SOSP_VECTOR_RPC_EXACT: match_sosp_papers_exact
+      DPR_SOSP_BM25_RPC: match_sosp_papers_bm25
+      DPR_ENABLE_IEEE_SP_BACKEND: "1"
+      DPR_IEEE_SP_ENABLED: "1"
+      DPR_IEEE_SP_PAPERS_TABLE: ieee_sp_papers
+      DPR_IEEE_SP_VECTOR_RPC_EXACT: match_ieee_sp_papers_exact
+      DPR_IEEE_SP_BM25_RPC: match_ieee_sp_papers_bm25
+      DPR_ENABLE_NDSS_BACKEND: "1"
+      DPR_NDSS_ENABLED: "1"
+      DPR_NDSS_PAPERS_TABLE: ndss_papers
+      DPR_NDSS_VECTOR_RPC_EXACT: match_ndss_papers_exact
+      DPR_NDSS_BM25_RPC: match_ndss_papers_bm25
+      RERANK_PROFILE: ${{ secrets.RERANK_PROFILE }}
+      RERANK_PROVIDER: ${{ secrets.RERANK_PROVIDER }}
+      RERANK_MODEL: ${{ secrets.RERANK_MODEL }}
+      RERANK_API_KEY: ${{ secrets.RERANK_API_KEY }}
+      RERANK_API_BASE_URL: ${{ secrets.RERANK_API_BASE_URL }}
+      PUBLIC_RERANK_API_KEY: ${{ secrets.PUBLIC_RERANK_API_KEY }}
+      PUBLIC_RERANK_API_BASE_URL: ${{ secrets.PUBLIC_RERANK_API_BASE_URL || 'https://api.sinksilk.com:58443/v1/rerank' }}
+      SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+      SILICONFLOW_RERANK_URL: ${{ secrets.SILICONFLOW_RERANK_URL }}
+      SILICONFLOW_RERANK_MIN_INTERVAL_SECONDS: ${{ secrets.SILICONFLOW_RERANK_MIN_INTERVAL_SECONDS || '8' }}
+      LOCAL_RERANK_MODEL: ${{ secrets.LOCAL_RERANK_MODEL || 'Qwen/Qwen3-Reranker-0.6B' }}
+      LOCAL_RERANK_DEVICE: cpu
+      LOCAL_RERANK_BATCH_SIZE: "4"
+      MKL_THREADING_LAYER: GNU
+      DPR_RERANK_GLOBAL_POOL_LIMIT: "120"
+      DPR_RERANK_GUARANTEED_PER_LANE: "2"
+      DPR_EMBED_API_TIMEOUT: "60"
+      DPR_EMBED_API_URL: ${{ secrets.DPR_EMBED_API_URL || 'https://zwwen.online/embed' }}
+      DPR_EMBED_API_KEY: ${{ secrets.DPR_EMBED_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
+      DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Cache Python deps
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/uv
+            ~/.cache/torch
+            ~/.cache/dpr-tools/papercropper
+          key: ${{ runner.os }}-dpr-conference-retrieval-v1-${{ hashFiles('requirements.txt') }}
+
+      - name: Install deps
+        run: |
+          python - <<'PY'
+          import re
+          lines = open("requirements.txt", "r", encoding="utf-8").read().splitlines()
+          lines = [l for l in lines if l.strip() and not re.match(r"^sqlite3\\b", l)]
+          open("/tmp/req.txt", "w", encoding="utf-8").write("\n".join(lines))
+          PY
+          python -m pip install --upgrade pip
+          python -m pip install uv
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.5.1+cpu"
+          uv pip install --system -r /tmp/req.txt
+
+      - name: Prepare PaperCropper (optional)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          TOOL_DIR="$HOME/.cache/dpr-tools/papercropper"
+          SRC_DIR="$TOOL_DIR/PaperCropper"
+          MODEL_DIR="$TOOL_DIR/models"
+          MODEL_PATH="$MODEL_DIR/doclayout_yolo_docstructbench_imgsz1280_2501.pt"
+
+          mkdir -p "$TOOL_DIR" "$MODEL_DIR"
+          if [ ! -f "$SRC_DIR/extract.py" ]; then
+            rm -rf "$SRC_DIR"
+            git clone --depth 1 https://github.com/fake-learn/PaperCropper "$SRC_DIR"
+          fi
+
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torchvision==0.20.1+cpu"
+          python -m pip install -r requirements-paper-media.txt
+          python -m pip install --no-deps "doclayout-yolo==0.0.4"
+          if [ ! -f "$MODEL_PATH" ]; then
+            MODEL_DIR="$MODEL_DIR" python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+
+          filename = "doclayout_yolo_docstructbench_imgsz1280_2501.pt"
+          path = hf_hub_download(
+              repo_id="juliozhao/DocLayout-YOLO-DocStructBench-imgsz1280-2501",
+              filename=filename,
+              local_dir=os.environ["MODEL_DIR"],
+              local_dir_use_symlinks=False,
+          )
+          print(path)
+          PY
+          fi
+
+          PAPERCROPPER_MODEL="$MODEL_PATH" python - <<'PY'
+          import os
+          import cv2
+          import fitz
+          import torch
+          import torchvision
+          from doclayout_yolo import YOLOv10
+
+          model_path = os.environ["PAPERCROPPER_MODEL"]
+          if not os.path.exists(model_path):
+              raise FileNotFoundError(model_path)
+          print(
+              "PaperCropper smoke OK:",
+              {
+                  "torch": torch.__version__,
+                  "torchvision": torchvision.__version__,
+                  "cv2": cv2.__version__,
+                  "fitz": getattr(fitz, "__doc__", "")[:20],
+                  "YOLOv10": YOLOv10.__name__,
+              },
+          )
+          PY
+
+          echo "PAPERCROPPER_SCRIPT=$SRC_DIR/extract.py" >> "$GITHUB_ENV"
+          echo "PAPERCROPPER_MODEL=$MODEL_PATH" >> "$GITHUB_ENV"
+
+      - name: Run conference retrieval pipeline
+        env:
+          HF_HOME: ${{ github.workspace }}/hf_cache
+          HUGGINGFACE_HUB_CACHE: ${{ github.workspace }}/hf_cache
+          HF_HUB_DISABLE_SYMLINKS: "1"
+          DPR_FILTER_PROFILE_TAG: ${{ github.event.inputs.profile_tag }}
+        run: |
+          set -euo pipefail
+
+          CONFERENCE="${{ github.event.inputs.conference }}"
+          YEARS="${{ github.event.inputs.years }}"
+          CONFERENCE_PAIRS="${{ github.event.inputs.conference_pairs }}"
+          TOP_K="${{ github.event.inputs.top_k }}"
+          RRF_TOP_N="${{ github.event.inputs.rrf_top_n }}"
+          RUN_RERANK="${{ github.event.inputs.run_rerank }}"
+          RUN_LLM_REFINE="${{ github.event.inputs.run_llm_refine }}"
+          LLM_MIN_STAR="${{ github.event.inputs.llm_min_star }}"
+          RERANKER_PROFILE_INPUT="${{ github.event.inputs.reranker_profile }}"
+          RUN_DATE="$(date -u +%Y%m%d)"
+          if [ -n "$RERANKER_PROFILE_INPUT" ]; then
+            export RERANK_PROFILE="$RERANKER_PROFILE_INPUT"
+          elif [ -z "$RERANK_PROFILE" ]; then
+            # 手动触发未选 profile 且未配 secret 时默认走 sinksilk
+            export RERANK_PROFILE="public-sinksilk-rerank"
+          fi
+
+          if [ -z "$TOP_K" ]; then
+            TOP_K="50"
+          fi
+          if [ -z "$RRF_TOP_N" ]; then
+            RRF_TOP_N="200"
+          fi
+
+          TOKENS="$(CONFERENCE_INPUT="$CONFERENCE" YEARS_INPUT="$YEARS" CONFERENCE_PAIRS_INPUT="$CONFERENCE_PAIRS" python -c 'import os, sys; sys.path.insert(0, "src"); from conference_retrieval import build_years_token, parse_conference_pairs, parse_conferences, parse_years; pairs = parse_conference_pairs(os.environ.get("CONFERENCE_PAIRS_INPUT", "")); confs = []; years = []; [confs.append(c) for c, y in pairs if c not in confs]; [years.append(y) for c, y in pairs if y not in years]; confs = confs or parse_conferences(os.environ.get("CONFERENCE_INPUT", "")); years = years or parse_years(os.environ.get("YEARS_INPUT", "")); print("-".join(confs)); print(build_years_token(years))')"
+          CONF_TOKEN="$(echo "$TOKENS" | sed -n '1p')"
+          YEAR_TOKEN="$(echo "$TOKENS" | sed -n '2p')"
+          TOPIC_MARKER="$(CONF_TOKEN="$CONF_TOKEN" YEAR_TOKEN="$YEAR_TOKEN" PROFILE_TAG="$DPR_FILTER_PROFILE_TAG" python - <<'PY'
+          import os, sys
+          sys.path.insert(0, "src")
+          from conference_sidebar import build_conference_topic_marker, topic_from_profile_tag
+
+          kind, label = topic_from_profile_tag(os.environ.get("PROFILE_TAG", ""))
+          print(build_conference_topic_marker(os.environ["CONF_TOKEN"], os.environ["YEAR_TOKEN"], kind, label))
+          PY
+          )"
+          if [ -f docs/_sidebar.md ] && grep -Fq "$TOPIC_MARKER" docs/_sidebar.md; then
+            echo "[INFO] 已存在会议词条，跳过重复检索：conference=${CONF_TOKEN}-${YEAR_TOKEN} profile=${DPR_FILTER_PROFILE_TAG:-General}"
+            exit 0
+          fi
+
+          ARGS=(
+            --conferences "$CONFERENCE"
+            --years "$YEARS"
+            --top-k "$TOP_K"
+            --rrf-top-n "$RRF_TOP_N"
+            --output-dir "archive/${RUN_DATE}/filtered"
+            --embedding-device cpu
+            --embedding-batch-size 8
+          )
+          if [ -n "$CONFERENCE_PAIRS" ]; then
+            ARGS+=(--conference-pairs "$CONFERENCE_PAIRS")
+          fi
+          if [ "${RUN_RERANK:-false}" = "true" ]; then
+            ARGS+=(--run-rerank --rerank-device cpu --rerank-batch-size 4)
+          fi
+          if [ "${RUN_LLM_REFINE:-false}" = "true" ]; then
+            if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+              echo "::error::run_llm_refine=true requires DEEPSEEK_API_KEY secret."
+              exit 1
+            fi
+            ARGS+=(--run-llm-refine --llm-min-star "${LLM_MIN_STAR:-4}" --llm-filter-concurrency 2 --display-min-score 4)
+          fi
+
+          python src/conference_pipeline.py "${ARGS[@]}"
+
+          python src/conference_sidebar.py \
+            --result "archive/${RUN_DATE}/rank/conference-${CONF_TOKEN}-${YEAR_TOKEN}.supabase.llm.json" \
+            --result "archive/${RUN_DATE}/rank/conference-${CONF_TOKEN}-${YEAR_TOKEN}.supabase.rerank.json" \
+            --result "archive/${RUN_DATE}/filtered/conference-${CONF_TOKEN}-${YEAR_TOKEN}.supabase.rrf.json" \
+            --sidebar docs/_sidebar.md \
+            --display-min-score 4 \
+            --deep-min-score 4
+
+      - name: Commit conference retrieval results
+        if: github.repository != 'ziwenhahaha/daily-paper-reader'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="${GITHUB_REF_NAME:-main}"
+
+          TOKENS="$(CONFERENCE_INPUT="${{ github.event.inputs.conference }}" YEARS_INPUT="${{ github.event.inputs.years }}" CONFERENCE_PAIRS_INPUT="${{ github.event.inputs.conference_pairs }}" python -c 'import os, sys; sys.path.insert(0, "src"); from conference_retrieval import build_years_token, parse_conference_pairs, parse_conferences, parse_years; pairs = parse_conference_pairs(os.environ.get("CONFERENCE_PAIRS_INPUT", "")); confs = []; years = []; [confs.append(c) for c, y in pairs if c not in confs]; [years.append(y) for c, y in pairs if y not in years]; confs = confs or parse_conferences(os.environ.get("CONFERENCE_INPUT", "")); years = years or parse_years(os.environ.get("YEARS_INPUT", "")); print("-".join(confs)); print(build_years_token(years))')"
+          CONF_TOKEN="$(echo "$TOKENS" | sed -n '1p')"
+          YEAR_TOKEN="$(echo "$TOKENS" | sed -n '2p')"
+          RUN_DATE="$(date -u +%Y%m%d)"
+          COMMIT_MSG="[chore] conference retrieval: ${CONF_TOKEN} ${YEAR_TOKEN}"
+
+          shopt -s nullglob
+          echo '{"owner":"'"$GITHUB_REPOSITORY_OWNER"'","repo":"'"${GITHUB_REPOSITORY#*/}"'"}' > docs/.repo-owner.json
+          paths=(archive/*/rank/conference-*.supabase.llm.json docs/_sidebar.md docs/conference docs/assets/figures docs/assets/tables docs/.repo-owner.json)
+          if [ "${#paths[@]}" -eq 0 ]; then
+            echo "No conference output files to commit."
+            exit 0
+          fi
+
+          git add "${paths[@]}"
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "$COMMIT_MSG"
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin "$branch"
+
+            if git merge-base --is-ancestor "origin/$branch" HEAD 2>/dev/null; then
+              git push origin HEAD:"$branch" && { echo "[OK] push (fast-forward) on attempt $attempt"; exit 0; }
+            fi
+
+            if git rebase "origin/$branch" 2>/dev/null; then
+              git push origin HEAD:"$branch" && { echo "[OK] push (rebase) on attempt $attempt"; exit 0; }
+              git reset --hard ORIG_HEAD 2>/dev/null || true
+            else
+              git rebase --abort 2>/dev/null || true
+            fi
+
+            echo "[WARN] push attempt $attempt failed, re-merging sidebar on latest origin..."
+            [ "$attempt" -eq 5 ] && { echo "::error::Failed to push after 5 attempts"; exit 1; }
+            sleep "$((attempt * 3))"
+
+            local_head="$(git rev-parse HEAD)"
+            git reset --hard "origin/$branch"
+
+            git checkout "$local_head" -- docs/conference docs/assets/figures docs/assets/tables docs/.repo-owner.json 2>/dev/null || true
+            git checkout "$local_head" -- "archive/${RUN_DATE}/rank/conference-${CONF_TOKEN}-${YEAR_TOKEN}.supabase.llm.json" 2>/dev/null || true
+
+            python src/conference_sidebar.py \
+              --result "archive/${RUN_DATE}/rank/conference-${CONF_TOKEN}-${YEAR_TOKEN}.supabase.llm.json" \
+              --result "archive/${RUN_DATE}/rank/conference-${CONF_TOKEN}-${YEAR_TOKEN}.supabase.rerank.json" \
+              --result "archive/${RUN_DATE}/filtered/conference-${CONF_TOKEN}-${YEAR_TOKEN}.supabase.rrf.json" \
+              --sidebar docs/_sidebar.md \
+              --display-min-score 4 \
+              --deep-min-score 4 || true
+
+            git add "${paths[@]}"
+            git diff --cached --quiet && { echo "[OK] no changes after re-merge, skipping"; exit 0; }
+            git commit -m "$COMMIT_MSG"
+          done

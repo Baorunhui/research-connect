@@ -1,0 +1,63 @@
+{
+  "schema_version": "xhs_agent.request.v1",
+  "request_id": "demo-daily-multimodal-001",
+  "intent": "daily_paper",
+  "mode": "generate_package",
+  "audience": {
+    "who": "做多模态/大模型方向的研究生和博士生",
+    "context": "每天刷到一篇论文速递，想快速判断值不值得细读",
+    "question": "这篇论文的新意在哪里，我要不要收藏"
+  },
+  "goal": {
+    "takeaway": "读者能在一分钟内抓住论文问题、方法和潜在价值",
+    "action": "收藏笔记，并把论文加入待读列表"
+  },
+  "source": {
+    "kind": "paper",
+    "title": "GraphLens: Structure-Aware Visual Reasoning for Scientific Figures",
+    "summary": "该论文关注科学图表理解中的结构化推理问题，提出先抽取图中实体、关系和坐标结构，再把图结构输入多模态模型进行问答与解释生成。上游 paper_agent 标注该方法适合用于论文图表理解、实验结果核查和自动生成图注。",
+    "materials": [
+      {
+        "id": "D1",
+        "type": "problem",
+        "text": "很多多模态模型能描述图像表面内容，但在科学图表中容易忽略坐标轴、图例和变量关系。"
+      },
+      {
+        "id": "D2",
+        "type": "method",
+        "text": "方法先把图表解析成实体节点和关系边，再将结构化图与原图一起送入视觉语言模型。"
+      },
+      {
+        "id": "D3",
+        "type": "result",
+        "text": "上游结构化摘要显示，该方法在图表问答和图注解释任务上优于未使用结构图的 baseline，但具体数值需要发布前核对原文。"
+      },
+      {
+        "id": "D4",
+        "type": "use_case",
+        "text": "适合科研阅读助手在读论文时自动理解实验曲线、消融表格和方法示意图。"
+      }
+    ],
+    "links": [
+      {
+        "type": "paper",
+        "url": "https://arxiv.org/abs/2602.01234"
+      }
+    ],
+    "entities": {
+      "authors": ["Demo Chen", "Demo Wang"],
+      "venue": "arXiv 2026"
+    }
+  },
+  "requirements": {
+    "platform": "xiaohongshu",
+    "deliverables": ["note", "carousel"],
+    "card_count": 5,
+    "style": "每日论文速递，清楚、克制、适合收藏",
+    "publish": false
+  },
+  "constraints": {
+    "must_include": ["科学图表理解", "结构化图", "发布前核对实验数值"],
+    "must_avoid": ["写成已经全面超越所有多模态模型", "编造具体提升百分比", "声称已经复现代码"]
+  }
+}

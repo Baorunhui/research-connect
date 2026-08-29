@@ -1,0 +1,172 @@
+{
+  "schema_version": "xhs_agent.template_manifest.v1",
+  "updated": "2026-08-09",
+  "canvas": {
+    "width": 1080,
+    "height": 1440,
+    "platform": "xiaohongshu"
+  },
+  "templates": [
+    {
+      "id": "native.research-editorial",
+      "type": "recipe_pack",
+      "pack": "research-editorial",
+      "implementation": "src/xhs_agent/recipe_packs.py",
+      "path": "native/research-editorial.html",
+      "license": "project",
+      "source": "xhs_agent",
+      "status": "ready",
+      "default_recipe": "body",
+      "recipes": {
+        "cover": "M01 Magazine Issue Cover",
+        "thesis": "M04 Pull Quote / Thesis",
+        "list": "M08 Tall Ledger",
+        "body": "M11 Marginalia Essay",
+        "pipeline": "M14 Vertical Pipeline",
+        "quote": "M04 Pull Quote",
+        "ending": "M07 Closing Note",
+        "image_cover": "M16 Image-Led Cover",
+        "media": "M10 Evidence Feature",
+        "evidence": "M06 Evidence Wall / Figure Evidence"
+      },
+      "best_for": ["paper_promo", "daily_paper"],
+      "notes": "Guizang Editorial 路线的科研 recipe pack；原 path 是 legacy 单页 seed。"
+    },
+    {
+      "id": "native.research-swiss",
+      "type": "recipe_pack",
+      "pack": "research-swiss",
+      "implementation": "src/xhs_agent/recipe_packs.py",
+      "path": "native/research-swiss.html",
+      "license": "project",
+      "source": "xhs_agent",
+      "status": "ready",
+      "default_recipe": "list",
+      "recipes": {
+        "cover": "S01 Swiss Cover",
+        "thesis": "S02 Statement",
+        "list": "S08 Matrix / Ledger",
+        "body": "S05 Text System",
+        "pipeline": "S07 Process Tower",
+        "quote": "S02 Statement",
+        "ending": "S09 Release Note CTA",
+        "image_cover": "S17 Image Hero",
+        "media": "S17 Image Hero + Notes",
+        "evidence": "S06 Evidence Feature"
+      },
+      "best_for": ["project_promo", "paper_promo"],
+      "notes": "Guizang Swiss 路线的科研 recipe pack；适合工具、流程、benchmark、引用追踪。"
+    },
+    {
+      "id": "converted.open-design-morandi-carousel",
+      "type": "recipe_pack",
+      "pack": "morandi-carousel",
+      "implementation": "src/xhs_agent/recipe_packs.py",
+      "path": "converted/open-design-morandi-carousel.html",
+      "license": "project-derived-from-spec",
+      "source": "nexu-io/open-design skills/card-xiaohongshu",
+      "source_license": "Apache-2.0",
+      "source_commit": "f5802718403f1d473ed7bf4acde4ab12b9e2a361",
+      "status": "ready",
+      "default_recipe": "list",
+      "recipes": {
+        "cover": "soft cover",
+        "thesis": "soft statement",
+        "list": "soft point cards",
+        "body": "soft explainer",
+        "pipeline": "soft steps",
+        "quote": "soft quote",
+        "ending": "soft ending",
+        "image_cover": "soft image cover",
+        "media": "soft media card",
+        "evidence": "soft evidence card"
+      },
+      "best_for": ["daily_paper", "lab_recruit"],
+      "notes": "根据 Apache-2.0 skill spec 扩展成柔和知识卡 recipe pack。"
+    },
+    {
+      "id": "converted.xhs-textcard-pro-doc",
+      "type": "recipe_pack",
+      "pack": "pro-doc",
+      "implementation": "src/xhs_agent/recipe_packs.py",
+      "path": "converted/xhs-textcard-pro-doc.html",
+      "license": "project-derived-from-config",
+      "source": "geekfoxcharlie/XHS-TextCard templates/pro-doc.json",
+      "source_license": "MIT",
+      "source_commit": "96ca52ed3e8e845ba3af1434a8d72071ebac1039",
+      "status": "ready",
+      "default_recipe": "body",
+      "recipes": {
+        "cover": "doc cover",
+        "thesis": "doc statement",
+        "list": "doc ledger",
+        "body": "doc note",
+        "pipeline": "doc process",
+        "quote": "doc quote",
+        "ending": "doc checklist ending",
+        "image_cover": "doc image cover",
+        "media": "doc figure note",
+        "evidence": "doc evidence panel"
+      },
+      "best_for": ["project_promo", "paper_promo"],
+      "notes": "把配置驱动 Canvas 风格复刻成多页型 HTML recipe pack。"
+    },
+    {
+      "id": "converted.rednote-tech",
+      "type": "recipe_pack",
+      "pack": "rednote-tech",
+      "implementation": "src/xhs_agent/recipe_packs.py",
+      "path": "converted/rednote-tech.html",
+      "license": "project-derived-from-component",
+      "source": "huanjuedadehen/rednote-cards src/templates/tech",
+      "source_license": "MIT",
+      "source_commit": "9c675f08681188838e6857c59bb0cd08be662a68",
+      "status": "ready",
+      "default_recipe": "list",
+      "recipes": {
+        "cover": "tech cover",
+        "thesis": "tech statement",
+        "list": "tech cards",
+        "body": "tech explainer",
+        "pipeline": "tech process",
+        "quote": "tech quote",
+        "ending": "tech ending",
+        "image_cover": "tech image cover",
+        "media": "tech media node",
+        "evidence": "tech evidence panel"
+      },
+      "best_for": ["project_promo"],
+      "notes": "把 React/TSX 科技模板复刻成多页型 HTML recipe pack。"
+    },
+    {
+      "id": "third_party.guizang-editorial",
+      "path": "third_party/agpl/guizang-social-card-skill/assets/template-editorial-card.html",
+      "license": "AGPL-3.0",
+      "source": "op7418/guizang-social-card-skill",
+      "source_commit": "cf4b810fac1c73fb65a2bb31d8c9278d82cbc4c5",
+      "status": "reference",
+      "best_for": ["paper_promo", "daily_paper", "lab_recruit"],
+      "notes": "原始第三方 HTML seed，强模板但 AGPL，不默认集成。"
+    },
+    {
+      "id": "third_party.guizang-swiss",
+      "path": "third_party/agpl/guizang-social-card-skill/assets/template-swiss-card.html",
+      "license": "AGPL-3.0",
+      "source": "op7418/guizang-social-card-skill",
+      "source_commit": "cf4b810fac1c73fb65a2bb31d8c9278d82cbc4c5",
+      "status": "reference",
+      "best_for": ["project_promo", "paper_promo"],
+      "notes": "原始第三方 HTML seed，强模板但 AGPL，不默认集成。"
+    },
+    {
+      "id": "third_party.xhs-article-to-images",
+      "path": "third_party/mit/xhs-article-to-images/assets/template.html",
+      "license": "MIT",
+      "source": "bozhouDev/xhs-article-to-images",
+      "source_commit": "79d2ccce32ff44236bf504a39b850637acacd950",
+      "status": "reference",
+      "best_for": ["daily_paper", "lab_recruit"],
+      "notes": "MIT，已经是 HTML + Playwright 路线，页型丰富。"
+    }
+  ]
+}

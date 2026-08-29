@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CitationClaw v2{% endblock %}</title>
+    <link rel="icon" href="/static/head_logo.png">
+    <link href="/static/vendor/bootstrap.min.css?v=2.1" rel="stylesheet">
+    <link href="/static/vendor/bootstrap-icons.css?v=2.1" rel="stylesheet">
+    <link href="/static/css/style.css?v=2.1" rel="stylesheet">
+</head>
+<body>
+    <div id="diag-banner" style="position:fixed;top:0;left:0;right:0;z-index:99998;background:#16a34a;color:#fff;padding:8px 16px;font:14px monospace;text-align:center">
+      ✓ HTML 已加载 · 如果只看到这行说明 CSS 没加载 · 如果这行也看不到说明隧道有问题
+    </div>
+    <noscript><div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:8px 16px;font:14px monospace">JavaScript 被禁用，请启用后刷新</div></noscript>
+    <nav class="agent-navbar">
+        <div class="agent-navbar-inner">
+            <a href="/" class="agent-brand">
+                <div class="agent-brand-icon">
+                    <img src="/static/head_logo.png" width="28" height="28" alt="CitationClaw" style="display:block">
+                </div>
+                <div>
+                    <div class="agent-brand-name">CitationClaw <span style="font-size:12px;font-weight:500;color:var(--accent);background:var(--accent-light);padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle">v2</span></div>
+                    <div class="agent-brand-sub">Turning Every Citation into Explainable Impact</div>
+                </div>
+            </a>
+            <button class="agent-navbar-toggler" type="button" aria-label="Toggle navigation" onclick="this.parentElement.querySelector('.agent-nav-links').classList.toggle('show')">
+                <i class="bi bi-list"></i>
+            </button>
+            <div class="agent-nav-links">
+                <a href="#" class="agent-nav-link" data-spa-panel="home">
+                    <i class="bi bi-house-fill"></i> 首页
+                </a>
+                <a href="#" class="agent-nav-link" data-spa-panel="results">
+                    <i class="bi bi-folder2-open"></i> 结果
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="agent-page-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer class="agent-footer">
+        <small>CitationClaw v2 &nbsp;·&nbsp; 上海交通大学 VisionXLab@RethinkLab</small>
+    </footer>
+
+    <script>
+    window.onerror = function(msg, url, line, col, err) {
+        var d = document.createElement('div');
+        d.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;padding:12px 20px;font:14px/1.5 monospace;white-space:pre-wrap';
+        d.textContent = 'JS Error: ' + msg + '\n' + (url||'') + ':' + line + ':' + col + '\n' + (err && err.stack ? err.stack : '');
+        document.body.appendChild(d);
+    };
+    </script>
+    <script src="/static/vendor/bootstrap.bundle.min.js?v=2.1"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

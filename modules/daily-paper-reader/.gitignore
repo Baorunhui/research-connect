@@ -1,0 +1,54 @@
+__pycache__/
+*.py[cod]
+*.pyo
+
+# 虚拟环境
+venv/
+.venv/
+.venv-docling/
+
+# 本地数据库文件
+app/chat.db
+app/chat.db-shm
+app/chat.db-wal
+chat.db
+chat.db-shm
+chat.db-wal
+
+# 日志文件
+app.log
+*.log
+.local-runs/
+
+# 本地环境配置
+.env
+.env.bak
+config.yaml.bak
+secret.private
+.claude/
+
+# 临时/测试文件
+test.pdf
+
+# Tencent Cloud EdgeOne
+.env
+.edgeone/*
+!.edgeone/project.json
+.tef_dist/*
+deploy_edgeone.sh
+
+# Connect Hub 运行态：SQLite、真实配置
+connect_hub/data/
+connect_hub/config.yaml
+
+# 综述流水线 PDF 全文缓存（可重建，体积大）
+archive/survey_texts/
+
+# Kaggle arXiv 快照 + SQLite FTS 索引（~4GB JSON + ~6-8GB 库，可由
+# scripts/build_kaggle_arxiv_index.py --download 重建）
+archive/kaggle_arxiv/
+
+# 本地运行残留 / 工具工作区
+output/
+.zcode/
+docs/.sidebar.lock

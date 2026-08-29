@@ -1,0 +1,30 @@
+{
+    "name": "大厂文档",
+    "description": "专业级技术文档美学，高层级信息的权威呈现",
+    "author": "geekfoxcharlie",
+    "version": "1.3",
+    "config": {
+    "coverImage": "assets/cover-pro-doc.jpg",
+    "coverFontSize": 48,
+        "bgColor": "#F9FAFB",
+        "textColor": "#111827",
+        "fontSize": 16,
+        "lineHeight": 1.6,
+        "letterSpacing": 0.1,
+        "textPadding": 35,
+        "fontFamily": "-apple-system, system-ui, 'Inter', sans-serif",
+        "hasWatermark": false,
+        "watermarkText": "极客狐",
+        "watermarkColor": "rgba(0,0,0,0.04)",
+        "hasSignature": true,
+        "signatureText": "极客狐",
+        "signatureColor": "#0066FF",
+        "signaturePosition": "bottom",
+        "signatureStyle": "modern-pill",
+        "h1Scale": 1.6,
+        "h2Scale": 1.4,
+        "h3Scale": 1.2,
+        "accentColor": "#0066FF",
+        "showPageNumber": true
+    }
+}

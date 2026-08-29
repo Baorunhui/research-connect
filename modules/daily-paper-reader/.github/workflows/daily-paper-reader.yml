@@ -1,0 +1,303 @@
+name: daily-paper-reader
+
+on:
+  schedule:
+    - cron: "30 18 * * *" # 北京时间次日 02:30（UTC 18:30）
+  workflow_dispatch:
+    inputs:
+      run_enrich:
+        description: "Run 0.enrich_config_queries.py（默认关闭，按需开启）"
+        required: false
+        default: "false"
+      fetch_days:
+        description: "回溯抓取天数（例如 30）；留空则使用默认配置"
+        required: false
+        default: "10"
+      fetch_mode:
+        description: "抓取模式：auto/standard/skims（auto 按 fetch-days 阈值决定，standard/ skims 强制）"
+        required: false
+        default: "auto"
+      profile_tag:
+        description: "仅运行指定词条 tag；留空表示全量运行"
+        required: false
+        default: ""
+      reranker_profile:
+        description: "Reranker：默认 public-sinksilk-rerank；可改 public-zwwen-rerank / local-qwen3-0.6b / siliconflow-qwen3-0.6b"
+        required: false
+        default: "public-sinksilk-rerank"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-paper-reader
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
+      DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
+      RERANK_PROFILE: ${{ secrets.RERANK_PROFILE }}
+      RERANK_PROVIDER: ${{ secrets.RERANK_PROVIDER }}
+      RERANK_MODEL: ${{ secrets.RERANK_MODEL }}
+      RERANK_API_KEY: ${{ secrets.RERANK_API_KEY }}
+      RERANK_API_BASE_URL: ${{ secrets.RERANK_API_BASE_URL }}
+      PUBLIC_RERANK_API_KEY: ${{ secrets.PUBLIC_RERANK_API_KEY }}
+      PUBLIC_RERANK_API_BASE_URL: ${{ secrets.PUBLIC_RERANK_API_BASE_URL || 'https://api.sinksilk.com:58443/v1/rerank' }}
+      SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+      SILICONFLOW_RERANK_URL: ${{ secrets.SILICONFLOW_RERANK_URL }}
+      SILICONFLOW_RERANK_MIN_INTERVAL_SECONDS: ${{ secrets.SILICONFLOW_RERANK_MIN_INTERVAL_SECONDS || '8' }}
+      LOCAL_RERANK_MODEL: ${{ secrets.LOCAL_RERANK_MODEL || 'Qwen/Qwen3-Reranker-0.6B' }}
+      LOCAL_RERANK_DEVICE: cpu
+      LOCAL_RERANK_BATCH_SIZE: "4"
+      MKL_THREADING_LAYER: GNU
+      DPR_RERANK_GLOBAL_POOL_LIMIT: "120"
+      DPR_RERANK_GUARANTEED_PER_LANE: "2"
+      DPR_EMBED_API_TIMEOUT: "60"
+      DPR_EMBED_API_URL: ${{ secrets.DPR_EMBED_API_URL || 'https://zwwen.online/embed' }}
+      DPR_EMBED_API_KEY: ${{ secrets.DPR_EMBED_API_KEY }}
+      LLM_PRIMARY_BASE_URL: ${{ secrets.LLM_PRIMARY_BASE_URL }}
+      SUMMARY_API_KEY: ${{ secrets.SUMMARY_API_KEY }}
+      SUMMARY_BASE_URL: ${{ secrets.SUMMARY_BASE_URL }}
+      SUMMARY_MODEL: ${{ secrets.SUMMARY_MODEL }}
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Random delay to spread scheduled runs
+        if: github.event_name == 'schedule'
+        run: |
+          DELAY=$(shuf -i 0-3599 -n 1)
+          echo "Sleeping ${DELAY}s (≈$((DELAY/60))min) to stagger fork runs over 1 hour …"
+          sleep $DELAY
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Cache Python deps
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/uv
+            ~/.cache/torch
+            ~/.cache/dpr-tools/papercropper
+          key: ${{ runner.os }}-dpr-embed-deps-v1-${{ hashFiles('requirements.txt') }}
+
+      - name: Install deps (skip sqlite3)
+        run: |
+          python - <<'PY'
+          import re
+          lines = open("requirements.txt", "r", encoding="utf-8").read().splitlines()
+          lines = [l for l in lines if l.strip() and not re.match(r"^sqlite3\\b", l)]
+          open("/tmp/req.txt", "w", encoding="utf-8").write("\n".join(lines))
+          PY
+          python -m pip install --upgrade pip
+          python -m pip install uv
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.5.1+cpu"
+          uv pip install --system -r /tmp/req.txt
+
+      - name: Prepare PaperCropper (optional)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          TOOL_DIR="$HOME/.cache/dpr-tools/papercropper"
+          SRC_DIR="$TOOL_DIR/PaperCropper"
+          MODEL_DIR="$TOOL_DIR/models"
+          MODEL_PATH="$MODEL_DIR/doclayout_yolo_docstructbench_imgsz1280_2501.pt"
+
+          mkdir -p "$TOOL_DIR" "$MODEL_DIR"
+          if [ ! -f "$SRC_DIR/extract.py" ]; then
+            rm -rf "$SRC_DIR"
+            git clone --depth 1 https://github.com/fake-learn/PaperCropper "$SRC_DIR"
+          fi
+
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torchvision==0.20.1+cpu"
+          python -m pip install -r requirements-paper-media.txt
+          python -m pip install --no-deps "doclayout-yolo==0.0.4"
+          if [ ! -f "$MODEL_PATH" ]; then
+            MODEL_DIR="$MODEL_DIR" python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+
+          filename = "doclayout_yolo_docstructbench_imgsz1280_2501.pt"
+          path = hf_hub_download(
+              repo_id="juliozhao/DocLayout-YOLO-DocStructBench-imgsz1280-2501",
+              filename=filename,
+              local_dir=os.environ["MODEL_DIR"],
+              local_dir_use_symlinks=False,
+          )
+          print(path)
+          PY
+          fi
+
+          PAPERCROPPER_MODEL="$MODEL_PATH" python - <<'PY'
+          import os
+          import cv2
+          import fitz
+          import torch
+          import torchvision
+          from doclayout_yolo import YOLOv10
+
+          model_path = os.environ["PAPERCROPPER_MODEL"]
+          if not os.path.exists(model_path):
+              raise FileNotFoundError(model_path)
+          print(
+              "PaperCropper smoke OK:",
+              {
+                  "torch": torch.__version__,
+                  "torchvision": torchvision.__version__,
+                  "cv2": cv2.__version__,
+                  "fitz": getattr(fitz, "__doc__", "")[:20],
+                  "YOLOv10": YOLOv10.__name__,
+              },
+          )
+          PY
+
+          echo "PAPERCROPPER_SCRIPT=$SRC_DIR/extract.py" >> "$GITHUB_ENV"
+          echo "PAPERCROPPER_MODEL=$MODEL_PATH" >> "$GITHUB_ENV"
+
+      - name: Run Retrieval and Embedding
+        env:
+          HF_HOME: ${{ github.workspace }}/hf_cache
+          HUGGINGFACE_HUB_CACHE: ${{ github.workspace }}/hf_cache
+          HF_HUB_DISABLE_SYMLINKS: "1"
+        run: |
+          echo "Cleaning any previous local cache..."
+          rm -rf ${{ github.workspace }}/hf_cache
+
+          echo "=== Debug: runtime env ==="
+          echo "PWD=$(pwd)"
+          echo "HOME=$HOME"
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          echo "HF_HOME=$HF_HOME"
+          echo "HUGGINGFACE_HUB_CACHE=$HUGGINGFACE_HUB_CACHE"
+          echo "HF_HUB_DISABLE_SYMLINKS=$HF_HUB_DISABLE_SYMLINKS"
+          echo "TRANSFORMERS_CACHE=${TRANSFORMERS_CACHE:-<unset>}"
+          echo "XDG_CACHE_HOME=${XDG_CACHE_HOME:-<unset>}"
+          echo "--- env (filtered) ---"
+          env | grep -E '^(HF_|HUGGINGFACE_|TRANSFORMERS_|XDG_|HOME=|GITHUB_WORKSPACE=)' | sort || true
+
+          echo "--- python/hf versions ---"
+          python - <<'PY'
+          import os
+          def v(mod):
+            try:
+              m = __import__(mod)
+              return getattr(m, "__version__", "<no __version__>")
+            except Exception as e:
+              return f"<import failed: {e}>"
+
+          print("python_exe:", os.environ.get("PYTHON", ""))
+          print("HF_HOME env:", os.environ.get("HF_HOME"))
+          print("HUGGINGFACE_HUB_CACHE env:", os.environ.get("HUGGINGFACE_HUB_CACHE"))
+          print("HF_HUB_DISABLE_SYMLINKS env:", os.environ.get("HF_HUB_DISABLE_SYMLINKS"))
+          print("TRANSFORMERS_CACHE env:", os.environ.get("TRANSFORMERS_CACHE"))
+          print("versions:", {
+            "huggingface_hub": v("huggingface_hub"),
+            "transformers": v("transformers"),
+            "sentence_transformers": v("sentence_transformers"),
+          })
+          try:
+            from huggingface_hub import constants as c
+            print("hub.constants:", {
+              "HF_HOME": getattr(c, "HF_HOME", None),
+              "HUGGINGFACE_HUB_CACHE": getattr(c, "HUGGINGFACE_HUB_CACHE", None),
+              "HF_HUB_DISABLE_SYMLINKS": getattr(c, "HF_HUB_DISABLE_SYMLINKS", None),
+            })
+          except Exception as e:
+            print("hub.constants import failed:", e)
+          PY
+
+          echo "--- cache dir check ---"
+          echo "[legacy] ~/.cache/huggingface:"
+          ls -la ~/.cache/huggingface || true
+          echo "[current] $HF_HOME:"
+          ls -la "$HF_HOME" || true
+
+          echo "Running main script..."
+          RUN_ENRICH="${{ github.event.inputs.run_enrich }}"
+          FETCH_DAYS="${{ github.event.inputs.fetch_days }}"
+          FETCH_MODE="${{ github.event.inputs.fetch_mode }}"
+          PROFILE_TAG="${{ github.event.inputs.profile_tag }}"
+          RERANKER_PROFILE_INPUT="${{ github.event.inputs.reranker_profile }}"
+          if [ -n "$RERANKER_PROFILE_INPUT" ]; then
+            export RERANK_PROFILE="$RERANKER_PROFILE_INPUT"
+          elif [ -z "$RERANK_PROFILE" ]; then
+            # schedule 定时触发（无 dispatcher 输入）且未配 secret 时默认走 sinksilk
+            export RERANK_PROFILE="public-sinksilk-rerank"
+          fi
+          ARGS=()
+          if [ "$RUN_ENRICH" = "true" ]; then
+            ARGS+=(--run-enrich)
+          fi
+          if [ -n "$FETCH_DAYS" ]; then
+            ARGS+=(--fetch-days "$FETCH_DAYS")
+          fi
+          if [ -n "$FETCH_MODE" ]; then
+            ARGS+=(--fetch-mode "$FETCH_MODE")
+          fi
+          if [ -n "$PROFILE_TAG" ]; then
+            ARGS+=(--profile-tag "$PROFILE_TAG")
+          fi
+          python src/main.py "${ARGS[@]}" --embedding-device cpu --embedding-batch-size 8
+
+          # 让前端可以在不配置 GitHub Token 的情况下直接读取配置（只读快照）
+          cp -f config.yaml docs/config.yaml
+
+          echo "--- post-run cache symlink check ---"
+          find "$HF_HOME" -xtype l | head -n 50 || true
+
+      - name: Cleanup non-recommend archives
+        run: |
+          find archive -mindepth 2 -maxdepth 2 -type d \( -name raw -o -name filtered -o -name rank \) -exec rm -rf {} +
+
+      - name: Commit results
+        if: github.repository != 'ziwenhahaha/daily-paper-reader'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="${GITHUB_REF_NAME:-main}"
+
+          shopt -s nullglob
+          paths=(docs config.yaml)
+          if [ -f archive/arxiv_seen.json ]; then
+            paths+=(archive/arxiv_seen.json)
+          fi
+          if [ -f archive/crawl_state.json ]; then
+            paths+=(archive/crawl_state.json)
+          fi
+          if [ -f archive/carryover.json ]; then
+            paths+=(archive/carryover.json)
+          fi
+          for d in archive/*/recommend; do
+            paths+=("$d")
+          done
+
+          echo '{"owner":"'"$GITHUB_REPOSITORY_OWNER"'","repo":"'"${GITHUB_REPOSITORY#*/}"'"}' > docs/.repo-owner.json
+
+          git add "${paths[@]}"
+          git add -u archive
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "[chore] daily pipeline"
+
+          git status --short
+          git reset --hard HEAD
+          git fetch origin "$branch"
+          git rebase -X theirs "origin/$branch"
+          git push origin HEAD:"$branch"

@@ -1,0 +1,50 @@
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.secret
+secret.private
+config.local.*
+
+# Python environments and build products
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/*.egg-info/
+**/build/
+**/dist/
+*.py[cod]
+
+# Runtime state and generated artifacts
+**/data/
+**/runtime/
+**/.local-runs/
+**/outputs/
+**/outputs_*/
+**/logs/
+**/*.log
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/*.db-shm
+**/*.db-wal
+
+# Large, reproducible caches
+**/archive/survey_texts/
+**/archive/kaggle_arxiv/
+**/models/
+
+# Local CitationClaw configuration may contain several provider keys.
+modules/citationclaw/config.json
+modules/citationclaw/dot_citationclaw/
+modules/citationclaw/docs/pipeline-and-api-keys.md
+
+# IDE and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+

@@ -1,0 +1,263 @@
+import json
+from pathlib import Path
+from typing import List
+from pydantic import BaseModel, Field
+
+# Project root: three levels up from this file (config_manager.py -> app -> citationclaw -> project root)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "config.json"
+
+
+def _resolve_data_dir() -> Path:
+    """Return the absolute path to the project data directory."""
+    return _PROJECT_ROOT / "data"
+
+
+DATA_DIR = _resolve_data_dir()
+
+
+class AppConfig(BaseModel):
+    """应用配置模型"""
+    # ScraperAPI配置
+    scraper_api_keys: List[str] = Field(
+        default_factory=list,
+        description="ScraperAPI的API Keys列表"
+    )
+
+    # OpenAI兼容API配置
+    openai_api_key: str = Field(default="", description="OpenAI兼容的API Key")
+    openai_base_url: str = Field(default="https://api.gpt.ge/v1/", description="API Base URL")
+    openai_model: str = Field(default="gemini-3-flash-preview-search", description="模型名称")
+    light_api_key: str = Field(default="", description="轻量模型 OpenAI 兼容 API Key，留空则复用 openai_api_key")
+    light_base_url: str = Field(default="", description="轻量模型 API Base URL，留空则复用 openai_base_url")
+
+    # 任务配置
+    result_folder_prefix: str = Field(default="", description="结果文件夹前缀（留空则默认 result-时间戳）")
+    default_output_prefix: str = Field(default="paper", description="默认输出文件前缀")
+    sleep_between_pages: int = Field(default=10, description="翻页间隔（秒）")
+    sleep_between_authors: float = Field(default=0.5, description="搜索作者间隔（秒）")
+    parallel_author_search: int = Field(default=10, description="并行作者搜索数量(1=串行, >1=并行)")
+
+    # 断点续爬
+    resume_page_count: int = Field(default=0, description="从第几页继续")
+
+    # 按年份遍历（绕过Google Scholar 1000条限制）
+    enable_year_traverse: bool = Field(default=False, description="是否启用按年份遍历模式")
+
+    # 调试模式
+    debug_mode: bool = Field(default=False, description="是否启用调试模式（输出详细日志和HTML）")
+
+    # 测试模式
+    test_mode: bool = Field(default=False, description="测试模式：跳过真实API调用，使用test/mock_author_info.jsonl中的伪造数据")
+
+    # ScraperAPI高级选项
+    scraper_premium: bool = Field(default=False, description="启用ScraperAPI Premium代理")
+    scraper_ultra_premium: bool = Field(default=False, description="启用ScraperAPI Ultra Premium代理")
+    scraper_session: bool = Field(default=False, description="启用ScraperAPI会话保持（同一代理IP翻页）")
+    scholar_no_filter: bool = Field(default=False, description="Google Scholar链接追加&filter=0（显示全部结果不过滤）")
+    scraper_geo_rotate: bool = Field(default=False, description="数据中心重试时自动切换国家代码（需Business Plan及以上）")
+
+    # 重试配置
+    retry_max_attempts: int = Field(default=3, description="HTTP/登录页错误的最大重试次数")
+    retry_intervals: str = Field(default="5,10,20",
+                                 description="重试间隔（秒），逗号分隔。如 '10' 表示固定10秒，'5,10,20' 表示依次等待5/10/20秒")
+    dc_retry_max_attempts: int = Field(default=5, description="数据中心不一致时的最大重试次数（每次自动切换国家代码）")
+
+    # 作者搜索Prompt配置
+    author_search_prompt1: str = Field(
+        default="这是一篇论文。请你根据这个paper_link和paper_title，去搜索查阅这篇论文的作者列表，然后输出每个作者的名字及其对应的单位名称。",
+        description="搜索作者列表及单位的Prompt"
+    )
+    author_search_prompt2: str = Field(
+        default="这是一篇论文及作者列表。请你根据这篇论文、作者名字和作者单位，去搜索该每位作者的个人信息，输出每位作者的谷歌学术累积引用（如有）、重大学术头衔（比如是否IEEE/ACM/ACL等学术Fellow、中国科学院院士、中国工程院院士、国外院士如欧洲科学院院士、诺贝尔奖得主、图灵奖得主，国家杰青、长江学者、优青、在国外著名机构（例如google，deepmind，meta，openai）就业的人士，或在AI领域的国际知名人物），行政职位（如国内外知名大学的校长或院长）。",
+        description="搜索作者详细信息的Prompt"
+    )
+
+    # 二次筛选大佬配置
+    enable_renowned_scholar_filter: bool = Field(default=True, description="是否启用二次筛选重要学者")
+    renowned_scholar_model: str = Field(default="gemini-3-flash-preview-nothinking",
+                                        description="二次筛选使用的模型（cheaper model）")
+    renowned_scholar_prompt: str = Field(
+        default=(
+            "以上是一篇论文的作者列表信息。\n"
+            "### 任务指南：\n"
+            "1. **高影响力判定 (is_high_impact)**：学术影响力大（院士、知名学会Fellow、国家杰青/长江/优青等）或企业界大佬（首席科学家、VP、负责人）。除此之外，其他级别的学者或教授一律不保留。\n"
+            "2. **无重量级作者**：若作者信息明确说明无重量级作者，只需要输出'无任何重量级学者'。\n\n"
+            "3. **有重量级作者**：若有重量级作者，只输出那些顶级大佬级别的学者，进一步总结每位重量级作者的元信息，包括姓名、机构、国家、职务、荣誉称号。每位重量级作者之间用 $$$分隔符$$$ 来隔开，输出格式参考如下：\n\n"
+            "（输出格式参考）：\n"
+            "$$$分隔符$$$\n"
+            "重量级作者1\n"
+            "姓名\n"
+            "机构（当前最新任职单位）\n"
+            "国家\n"
+            "职务（在行政单位或著名研究机构的职务或职称）\n"
+            "荣誉称号（所获得的学术头衔或国际重量级头衔）\n"
+            "$$$分隔符$$$\n"
+            "重量级作者2\n"
+            "姓名\n"
+            "机构（当前最新任职单位）\n"
+            "国家\n"
+            "职务（在行政单位或著名研究机构的职务或职称）\n"
+            "荣誉称号（所获得的学术头衔或国际重量级头衔）\n"
+
+            "直至所有的重量级作者都被记录下来。记住，无需任何前言后记。"),
+        description="二次筛选重要学者的Prompt"
+    )
+
+    # 作者信息校验配置
+    enable_author_verification: bool = Field(default=False, description="是否启用作者信息真实性校验")
+    author_verify_model: str = Field(default="gemini-3-pro-preview-search", description="作者信息校验使用的模型")
+    author_verify_prompt: str = Field(
+        default=(
+            "这是一份已经整理好的作者学术信息列表。请你对列表中的每一位作者信息进行真实性校验。你需要执行以下任务：\n"
+            "1. 针对每位作者，核查其姓名、所属单位、谷歌学术引用量、学术头衔、行政职位是否真实存在。\n"
+            "2. 必须通过可靠公开来源进行核验（如Google Scholar、大学官网主页、DBLP、ORCID、ResearchGate、IEEE/ACM/ACL官方Fellow名单、科学院官网、诺奖或图灵奖官网等）。\n"
+            "3. 对每条信息分别标注核验结果，格式为：\n"
+            "   - 正确（Verified）：可被权威来源明确证实。\n"
+            "   - 存疑（Uncertain）：存在部分证据但不充分或信息冲突。\n"
+            "   - 错误（Incorrect）：无法找到可信来源或存在明显错误。\n"
+            "4. 若发现错误或存疑，请给出修正后的准确信息（若能确定）。\n"
+            "5. 对每条核验内容，必须给出对应的来源链接或来源名称。\n"
+            "6. 最终输出结构化结构，包括：作者姓名、原始信息、核验结论、修正信息（如有）、核验来源。\n"
+            "7. 若无法找到任何可信来源，请明确说明\"未检索到可信来源支持该信息\"，禁止基于推测补充信息。"
+        ),
+        description="作者信息校验的Prompt"
+    )
+
+    # 搜索后端选择
+    search_backend: str = Field(
+        default="zhipu_native",
+        description="搜索后端: zhipu_native=智谱原生web_search, ustc_function=USTC function-calling tool-loop(S2+Google)"
+    )
+
+    # 引用描述搜索配置
+    enable_citing_description: bool = Field(default=True, description="是否搜索引用描述（Phase 4）")
+    enable_dashboard: bool = Field(default=True, description="是否生成 HTML 画像报告（Phase 5）")
+
+    # 服务分层
+    service_tier: str = Field(default="basic", description="服务层级预置: full/advanced/basic")
+    citing_description_scope: str = Field(default="all",
+        description="Phase 4 引用描述搜索范围: all=全部, renowned_only=仅院士/Fellow, specified_only=仅指定学者")
+    skip_author_search: bool = Field(default=False, description="是否跳过 Phase 2+3（作者搜索和导出）")
+    specified_scholars: str = Field(default="", description="指定学者名单，逗号分隔")
+    dashboard_skip_citing_analysis: bool = Field(default=False, description="Dashboard 是否跳过引用描述分析部分")
+
+    dashboard_model: str = Field(default="gemini-3-flash-preview-nothinking",
+                                 description="画像报告 LLM 分析使用的模型")
+
+    # 学者主页快速流水线（profile → top-N → 被引 → 知名学者库匹配 → 选择性 PDF）
+    profile_top_n: int = Field(default=30, description="学者主页模式：只取引用量最高的 N 篇目标论文（0=不限）")
+    profile_min_citations: int = Field(default=0, description="学者主页模式：目标论文最低引用数门槛（0=不限）")
+    profile_use_llm_fallback: bool = Field(default=True,
+        description="学者主页模式：本地学者库未命中时，对高被引施引论文启用 LLM 联网搜索兜底（提升国际学者召回率）")
+    profile_llm_fallback_min_citations: int = Field(default=50,
+        description="学者主页模式：LLM 兜底仅作用于自身被引数 ≥ 该阈值的施引论文（控制 LLM 调用量）")
+    profile_fallback_api_keys: List[str] = Field(default_factory=list,
+        description="学者主页模式：Step 5b LLM 兜底专用 key 池（逗号分隔或列表，多 key 轮询，429 自动切换；为空则回退 openai_api_key）")
+    profile_fallback_base_url: str = Field(default="",
+        description="学者主页模式：Step 5b LLM 兜底 base_url（为空则回退 openai_base_url）")
+    profile_fallback_model: str = Field(default="",
+        description="学者主页模式：Step 5b LLM 兜底模型名（为空则回退 openai_model）")
+
+    def effective_light_api_key(self) -> str:
+        return self.light_api_key or self.openai_api_key
+
+    def effective_light_base_url(self) -> str:
+        return self.light_base_url if self.light_api_key else self.openai_base_url
+
+    # Semantic Scholar API Key (提升速率限制: 1 req/s → 10-100 req/s)
+    s2_api_key: str = Field(default="", description="Semantic Scholar API Key（可选，大幅提升 PDF 下载成功率）")
+
+    # Web of Science Starter API Key (结构化作者提取)
+    wos_api_key: str = Field(default="", description="Web of Science Starter API Key（用于结构化作者提取，优先级高于 S2）")
+
+    # MinerU Cloud API
+    mineru_api_token: str = Field(default="", description="MinerU Cloud Precision API Token（可选，用于大文件解析）")
+
+    # CDP Browser Download (IEEE/Elsevier 通过真实浏览器下载)
+    cdp_debug_port: int = Field(default=0, description="Chrome/Edge 远程调试端口（0=禁用，9222=启用 CDP 浏览器下载）")
+
+    # 费用追踪配置
+    api_access_token: str = Field(default="", description="API中转站系统令牌（用于查询额度，在个人中心获取）")
+    api_user_id: str = Field(default="", description="API中转站用户数字ID（在个人中心查看）")
+
+
+class ConfigManager:
+    def __init__(self, config_path: str = str(_DEFAULT_CONFIG_PATH)):
+        self.config_path = Path(config_path)
+        self.config = self._load()
+
+    def _load(self) -> AppConfig:
+        """加载配置（enable_year_traverse 始终重置为 False，不从文件读取）"""
+        if self.config_path.exists():
+            try:
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    data.pop("enable_year_traverse", None)  # 永不从磁盘恢复
+                    return AppConfig(**data)
+            except Exception as e:
+                print(f"加载配置失败: {e}, 使用默认配置")
+                return AppConfig()
+        return AppConfig()
+
+    def save(self, config: AppConfig):
+        """保存配置（enable_year_traverse 不持久化，每次启动重置为 False）"""
+        data = config.model_dump()
+        data.pop("enable_year_traverse", None)
+        with open(self.config_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        self.config = config
+
+    def get(self) -> AppConfig:
+        """获取配置"""
+        return self.config
+
+    def update(self, **kwargs):
+        """更新配置"""
+        updated_data = self.config.model_dump()
+        updated_data.update(kwargs)
+        new_config = AppConfig(**updated_data)
+        self.save(new_config)
+
+
+SERVICE_TIER_PRESETS = {
+    "basic": {
+        "label": "基础服务 (Basic)",
+        "description": "搜索知名学者 + 筛选院士/Fellow（不分析引文描述）",
+        "switches": {
+            "enable_renowned_scholar_filter": True,
+            "enable_citing_description": False,
+            "citing_description_scope": "all",
+            "skip_author_search": False,
+            "specified_scholars": "",
+            "enable_dashboard": True,
+            "dashboard_skip_citing_analysis": True,
+        }
+    },
+    "advanced": {
+        "label": "进阶服务 (Advanced)",
+        "description": "搜索知名学者 + 筛选院士/Fellow + 仅搜索大佬论文的引用描述",
+        "switches": {
+            "enable_renowned_scholar_filter": True,
+            "enable_citing_description": True,
+            "citing_description_scope": "renowned_only",
+            "skip_author_search": False,
+            "specified_scholars": "",
+            "enable_dashboard": True,
+            "dashboard_skip_citing_analysis": False,
+        }
+    },
+    "full": {
+        "label": "全面服务 (Full)",
+        "description": "搜索知名学者 + 筛选院士/Fellow + 逐篇搜索引用描述",
+        "switches": {
+            "enable_renowned_scholar_filter": True,
+            "enable_citing_description": True,
+            "citing_description_scope": "all",
+            "skip_author_search": False,
+            "specified_scholars": "",
+            "enable_dashboard": True,
+            "dashboard_skip_citing_analysis": False,
+        }
+    },
+}

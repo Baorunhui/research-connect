@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1080, initial-scale=1">
+  <title>{{TITLE}}</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1080px; height: 1440px; }
+    body { font-family: "Inter", "Noto Sans CJK SC", "Noto Sans SC", -apple-system, system-ui, sans-serif; }
+    .card { width: 1080px; height: 1440px; background: #f9fafb; color: #111827; padding: 84px 76px 60px; position: relative; overflow: hidden; }
+    .nav { display: flex; justify-content: space-between; font: 22px "Noto Sans Mono CJK SC", monospace; color: #6b7280; }
+    .signature { margin-top: 60px; display: inline-block; padding: 12px 24px; border-radius: 999px; background: #0066ff; color: #fff; font-weight: 800; font-size: 22px; }
+    h1 { margin: 54px 0 0; max-width: 900px; font-size: 76px; line-height: 1.15; font-weight: 900; letter-spacing: 0; }
+    .summary { margin-top: 30px; color: #4b5563; font-size: 34px; line-height: 1.48; }
+    .doc { margin-top: 84px; display: grid; gap: 22px; }
+    .row { display: grid; grid-template-columns: 64px 1fr; gap: 26px; padding: 26px 0; border-top: 2px solid #e5e7eb; }
+    .row span { color: #0066ff; font: 24px "Noto Sans Mono CJK SC", monospace; }
+    .row strong { font-size: 36px; line-height: 1.32; }
+    footer { position: absolute; left: 76px; right: 76px; bottom: 60px; color: #6b7280; font-size: 24px; border-top: 2px solid #e5e7eb; padding-top: 26px; }
+  </style>
+</head>
+<body>
+  <section class="card">
+    <div class="nav"><span>{{KICKER}}</span><span>{{PAGE}}/{{TOTAL}}</span></div>
+    <div class="signature">{{SIGNATURE}}</div>
+    <h1>{{TITLE}}</h1>
+    <p class="summary">{{SUBTITLE}}</p>
+    <div class="doc">
+      <div class="row"><span>01</span><strong>{{POINT_1}}</strong></div>
+      <div class="row"><span>02</span><strong>{{POINT_2}}</strong></div>
+      <div class="row"><span>03</span><strong>{{POINT_3}}</strong></div>
+      <div class="row"><span>04</span><strong>{{POINT_4}}</strong></div>
+    </div>
+    <footer>{{FOOTER}}</footer>
+  </section>
+</body>
+</html>

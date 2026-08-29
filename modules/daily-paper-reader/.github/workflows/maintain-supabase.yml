@@ -1,0 +1,227 @@
+name: maintain-supabase
+
+on:
+  schedule:
+    - cron: "30 0 * * *" # 北京时间次日 08:30（UTC 00:30）
+    - cron: "30 8 * * *" # 北京时间次日 16:30（UTC 08:30）
+    - cron: "30 16 * * *" # 北京时间次日 00:30（UTC 16:30）
+  workflow_dispatch:
+    inputs:
+      fetch_days:
+        description: "回溯抓取天数（例如 9）；留空则使用 9 天默认值"
+        required: false
+        default: "9"
+      maintain_target:
+        description: "维护目标：arxiv 或 conference；留空默认 arxiv"
+        required: false
+        default: "arxiv"
+      conference:
+        description: "会议名：NIPS/NeurIPS、ICML、ICLR、AAAI、CVPR、ECCV、IJCAI、ACL、EMNLP、OSDI、SOSP、IEEE_S&P 或 NDSS；maintain_target=conference 时使用"
+        required: false
+        default: ""
+      years:
+        description: "会议年份列表，例如 2024,2025；maintain_target=conference 时使用"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-paper-reader-maintain
+  cancel-in-progress: false
+
+jobs:
+  maintain_supabase:
+    if: github.repository == 'ziwenhahaha/daily-paper-reader' || github.repository == '5-xj/daily-paper-reader'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SUPABASE_URL: https://lyucdwgefyfbmaiopjbk.supabase.co
+      SUPABASE_SCHEMA: public
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SUPABASE_BACKEND_KEY: arxiv
+      SUPABASE_PAPERS_TABLE: arxiv_papers
+      SUPABASE_RETENTION_DAYS: "45"
+      OPENREVIEW_USERNAME: ${{ secrets.OPENREVIEW_USERNAME }}
+      OPENREVIEW_PASSWORD: ${{ secrets.OPENREVIEW_PASSWORD }}
+      DPR_ENABLE_NEURIPS_BACKEND: "1"
+      DPR_NEURIPS_ENABLED: "1"
+      DPR_NEURIPS_PAPERS_TABLE: neurips_openreview_papers
+      DPR_NEURIPS_VECTOR_RPC_EXACT: match_neurips_openreview_papers_exact
+      DPR_NEURIPS_BM25_RPC: match_neurips_openreview_papers_bm25
+      DPR_ENABLE_ICML_BACKEND: "1"
+      DPR_ICML_ENABLED: "1"
+      DPR_ICML_PAPERS_TABLE: icml_openreview_papers
+      DPR_ICML_VECTOR_RPC_EXACT: match_icml_openreview_papers_exact
+      DPR_ICML_BM25_RPC: match_icml_openreview_papers_bm25
+      DPR_ENABLE_ICLR_BACKEND: "1"
+      DPR_ICLR_ENABLED: "1"
+      DPR_ICLR_PAPERS_TABLE: iclr_openreview_papers
+      DPR_ICLR_VECTOR_RPC_EXACT: match_iclr_openreview_papers_exact
+      DPR_ICLR_BM25_RPC: match_iclr_openreview_papers_bm25
+      DPR_ENABLE_AAAI_BACKEND: "1"
+      DPR_AAAI_ENABLED: "1"
+      DPR_AAAI_PAPERS_TABLE: aaai_papers
+      DPR_AAAI_VECTOR_RPC_EXACT: match_aaai_papers_exact
+      DPR_AAAI_BM25_RPC: match_aaai_papers_bm25
+      DPR_ENABLE_CVPR_BACKEND: "1"
+      DPR_CVPR_ENABLED: "1"
+      DPR_CVPR_PAPERS_TABLE: cvpr_papers
+      DPR_CVPR_VECTOR_RPC_EXACT: match_cvpr_papers_exact
+      DPR_CVPR_BM25_RPC: match_cvpr_papers_bm25
+      DPR_ENABLE_ECCV_BACKEND: "1"
+      DPR_ECCV_ENABLED: "1"
+      DPR_ECCV_PAPERS_TABLE: eccv_papers
+      DPR_ECCV_VECTOR_RPC_EXACT: match_eccv_papers_exact
+      DPR_ECCV_BM25_RPC: match_eccv_papers_bm25
+      DPR_ENABLE_IJCAI_BACKEND: "1"
+      DPR_IJCAI_ENABLED: "1"
+      DPR_IJCAI_PAPERS_TABLE: ijcai_papers
+      DPR_IJCAI_VECTOR_RPC_EXACT: match_ijcai_papers_exact
+      DPR_IJCAI_BM25_RPC: match_ijcai_papers_bm25
+      DPR_ENABLE_ACL_BACKEND: "1"
+      DPR_ACL_ENABLED: "1"
+      DPR_ACL_PAPERS_TABLE: acl_papers
+      DPR_ACL_VECTOR_RPC_EXACT: match_acl_papers_exact
+      DPR_ACL_BM25_RPC: match_acl_papers_bm25
+      DPR_ENABLE_EMNLP_BACKEND: "1"
+      DPR_EMNLP_ENABLED: "1"
+      DPR_EMNLP_PAPERS_TABLE: emnlp_papers
+      DPR_EMNLP_VECTOR_RPC_EXACT: match_emnlp_papers_exact
+      DPR_EMNLP_BM25_RPC: match_emnlp_papers_bm25
+      DPR_ENABLE_OSDI_BACKEND: "1"
+      DPR_OSDI_ENABLED: "1"
+      DPR_OSDI_PAPERS_TABLE: osdi_papers
+      DPR_OSDI_VECTOR_RPC_EXACT: match_osdi_papers_exact
+      DPR_OSDI_BM25_RPC: match_osdi_papers_bm25
+      DPR_ENABLE_SOSP_BACKEND: "1"
+      DPR_SOSP_ENABLED: "1"
+      DPR_SOSP_PAPERS_TABLE: sosp_papers
+      DPR_SOSP_VECTOR_RPC_EXACT: match_sosp_papers_exact
+      DPR_SOSP_BM25_RPC: match_sosp_papers_bm25
+      DPR_ENABLE_IEEE_SP_BACKEND: "1"
+      DPR_IEEE_SP_ENABLED: "1"
+      DPR_IEEE_SP_PAPERS_TABLE: ieee_sp_papers
+      DPR_IEEE_SP_VECTOR_RPC_EXACT: match_ieee_sp_papers_exact
+      DPR_IEEE_SP_BM25_RPC: match_ieee_sp_papers_bm25
+      DPR_ENABLE_NDSS_BACKEND: "1"
+      DPR_NDSS_ENABLED: "1"
+      DPR_NDSS_PAPERS_TABLE: ndss_papers
+      DPR_NDSS_VECTOR_RPC_EXACT: match_ndss_papers_exact
+      DPR_NDSS_BM25_RPC: match_ndss_papers_bm25
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip + torch
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/torch
+          key: ${{ runner.os }}-dpr-hf-v2-${{ hashFiles('requirements.txt') }}
+
+      - name: Install deps (skip sqlite3)
+        run: |
+          python - <<'PY'
+          import re
+          lines = open("requirements.txt", "r", encoding="utf-8").read().splitlines()
+          lines = [l for l in lines if l.strip() and not re.match(r"^sqlite3\\b", l)]
+          open("/tmp/req.txt", "w", encoding="utf-8").write("\n".join(lines))
+          PY
+          python -m pip install --upgrade pip
+          python -m pip install uv
+          uv pip install --system -r /tmp/req.txt
+
+      - name: Run Maintain Pipeline
+        run: |
+          set -euo pipefail
+          set -x
+
+          if [ -z "${SUPABASE_SERVICE_KEY}" ]; then
+            echo "[WARN] 未配置 SUPABASE_SERVICE_KEY，已跳过维护同步。"
+            exit 0
+          fi
+
+          MAINTAIN_TARGET="${{ github.event.inputs.maintain_target }}"
+          if [ -z "$MAINTAIN_TARGET" ]; then
+            MAINTAIN_TARGET="arxiv"
+          fi
+
+          case "${MAINTAIN_TARGET}" in
+            arxiv)
+              FETCH_DAYS="${{ github.event.inputs.fetch_days }}"
+              if [ -z "$FETCH_DAYS" ]; then
+                FETCH_DAYS="9"
+              fi
+              ARGS=(--fetch-days "$FETCH_DAYS")
+              python src/maintain/arxiv.py "${ARGS[@]}"
+              ;;
+            conference)
+              CONFERENCE="${{ github.event.inputs.conference }}"
+              YEARS="${{ github.event.inputs.years }}"
+              if [ -z "$CONFERENCE" ] || [ -z "$YEARS" ]; then
+                echo "[ERROR] maintain_target=conference 需要 conference 和 years 输入。"
+                exit 1
+              fi
+
+              CONF_KEY="$(printf '%s' "$CONFERENCE" | tr '[:upper:]' '[:lower:]')"
+              case "$CONF_KEY" in
+                nips|neurips)
+                  python src/maintain/neurips.py --years "$YEARS" --skip-cleanup
+                  ;;
+                icml)
+                  python src/maintain/icml.py --years "$YEARS" --skip-cleanup
+                  ;;
+                iclr)
+                  python src/maintain/iclr.py --years "$YEARS" --skip-cleanup
+                  ;;
+                aaai)
+                  python src/maintain/aaai.py --years "$YEARS" --skip-cleanup
+                  ;;
+                cvpr)
+                  python src/maintain/cvpr.py --year-end "$(echo "$YEARS" | tr ',' '\n' | sort -rn | head -1)" --year-count "$(echo "$YEARS" | tr ',' '\n' | wc -l)" --skip-cleanup
+                  ;;
+                eccv)
+                  python src/maintain/eccv.py --year-end "$(echo "$YEARS" | tr ',' '\n' | sort -rn | head -1)" --year-count "$(echo "$YEARS" | tr ',' '\n' | wc -l)" --skip-cleanup
+                  ;;
+                ijcai)
+                  python src/maintain/ijcai.py --year-end "$(echo "$YEARS" | tr ',' '\n' | sort -rn | head -1)" --year-count "$(echo "$YEARS" | tr ',' '\n' | wc -l)" --skip-cleanup
+                  ;;
+                acl)
+                  python src/maintain/acl.py --year-end "$(echo "$YEARS" | tr ',' '\n' | sort -rn | head -1)" --year-count "$(echo "$YEARS" | tr ',' '\n' | wc -l)" --skip-cleanup
+                  ;;
+                emnlp)
+                  python src/maintain/emnlp.py --year-end "$(echo "$YEARS" | tr ',' '\n' | sort -rn | head -1)" --year-count "$(echo "$YEARS" | tr ',' '\n' | wc -l)" --skip-cleanup
+                  ;;
+                osdi)
+                  python src/maintain/osdi.py --years "$YEARS" --skip-cleanup
+                  ;;
+                sosp)
+                  python src/maintain/sosp.py --years "$YEARS" --skip-cleanup
+                  ;;
+                sp|s\&p|ieee_sp|ieee-sp|ieeesp|ieee_s\&p|ieee\ s\&p)
+                  python src/maintain/ieee_sp.py --years "$YEARS" --skip-cleanup
+                  ;;
+                ndss)
+                  python src/maintain/ndss.py --years "$YEARS" --skip-cleanup
+                  ;;
+                *)
+                  echo "[ERROR] 不支持的会议：$CONFERENCE。"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "[ERROR] 不支持的维护目标：$MAINTAIN_TARGET，仅支持 arxiv 或 conference。"
+              exit 1
+              ;;
+          esac

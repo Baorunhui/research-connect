@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Daily Paper Reader"
+authors:
+  - family-names: "Zhang"
+    given-names: "Ziwen"
+    alias: "ziwenhahaha"
+version: "1.0.0"
+date-released: 2026-02-19
+url: "https://github.com/ziwenhahaha/daily-paper-reader"
+license: "MIT"

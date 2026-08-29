@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>我教 AI 给我排小红书</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=LXGW+WenKai:wght@400;700&family=Long+Cang&family=Liu+Jian+Mao+Cao&family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Serif+SC:wght@400;700;900&family=ZCOOL+XiaoWei&family=ZCOOL+KuaiLe&family=Ma+Shan+Zheng&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* ========== 校园手账 Campus Notebook ========== */
+  :root {
+    --bg: #FDFBF5;          /* 米黄纸 */
+    --bg-grid: #E8DFC9;     /* 横线 */
+    --bg-tape: #FFE9A8;     /* 胶带黄 */
+    --bg-tape2: #FFB8B8;    /* 胶带粉 */
+    --ink: #2C2826;         /* 黑色字 */
+    --ink-pen: #2A4D8F;     /* 钢笔蓝 */
+    --ink-soft: #6B665C;
+    --highlight: #FFE066;   /* 荧光黄 */
+    --highlight-pink: #FFB8D1; /* 荧光粉 */
+    --accent: #E84855;      /* 红笔 */
+    --accent-green: #5BA577; /* 绿笔 */
+    --font-display: "LXGW WenKai", "Noto Sans SC", serif;
+    --font-body: "LXGW WenKai", "Noto Sans SC", serif;
+    --font-hand: "Long Cang", "Liu Jian Mao Cao", cursive;
+    --font-mono: "JetBrains Mono", monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* ========== 预览容器 ========== */
+  body {
+    background: #ECECEC;
+    padding: 40px 0;
+    font-family: var(--font-body);
+  }
+  .deck {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+  .card-wrap {
+    width: 360px; height: 480px;        /* 3:4 缩略 */
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,.12);
+    border-radius: 12px;
+    background: var(--bg);
+  }
+  .card {
+    width: 1080px; height: 1440px;       /* 真实尺寸 */
+    transform: scale(0.3333);
+    transform-origin: top left;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    position: relative;
+    overflow: hidden;
+    padding: 96px 80px;
+    /* 整卡背景细横线 */
+    background-image: linear-gradient(transparent 95%, var(--bg-grid) 95%);
+    background-size: 100% 64px;
+    background-position: 0 80px;
+  }
+
+  /* ========== 通用排版 ========== */
+  .cover-title {
+    font-family: var(--font-display);
+    font-size: 144px;
+    line-height: 1.18;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+  }
+  .cover-sub {
+    font-family: var(--font-display);
+    font-size: 44px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin-top: 36px;
+  }
+  .page-title {
+    font-family: var(--font-display);
+    font-size: 88px;
+    line-height: 1.25;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .page-sub {
+    font-family: var(--font-display);
+    font-size: 36px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin-top: 24px;
+  }
+  .body {
+    font-size: 40px;
+    line-height: 1.8;
+    color: var(--ink);
+  }
+  .small {
+    font-family: var(--font-mono);
+    font-size: 26px;
+    color: var(--ink-soft);
+  }
+
+  /* ========== 装饰元素 ========== */
+  /* 撕胶带 */
+  .tape {
+    position: absolute;
+    width: 220px;
+    height: 56px;
+    background: var(--bg-tape);
+    opacity: 0.85;
+    transform: rotate(-6deg);
+    box-shadow: 0 4px 12px rgba(0,0,0,.06);
+  }
+  .tape::before, .tape::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 12px;
+    background: linear-gradient(90deg, transparent 0%, transparent 40%, rgba(0,0,0,.05) 70%, transparent 100%);
+  }
+  .tape::before { left: -12px; clip-path: polygon(0 30%, 100% 0, 100% 100%, 0 70%); background: var(--bg-tape); opacity: .85; }
+  .tape::after { right: -12px; clip-path: polygon(0 0, 100% 30%, 100% 70%, 0 100%); background: var(--bg-tape); opacity: .85; }
+
+  /* 红笔批注 */
+  .red-note {
+    font-family: var(--font-hand);
+    font-size: 56px;
+    color: var(--accent);
+    transform: rotate(-3deg);
+    line-height: 1;
+  }
+
+  /* 荧光笔 */
+  .hl {
+    background: linear-gradient(transparent 55%, var(--highlight) 55%, var(--highlight) 92%, transparent 92%);
+    padding: 0 4px;
+  }
+  .hl-pink {
+    background: linear-gradient(transparent 55%, var(--highlight-pink) 55%, var(--highlight-pink) 92%, transparent 92%);
+    padding: 0 4px;
+  }
+
+  /* 钢笔蓝色块 */
+  .pen-box {
+    border: 4px solid var(--ink-pen);
+    border-radius: 12px;
+    padding: 24px 32px;
+    color: var(--ink-pen);
+  }
+
+  /* 复选框列表 */
+  .check-list { list-style: none; padding: 0; margin: 48px 0 0 0; }
+  .check-list li {
+    font-size: 42px;
+    line-height: 1.7;
+    margin-bottom: 28px;
+    padding-left: 60px;
+    position: relative;
+    color: var(--ink);
+  }
+  .check-list li::before {
+    content: "□";
+    position: absolute;
+    left: 0; top: -4px;
+    font-size: 48px;
+    color: var(--ink-pen);
+    font-weight: 700;
+  }
+
+  /* 数字标号 */
+  .num-list { list-style: none; padding: 0; margin: 48px 0 0 0; }
+  .num-list li {
+    font-size: 40px;
+    line-height: 1.6;
+    margin-bottom: 36px;
+    padding-left: 88px;
+    position: relative;
+  }
+  .num-list li .num {
+    position: absolute;
+    left: 0; top: -4px;
+    font-family: var(--font-display);
+    font-size: 56px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  /* 双列布局 */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px 56px;
+    margin-top: 48px;
+  }
+  .two-col .item {
+    font-size: 40px;
+    line-height: 1.4;
+    color: var(--ink);
+    padding-left: 24px;
+    border-left: 6px solid var(--accent-green);
+  }
+
+  /* 卡片角落小标 */
+  .corner-tag {
+    position: absolute;
+    top: 56px; right: 80px;
+    font-family: var(--font-mono);
+    font-size: 24px;
+    color: var(--ink-soft);
+    letter-spacing: 0.1em;
+  }
+  .page-num {
+    position: absolute;
+    bottom: 56px; right: 80px;
+    font-family: var(--font-mono);
+    font-size: 28px;
+    color: var(--ink-soft);
+    letter-spacing: 0.1em;
+  }
+
+  /* 终端代码块 */
+  .code {
+    font-family: var(--font-mono);
+    font-size: 30px;
+    background: #2C2826;
+    color: #FDFBF5;
+    padding: 28px 36px;
+    border-radius: 8px;
+    line-height: 1.6;
+    margin-top: 24px;
+  }
+  .code .prompt { color: #5BA577; }
+
+  /* 大数字 */
+  .big-num {
+    font-family: var(--font-display);
+    font-size: 360px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+    transform: rotate(-4deg);
+  }
+
+  /* 圆圈强调 */
+  .circle {
+    display: inline-block;
+    border: 4px solid var(--accent);
+    border-radius: 50%;
+    padding: 2px 18px;
+    transform: rotate(-2deg);
+  }
+
+  /* ========== 印刷模式（render.py 截图时用） ========== */
+  @media print {
+    body { background: white; padding: 0; }
+    .card-wrap { width: 1080px; height: 1440px; box-shadow: none; border-radius: 0; }
+    .card { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="deck">
+
+  <!-- ========== 卡片 1：封面（多案例展示） ========== -->
+  <div class="card-wrap"><section class="card">
+    <div class="tape" style="top: 56px; left: 80px; transform: rotate(-4deg);"></div>
+    <div class="tape" style="top: 76px; right: 60px; background: var(--bg-tape2); transform: rotate(5deg);"></div>
+
+    <div class="corner-tag">/ COVER</div>
+
+    <!-- 标题区 -->
+    <div style="margin-top: 56px;">
+      <h1 style="font-family: var(--font-display); font-size: 108px; line-height: 1.1; font-weight: 700; color: var(--ink); letter-spacing: 0.02em;">
+        一个 <span class="hl">skill</span><br>
+        搞定小红书排版
+      </h1>
+      <div style="display: flex; justify-content: flex-end; align-items: flex-end; margin-top: 24px;">
+        <div class="red-note" style="font-size: 38px; transform: rotate(-3deg); white-space: nowrap;">
+          都是真案例 ↓
+        </div>
+      </div>
+    </div>
+
+    <!-- 案例缩略网格：6 种排版 × 6 种风格 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 22px; margin-top: 44px;">
+
+      <!-- 1. 封面型 · 奶油拿铁 -->
+      <div style="aspect-ratio: 3/4; background: #F5EFE6; color: #4A3520; padding: 22px 20px; border-radius: 14px; position: relative; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8B6F47; letter-spacing: 0.18em;">01 · 封面</div>
+        <div style="margin-top: auto;">
+          <div style="font-family: 'ZCOOL XiaoWei', serif; font-size: 44px; line-height: 1.15; font-weight: 700;">
+            周末早餐<br>提案 ☕
+          </div>
+          <div style="width: 38px; height: 4px; background: #D97757; margin: 14px 0 10px;"></div>
+          <div style="font-size: 13px; color: #8B6F47; letter-spacing: 0.18em;">CREAM · LATTE</div>
+        </div>
+      </div>
+
+      <!-- 2. 数据型 · 暗黑科技 -->
+      <div style="aspect-ratio: 3/4; background: #0A0E1A; color: #E8ECF1; padding: 22px 20px; border-radius: 14px; position: relative; overflow: hidden;
+        background-image: linear-gradient(rgba(0,255,148,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,148,0.08) 1px, transparent 1px);
+        background-size: 22px 22px;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #00FF94; letter-spacing: 0.1em;">02 · DATA</div>
+        <div style="margin-top: 26px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #00FF94; line-height: 0.95;">
+            <span style="font-size: 96px;">90</span><span style="font-size: 36px;">%</span>
+          </div>
+          <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 17px; color: #E8ECF1; margin-top: 14px; line-height: 1.35; font-weight: 500;">
+            用 AI 后<br>排版时间砍掉
+          </div>
+        </div>
+        <div style="position: absolute; bottom: 14px; left: 20px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8B95A7; letter-spacing: 0.15em;">DARK · TECH</div>
+      </div>
+
+      <!-- 3. 清单型 · 校园手账 -->
+      <div style="aspect-ratio: 3/4; background: #FDFBF5; color: #2C2826; padding: 22px 20px; border-radius: 14px; position: relative; overflow: hidden;
+        background-image: linear-gradient(transparent 92%, #E8DFC9 92%);
+        background-size: 100% 22px; background-position: 0 60px;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6B665C; letter-spacing: 0.15em;">03 · 清单</div>
+        <div style="font-family: 'LXGW WenKai', serif; font-size: 24px; line-height: 1.25; font-weight: 700; margin-top: 12px;">
+          爆款笔记<br>
+          <span style="background: linear-gradient(transparent 55%, #FFE066 55%, #FFE066 92%, transparent 92%); padding: 0 4px;">5 个套路</span>
+        </div>
+        <ul style="list-style: none; padding: 0; margin-top: 14px; font-family: 'LXGW WenKai', serif;">
+          <li style="font-size: 14px; line-height: 1.85; color: #2C2826;"><span style="color: #2A4D8F; font-weight: 700;">□</span> 钩子在前 3 秒</li>
+          <li style="font-size: 14px; line-height: 1.85; color: #2C2826;"><span style="color: #2A4D8F; font-weight: 700;">□</span> 数据当封面</li>
+          <li style="font-size: 14px; line-height: 1.85; color: #2C2826;"><span style="color: #2A4D8F; font-weight: 700;">□</span> 留白要够多</li>
+        </ul>
+        <div style="position: absolute; bottom: 12px; right: 16px; font-family: 'Long Cang', cursive; color: #E84855; font-size: 22px; transform: rotate(-4deg);">收藏 ✓</div>
+      </div>
+
+      <!-- 4. 长文本型 · 复古杂志 -->
+      <div style="aspect-ratio: 3/4; background: #E8DCC4; color: #2A2418; padding: 22px 20px; position: relative; overflow: hidden;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2A2418; padding-bottom: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6B5B43; letter-spacing: 0.18em;">04 · 长文本</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #6B5B43; letter-spacing: 0.15em;">VOL · 04</div>
+        </div>
+
+        <div style="font-family: 'Noto Serif SC', serif; font-size: 26px; line-height: 1.15; font-weight: 900; margin-top: 14px; letter-spacing: 0.02em;">
+          一个人住<br>第三年
+        </div>
+
+        <div style="margin-top: 12px; font-family: 'Noto Serif SC', serif; font-size: 11.5px; line-height: 1.75; color: #2A2418; text-align: justify;">
+          <span style="float: left; font-family: 'Noto Serif SC', serif; font-size: 42px; line-height: 0.85; font-weight: 900; padding: 3px 6px 0 0; color: #B5471F;">从</span>搬出去的那天起，我才知道一个人吃饭也可以这么安静。没有电视，没有人催我洗碗，也没有谁问我今天为什么又加班这么晚。
+          <span style="display: block; margin-top: 8px; clear: both;">后来我学会了给自己买花，把每个周末过成节日……</span>
+        </div>
+
+        <div style="position: absolute; bottom: 14px; left: 20px; right: 20px; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #6B5B43; letter-spacing: 0.15em;">
+          <span>—— BY L</span>
+          <span>VINTAGE · MAG</span>
+        </div>
+      </div>
+
+      <!-- 5. 步骤型 · 多巴胺 -->
+      <div style="aspect-ratio: 3/4; background: #FFE066; color: #1A1A1A; padding: 22px 20px; border-radius: 14px; position: relative; overflow: hidden;">
+        <!-- 装饰色块 -->
+        <div style="position: absolute; top: -24px; right: -24px; width: 76px; height: 76px; border-radius: 50%; background: #FF6B9D;"></div>
+        <div style="position: absolute; top: 78px; right: 22px; width: 12px; height: 12px; border-radius: 50%; background: #00C896;"></div>
+        <div style="position: absolute; bottom: 96px; left: -8px; width: 26px; height: 26px; border-radius: 50%; background: #4DABF7; opacity: 0.85;"></div>
+
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #1A1A1A; opacity: 0.7; letter-spacing: 0.18em;">05 · 步骤</div>
+        <div style="font-family: 'ZCOOL KuaiLe', sans-serif; font-size: 30px; line-height: 1; font-weight: 700; margin-top: 6px;">
+          3 步出图
+        </div>
+        <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 11px; color: #1A1A1A; opacity: 0.75; margin-top: 4px; font-weight: 500;">
+          10 秒搞定 · 不用懂代码
+        </div>
+
+        <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 2px;">
+          <div style="background: #1A1A1A; color: #FFE066; padding: 6px 11px; border-radius: 8px; font-size: 13px; font-weight: 700; transform: rotate(-1deg); align-self: flex-start;">
+            ① 装 skill
+          </div>
+          <div style="font-size: 11px; color: #1A1A1A; opacity: 0.4; padding-left: 14px; line-height: 1;">↓</div>
+          <div style="background: #FF6B9D; color: #1A1A1A; padding: 6px 11px; border-radius: 8px; font-size: 13px; font-weight: 700; transform: rotate(1deg); align-self: flex-start;">
+            ② 描述主题
+          </div>
+          <div style="font-size: 11px; color: #1A1A1A; opacity: 0.4; padding-left: 14px; line-height: 1;">↓</div>
+          <div style="background: #00C896; color: #1A1A1A; padding: 6px 11px; border-radius: 8px; font-size: 13px; font-weight: 700; transform: rotate(-1deg); align-self: flex-start;">
+            ③ 出图 ✨
+          </div>
+        </div>
+
+        <!-- 结果 badge -->
+        <div style="position: absolute; bottom: 38px; right: 14px; background: #1A1A1A; color: #FFE066; padding: 8px 12px; border-radius: 14px; transform: rotate(5deg); box-shadow: 4px 4px 0 #FF6B9D;">
+          <div style="font-family: 'ZCOOL KuaiLe', sans-serif; font-size: 18px; font-weight: 700; line-height: 1;">6 张</div>
+          <div style="font-size: 9px; opacity: 0.8; letter-spacing: 0.12em; margin-top: 3px;">PNG 直出</div>
+        </div>
+
+        <div style="position: absolute; bottom: 14px; left: 20px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #1A1A1A; opacity: 0.7; letter-spacing: 0.18em;">DOPAMINE</div>
+      </div>
+
+      <!-- 6. 对比型 · 极简黑白 -->
+      <div style="aspect-ratio: 3/4; background: #FFFFFF; color: #0A0A0A; padding: 0; position: relative; overflow: hidden; border: 2px solid #0A0A0A;">
+        <div style="display: grid; grid-template-rows: 1fr 1fr; height: 100%;">
+          <div style="background: #FFFFFF; padding: 18px 18px 14px; border-bottom: 2px solid #0A0A0A;">
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #6E6E6E; letter-spacing: 0.25em;">06 · BEFORE</div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 22px; font-weight: 900; line-height: 1.15; margin-top: 12px; color: #6E6E6E;">
+              <span style="text-decoration: line-through; text-decoration-color: #FF3D00; text-decoration-thickness: 3px;">套 Canva<br>模板</span>
+            </div>
+          </div>
+          <div style="background: #0A0A0A; color: #FFFFFF; padding: 18px;">
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #FF3D00; letter-spacing: 0.25em;">AFTER</div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 22px; font-weight: 900; line-height: 1.15; margin-top: 12px;">
+              AI 直接<br>给我出图
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 底部签名 -->
+    <div style="position: absolute; bottom: 56px; left: 80px; display: flex; gap: 14px; align-items: center;">
+      <div style="width: 14px; height: 14px; border-radius: 50%; background: var(--accent);"></div>
+      <span class="small" style="font-size: 22px;">clone from zarazhangrui / frontend-slides</span>
+    </div>
+  </section></div>
+
+  <!-- ========== 卡片 2：痛点 ========== -->
+  <div class="card-wrap"><section class="card">
+    <div class="corner-tag">No. 02</div>
+
+    <h2 class="page-title">
+      你是不是<br>
+      也<span class="hl-pink">这样</span> ↓
+    </h2>
+
+    <ul class="check-list">
+      <li>想发小红书，<span class="hl">不会排版</span></li>
+      <li>用 Canva 模板，全网撞款</li>
+      <li>自己 P 图，1 小时只出 1 张</li>
+      <li>越想做精致，越不敢发</li>
+    </ul>
+
+    <div class="red-note" style="position: absolute; bottom: 180px; right: 120px;">
+      我也是 ✗
+    </div>
+
+    <div class="page-num">02 / 07</div>
+  </section></div>
+
+  <!-- ========== 卡片 3：介绍 ========== -->
+  <div class="card-wrap"><section class="card">
+    <div class="corner-tag">No. 03</div>
+
+    <h2 class="page-title">
+      <span class="circle">所以</span>我做了<br>
+      一个 Skill
+    </h2>
+    <p class="page-sub">教 Claude Code 直接出小红书图</p>
+
+    <div style="margin-top: 80px;">
+      <div class="pen-box" style="margin-bottom: 32px;">
+        <div style="font-size: 36px; font-weight: 700; margin-bottom: 12px;">用 HTML 做小红书排版</div>
+        <div style="font-size: 30px; opacity: .8;">无需设计软件 · Claude 直出 PNG</div>
+      </div>
+      <div class="pen-box" style="margin-bottom: 32px;">
+        <div style="font-size: 36px; font-weight: 700; margin-bottom: 12px;">1080×1440 高清 PNG</div>
+        <div style="font-size: 30px; opacity: .8;">直接上传不糊</div>
+      </div>
+      <div class="pen-box">
+        <div style="font-size: 36px; font-weight: 700; margin-bottom: 12px;">自动配色 + 中文字体</div>
+        <div style="font-size: 30px; opacity: .8;">霞鹜文楷 / 思源宋体 / 毛笔字</div>
+      </div>
+    </div>
+
+    <div class="page-num">03 / 07</div>
+  </section></div>
+
+  <!-- ========== 卡片 4：12 风格（每个都配 example） ========== -->
+  <div class="card-wrap"><section class="card">
+    <div class="corner-tag">No. 04</div>
+
+    <h2 class="page-title">
+      喜欢<span class="hl">这些</span><br>
+      排版吗？
+    </h2>
+
+    <div class="red-note" style="position: absolute; top: 246px; right: 80px; font-size: 36px; transform: rotate(-4deg);">
+      ↓ 真做了
+    </div>
+
+    <!-- 12 个风格示例：4 列 × 3 行（12 种不同卡片类型） -->
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 56px;">
+
+      <!-- 1. 奶油拿铁 / 封面型：巨大标题 + 留白 -->
+      <div style="aspect-ratio: 3/4; background: #F5EFE6; color: #4A3520; padding: 12px 11px; border-radius: 10px; position: relative; overflow: hidden;">
+        <!-- 装饰胶带 -->
+        <div style="position: absolute; top: 8px; right: 14px; width: 32px; height: 12px; background: #E8C9A0; opacity: 0.7; transform: rotate(8deg);"></div>
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #8B6F47; letter-spacing: 0.25em;">01 / COVER</div>
+        <!-- 三行大标题 -->
+        <div style="margin-top: 38px;">
+          <div style="font-family: 'ZCOOL XiaoWei', serif; font-size: 30px; line-height: 1; font-weight: 700; color: #4A3520;">周末</div>
+          <div style="font-family: 'ZCOOL XiaoWei', serif; font-size: 30px; line-height: 1; font-weight: 700; color: #D97757; margin-top: 4px;">早餐</div>
+          <div style="font-family: 'ZCOOL XiaoWei', serif; font-size: 30px; line-height: 1; font-weight: 700; color: #4A3520; margin-top: 4px;">提案 ☕</div>
+        </div>
+        <!-- 副标 -->
+        <div style="position: absolute; bottom: 38px; left: 11px;">
+          <div style="width: 22px; height: 2px; background: #D97757;"></div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #8B6F47; letter-spacing: 0.22em; margin-top: 5px;">SAT · 8:30 AM</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #8B6F47; letter-spacing: 0.22em; margin-top: 2px;">FOR TWO</div>
+        </div>
+        <div style="position: absolute; bottom: 8px; left: 11px; right: 11px; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #8B6F47; letter-spacing: 0.18em;">
+          <span>CREAM · LATTE</span><span>VOL.01</span>
+        </div>
+      </div>
+
+      <!-- 2. 杂志大字 / 金句卡：超大引号 + 一句话 -->
+      <div style="aspect-ratio: 3/4; background: #FFFFFF; color: #0A0A0A; padding: 12px 11px; border-radius: 10px; position: relative; overflow: hidden; border: 2px solid #0A0A0A;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #6E6E6E; letter-spacing: 0.22em;">02 · QUOTE</div>
+        <!-- 巨型引号 -->
+        <div style="font-family: 'Noto Serif SC', serif; font-size: 60px; font-weight: 900; color: #FF3D00; line-height: 0.85; margin-top: 6px;">&ldquo;</div>
+        <!-- 金句正文 -->
+        <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 19px; font-weight: 900; line-height: 1.1; margin-top: 4px; letter-spacing: -0.01em;">
+          上班是为了<br>
+          <span style="background: #0A0A0A; color: #FFFFFF; padding: 0 4px;">不上班</span>
+        </div>
+        <!-- 出处 -->
+        <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 9px; line-height: 1.5; margin-top: 18px; font-weight: 500; color: #6E6E6E;">
+          —— 当代打工人语录<br>
+          收录于《周报指南》P.04
+        </div>
+        <div style="position: absolute; bottom: 7px; left: 11px; right: 11px; border-top: 3px solid #0A0A0A; padding-top: 4px; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 8px;">
+          <span>NO.02</span><span>BOLD · MAG</span>
+        </div>
+      </div>
+
+      <!-- 3. 莫兰迪 / 词典卡：词条结构 -->
+      <div style="aspect-ratio: 3/4; background: #C9C0B4; color: #3D352B; padding: 11px 10px; border-radius: 10px; position: relative; overflow: hidden;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 4px; border-bottom: 1px solid #6E6357;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #6E6357; letter-spacing: 0.2em;">03 · 词典</div>
+          <div style="display: flex; gap: 2px;">
+            <div style="width: 8px; height: 8px; border-radius: 50%; background: #B5A89C;"></div>
+            <div style="width: 8px; height: 8px; border-radius: 50%; background: #D9BFB0;"></div>
+            <div style="width: 8px; height: 8px; border-radius: 50%; background: #94A192;"></div>
+          </div>
+        </div>
+        <!-- 词条 1 -->
+        <div style="margin-top: 10px;">
+          <div style="display: flex; align-items: baseline; gap: 6px;">
+            <div style="font-family: 'Noto Serif SC', serif; font-size: 16px; font-weight: 900; color: #3D352B;">极 简</div>
+            <div style="font-family: 'Noto Serif SC', serif; font-size: 8px; color: #6E6357; font-style: italic;">jí jiǎn · adj.</div>
+          </div>
+          <div style="font-family: 'Noto Serif SC', serif; font-size: 9px; color: #4A4138; line-height: 1.5; margin-top: 3px;">把不重要的东西去掉，<br>只留下真正喜欢的。</div>
+        </div>
+        <!-- 词条 2 -->
+        <div style="margin-top: 10px;">
+          <div style="display: flex; align-items: baseline; gap: 6px;">
+            <div style="font-family: 'Noto Serif SC', serif; font-size: 16px; font-weight: 900; color: #3D352B;">留 白</div>
+            <div style="font-family: 'Noto Serif SC', serif; font-size: 8px; color: #6E6357; font-style: italic;">liú bái · n.</div>
+          </div>
+          <div style="font-family: 'Noto Serif SC', serif; font-size: 9px; color: #4A4138; line-height: 1.5; margin-top: 3px;">画面里没说的部分，<br>是另一种语言。</div>
+        </div>
+        <div style="position: absolute; bottom: 8px; left: 10px; right: 10px; display: flex; justify-content: space-between; font-size: 7.5px; color: #6E6357; letter-spacing: 0.2em;">
+          <span>MORANDI · 高级灰</span><span>P.03</span>
+        </div>
+      </div>
+
+      <!-- 4. 暗黑科技 / 数据仪表盘：4 指标网格 -->
+      <div style="aspect-ratio: 3/4; background: #0A0E1A; color: #E8ECF1; padding: 11px 10px; border-radius: 10px; position: relative; overflow: hidden;
+        background-image: linear-gradient(rgba(0,255,148,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,148,0.08) 1px, transparent 1px);
+        background-size: 18px 18px;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #00FF94; letter-spacing: 0.2em; display: flex; justify-content: space-between;">
+          <span>04 · DASHBOARD</span><span style="color: #FF6B6B;">● LIVE</span>
+        </div>
+        <!-- 2×2 metrics grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 6px; margin-top: 10px;">
+          <div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 700; color: #00FF94; line-height: 0.9;">90<span style="font-size: 11px;">%</span></div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 7.5px; color: #8B95A7; margin-top: 2px;">时间砍掉</div>
+          </div>
+          <div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 700; color: #FF6B6B; line-height: 0.9;">12<span style="font-size: 11px;">s</span></div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 7.5px; color: #8B95A7; margin-top: 2px;">每张耗时</div>
+          </div>
+          <div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 700; color: #4DABF7; line-height: 0.9;">6<span style="font-size: 11px;">张</span></div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 7.5px; color: #8B95A7; margin-top: 2px;">每任务</div>
+          </div>
+          <div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 700; color: #FFD93D; line-height: 0.9;">12</div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 7.5px; color: #8B95A7; margin-top: 2px;">套风格</div>
+          </div>
+        </div>
+        <!-- 终端日志 -->
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 7.5px; line-height: 1.55; margin-top: 8px; color: #8B95A7; border-top: 1px dashed #2A3548; padding-top: 4px;">
+          <span style="color: #00FF94;">$</span> render --xhs<br>
+          <span style="color: #00FF94;">&gt;</span> all green ✓
+        </div>
+        <div style="position: absolute; bottom: 7px; left: 10px; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #8B95A7; letter-spacing: 0.18em;">DARK · TECH</div>
+      </div>
+
+      <!-- 5. 多巴胺 / 步骤卡：3 步 + 箭头 + 结果徽章 -->
+      <div style="aspect-ratio: 3/4; background: #FFE066; color: #1A1A1A; padding: 11px 10px; border-radius: 10px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: -14px; right: -14px; width: 44px; height: 44px; border-radius: 50%; background: #FF6B9D;"></div>
+        <div style="position: absolute; bottom: 50px; right: -10px; width: 18px; height: 18px; border-radius: 50%; background: #00C896;"></div>
+        <div style="position: absolute; bottom: -8px; left: -10px; width: 26px; height: 26px; border-radius: 50%; background: #4DABF7; opacity: 0.85;"></div>
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; opacity: 0.7; letter-spacing: 0.2em; position: relative;">05 · STEPS</div>
+        <div style="font-family: 'ZCOOL KuaiLe', sans-serif; font-size: 22px; line-height: 1; font-weight: 700; margin-top: 6px; position: relative;">3 步搞定</div>
+        <!-- 步骤 + 箭头 -->
+        <div style="display: flex; flex-direction: column; gap: 1px; margin-top: 12px; position: relative;">
+          <div style="background: #1A1A1A; color: #FFE066; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; transform: rotate(-1deg); align-self: flex-start;">① 选风格</div>
+          <div style="font-family: 'ZCOOL KuaiLe', sans-serif; font-size: 13px; padding-left: 8px; opacity: 0.55; line-height: 0.9; transform: rotate(-4deg);">↓</div>
+          <div style="background: #FF6B9D; color: #1A1A1A; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; transform: rotate(1deg); align-self: flex-start;">② 写主题</div>
+          <div style="font-family: 'ZCOOL KuaiLe', sans-serif; font-size: 13px; padding-left: 14px; opacity: 0.55; line-height: 0.9; transform: rotate(3deg);">↓</div>
+          <div style="background: #00C896; color: #1A1A1A; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; transform: rotate(-1deg); align-self: flex-start;">③ 出图 ✨</div>
+        </div>
+        <!-- 结果徽章 -->
+        <div style="position: absolute; bottom: 22px; right: 8px; background: #1A1A1A; color: #FFE066; padding: 5px 8px; border-radius: 14px; transform: rotate(6deg); box-shadow: 2px 2px 0 #FF6B9D; text-align: center;">
+          <div style="font-family: 'ZCOOL KuaiLe', sans-serif; font-size: 12px; font-weight: 700; line-height: 1;">6 张</div>
+          <div style="font-size: 7px; opacity: 0.85; letter-spacing: 0.12em; margin-top: 1px;">PNG</div>
+        </div>
+        <div style="position: absolute; bottom: 6px; left: 10px; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; opacity: 0.7; letter-spacing: 0.2em;">DOPAMINE</div>
+      </div>
+
+      <!-- 6. 国风水墨 / 诗词卡：竖排四句 + 印章 -->
+      <div style="aspect-ratio: 3/4; background: #F5EDD8; color: #1A1612; padding: 11px 10px; border-radius: 10px; position: relative; overflow: hidden;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #6B5B43; letter-spacing: 0.2em;">06 · 词牌</div>
+        <!-- 横题 -->
+        <div style="font-family: 'Ma Shan Zheng', serif; font-size: 18px; font-weight: 700; color: #1A1612; margin-top: 4px; line-height: 1;">菩萨蛮</div>
+        <div style="font-family: 'Ma Shan Zheng', serif; font-size: 9px; color: #4A3F2E; margin-top: 2px;">· 书江西造口壁 ·</div>
+        <!-- 竖排诗句 -->
+        <div style="position: absolute; top: 70px; right: 14px; display: flex; gap: 3px; align-items: flex-start;">
+          <div style="writing-mode: vertical-rl; font-family: 'Ma Shan Zheng', serif; font-size: 10.5px; line-height: 1.45; font-weight: 700; color: #1A1612;">青山遮不住</div>
+          <div style="writing-mode: vertical-rl; font-family: 'Ma Shan Zheng', serif; font-size: 10.5px; line-height: 1.45; font-weight: 700; color: #1A1612;">毕竟东流去</div>
+          <div style="writing-mode: vertical-rl; font-family: 'Ma Shan Zheng', serif; font-size: 10.5px; line-height: 1.45; font-weight: 700; color: #1A1612;">江晚正愁余</div>
+          <div style="writing-mode: vertical-rl; font-family: 'Ma Shan Zheng', serif; font-size: 10.5px; line-height: 1.45; font-weight: 700; color: #1A1612;">山深闻鹧鸪</div>
+        </div>
+        <!-- 落款 -->
+        <div style="position: absolute; bottom: 26px; left: 11px; font-family: 'Ma Shan Zheng', serif; font-size: 9.5px; color: #4A3F2E; line-height: 1.4;">—— 辛弃疾<br>淳熙三年</div>
+        <!-- 印章 -->
+        <div style="position: absolute; bottom: 26px; right: 11px; width: 22px; height: 22px; background: #C0392B; color: #F5EDD8; display: flex; align-items: center; justify-content: center; font-family: 'Ma Shan Zheng', serif; font-size: 10px; font-weight: 700;">印</div>
+        <div style="position: absolute; bottom: 8px; left: 11px; right: 11px; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #6B5B43; letter-spacing: 0.18em;">
+          <span>INK · ART</span><span>古风 / 06</span>
+        </div>
+      </div>
+
+      <!-- 7. 校园手账 / 干货清单：复选 + 高亮 + 红笔 -->
+      <div style="aspect-ratio: 3/4; background: #FDFBF5; color: #2C2826; padding: 11px 10px; border-radius: 10px; position: relative; overflow: hidden;
+        background-image: linear-gradient(transparent 92%, #E8DFC9 92%);
+        background-size: 100% 14px; background-position: 0 30px;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #6B665C; letter-spacing: 0.15em;">07 · 干货 📓</div>
+        <div style="font-family: 'LXGW WenKai', serif; font-size: 16px; line-height: 1.2; font-weight: 700; margin-top: 6px;">
+          爆款笔记<br>
+          <span style="background: linear-gradient(transparent 55%, #FFE066 55%, #FFE066 92%, transparent 92%); padding: 0 3px;">5 个套路</span>
+        </div>
+        <ul style="list-style: none; padding: 0; margin-top: 4px; font-family: 'LXGW WenKai', serif;">
+          <li style="font-size: 9.5px; line-height: 1.7; color: #2C2826;"><span style="color: #2A4D8F; font-weight: 700;">☑</span> <s style="color: #6B665C;">钩子在前 3 秒</s></li>
+          <li style="font-size: 9.5px; line-height: 1.7; color: #2C2826;"><span style="color: #2A4D8F; font-weight: 700;">☑</span> <s style="color: #6B665C;">数据当封面</s></li>
+          <li style="font-size: 9.5px; line-height: 1.7; color: #2C2826;"><span style="color: #2A4D8F; font-weight: 700;">□</span> 留白要够多</li>
+          <li style="font-size: 9.5px; line-height: 1.7; color: #2C2826;"><span style="color: #2A4D8F; font-weight: 700;">□</span> 标题带数字</li>
+          <li style="font-size: 9.5px; line-height: 1.7; color: #2C2826;"><span style="color: #2A4D8F; font-weight: 700;">□</span> 结尾留钩子</li>
+        </ul>
+        <div style="font-family: 'Long Cang', cursive; font-size: 13px; color: #E84855; margin-top: 4px; transform: rotate(-2deg); padding-left: 8px;">← 这两个超有用！</div>
+        <div style="position: absolute; bottom: 6px; right: 9px; font-family: 'Long Cang', cursive; color: #E84855; font-size: 16px; transform: rotate(-4deg);">收藏 ✓</div>
+      </div>
+
+      <!-- 8. 日系治愈 / 行动卡：提问 + 大动作 + CTA -->
+      <div style="aspect-ratio: 3/4; background: #FFF5F0; color: #6B4F47; padding: 11px 10px; border-radius: 10px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: -14px; right: -14px; width: 44px; height: 44px; border-radius: 50%; background: #F8C9C0; opacity: 0.7;"></div>
+        <div style="position: absolute; bottom: 60px; left: -10px; width: 28px; height: 28px; border-radius: 50%; background: #FFE0CC; opacity: 0.85;"></div>
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #B89B92; letter-spacing: 0.2em; position: relative;">08 · 给你</div>
+        <!-- 提问 -->
+        <div style="font-family: 'LXGW WenKai', serif; font-size: 10px; line-height: 1.4; margin-top: 10px; position: relative; color: #B89B92;">如果今天太累 →</div>
+        <!-- 巨型动作 -->
+        <div style="font-family: 'LXGW WenKai', serif; font-size: 28px; line-height: 1.05; font-weight: 700; margin-top: 8px; position: relative; color: #6B4F47;">
+          去<span style="color: #D88E8E;">睡</span><br>
+          一觉 🌸
+        </div>
+        <!-- 引语 -->
+        <div style="font-family: 'LXGW WenKai', serif; font-size: 9px; line-height: 1.55; margin-top: 8px; position: relative; color: #8C6F66;">
+          没什么是一觉<br>
+          解决不了的，如果有<br>
+          那就再睡一觉
+        </div>
+        <!-- CTA Button -->
+        <div style="display: inline-block; background: #6B4F47; color: #FFF5F0; padding: 4px 10px; border-radius: 14px; font-family: 'LXGW WenKai', serif; font-size: 10px; margin-top: 8px; position: relative; font-weight: 700;">
+          🌙 晚安 →
+        </div>
+        <div style="position: absolute; bottom: 7px; right: 10px; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #B89B92; letter-spacing: 0.2em;">HEAL · JP</div>
+      </div>
+
+      <!-- 9. 极简黑白 / 对比卡：上 BEFORE 下 AFTER -->
+      <div style="aspect-ratio: 3/4; background: #FFFFFF; color: #0A0A0A; padding: 0; border-radius: 10px; position: relative; overflow: hidden; border: 2px solid #0A0A0A;">
+        <div style="display: grid; grid-template-rows: 1fr 1fr; height: 100%;">
+          <div style="background: #FFFFFF; padding: 9px 10px; border-bottom: 2px solid #0A0A0A; position: relative;">
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 8.5px; color: #6E6E6E; letter-spacing: 0.25em;">09 / BEFORE</div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 18px; font-weight: 900; line-height: 1; margin-top: 6px; color: #6E6E6E;">
+              <span style="text-decoration: line-through; text-decoration-color: #FF3D00; text-decoration-thickness: 3px;">套<br>模板</span>
+            </div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 8.5px; color: #6E6E6E; margin-top: 4px; line-height: 1.4;">
+              撞款 · 慢 · 一眼假
+            </div>
+            <!-- 大箭头 -->
+            <div style="position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-top: 14px solid #FF3D00; z-index: 2;"></div>
+          </div>
+          <div style="background: #0A0A0A; color: #FFFFFF; padding: 9px 10px;">
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 8.5px; color: #FF3D00; letter-spacing: 0.25em;">AFTER ✓</div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 18px; font-weight: 900; line-height: 1; margin-top: 6px;">
+              AI 直<br>接出图
+            </div>
+            <div style="font-family: 'Noto Sans SC', sans-serif; font-size: 8.5px; color: #FFFFFF; margin-top: 4px; line-height: 1.4; opacity: 0.85;">
+              6 张 · 12 秒 · 不撞款
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 10. 复古杂志 / 长文摘录：drop cap 文章 -->
+      <div style="aspect-ratio: 3/4; background: #E8DCC4; color: #2A2418; padding: 11px 10px; border-radius: 10px; position: relative; overflow: hidden;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #2A2418; padding-bottom: 3px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #6B5B43; letter-spacing: 0.2em;">10 · ESSAY</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #6B5B43; letter-spacing: 0.15em;">VOL.X / P.06</div>
+        </div>
+        <div style="font-family: 'Noto Serif SC', serif; font-size: 17px; line-height: 1.05; font-weight: 900; margin-top: 6px;">一个人住<br>第三年</div>
+        <div style="font-family: 'Noto Serif SC', serif; font-size: 8px; color: #6B5B43; margin-top: 3px; font-style: italic;">—— 我把孤独熬成了诗</div>
+        <div style="margin-top: 5px; font-family: 'Noto Serif SC', serif; font-size: 8px; line-height: 1.55; color: #2A2418; text-align: justify;">
+          <span style="float: left; font-size: 24px; line-height: 0.85; font-weight: 900; padding: 1px 4px 0 0; color: #B5471F;">从</span>搬出去的那天起，我才知道一个人吃饭也可以这么安静，没有电视，没有人催我洗碗，也没有谁问我今天为什么又加班这么晚。
+          <span style="display: block; clear: both; margin-top: 4px;">后来我学会给自己买花，把每个周末都过成节日。</span>
+        </div>
+        <div style="position: absolute; bottom: 7px; left: 10px; right: 10px; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #6B5B43; letter-spacing: 0.15em;">
+          <span>—— BY L · 散文</span><span>VINTAGE · MAG</span>
+        </div>
+      </div>
+
+      <!-- 11. 港风胶片 / 台词卡：大引号 + 台词 + 出处 -->
+      <div style="aspect-ratio: 3/4; background: #1A2D2F; color: #F0E5D2; padding: 10px 10px; border-radius: 10px; position: relative; overflow: hidden;">
+        <div style="position: absolute; inset: 0; background: linear-gradient(135deg, transparent 50%, rgba(255, 95, 95, 0.25) 100%);"></div>
+        <div style="position: absolute; inset: 0; background: linear-gradient(225deg, transparent 65%, rgba(46, 196, 184, 0.18) 100%);"></div>
+        <div style="position: relative; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #FF6B6B; letter-spacing: 0.22em; display: flex; justify-content: space-between;">
+          <span>11 · SCENE 04</span><span>1994</span>
+        </div>
+        <!-- 巨型引号 -->
+        <div style="position: relative; font-family: 'Noto Serif SC', serif; font-size: 48px; line-height: 0.85; color: #FF6B6B; margin-top: 4px; opacity: 0.85; padding-left: 4px;">&ldquo;</div>
+        <!-- 台词 -->
+        <div style="position: relative; font-family: 'ZCOOL XiaoWei', serif; font-size: 14px; line-height: 1.3; color: #F0E5D2; margin-top: 4px; padding-left: 4px;">
+          我请你食叉烧饭，<br>
+          你食<span style="color: #FF6B6B;">唔食</span>啊？
+        </div>
+        <!-- 出处 -->
+        <div style="position: relative; font-family: 'ZCOOL XiaoWei', serif; font-size: 9px; line-height: 1.5; color: #F0E5D2; margin-top: 16px; opacity: 0.8; padding-left: 4px;">
+          —— 王家卫《重庆森林》<br>
+          1994 · 主演：梁朝伟
+        </div>
+        <div style="position: absolute; bottom: 7px; left: 10px; font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #FF6B6B; letter-spacing: 0.15em;">HK · FILM</div>
+        <div style="position: absolute; bottom: 7px; right: 10px; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #F0E5D2; opacity: 0.55;">35MM</div>
+      </div>
+
+      <!-- 12. 咖啡店黑板 / 价目表：手写菜单 -->
+      <div style="aspect-ratio: 3/4; background: #1F2A24; color: #F5F0E6; padding: 10px 10px; border-radius: 10px; position: relative; overflow: hidden; box-shadow: inset 0 0 22px rgba(0,0,0,0.45);">
+        <div style="text-align: center; font-family: 'Long Cang', cursive; font-size: 22px; line-height: 1; color: #F5F0E6;">今日推荐</div>
+        <div style="text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #C9B98A; letter-spacing: 0.22em; margin-top: 2px; padding-bottom: 4px; border-bottom: 1px dashed #C9B98A;">MENU · 2026.05.05</div>
+        <!-- 价目表 -->
+        <div style="margin-top: 5px; font-family: 'Long Cang', cursive; font-size: 12px; line-height: 1.4; color: #F5F0E6;">
+          <div style="display: flex; justify-content: space-between;"><span>美式咖啡 ····</span><span style="color: #C9B98A;">¥22</span></div>
+          <div style="display: flex; justify-content: space-between;"><span>燕麦拿铁 ····</span><span style="color: #C9B98A;">¥28</span></div>
+          <div style="display: flex; justify-content: space-between;"><span>抹茶馥芮白 ··</span><span style="color: #C9B98A;">¥32</span></div>
+          <div style="display: flex; justify-content: space-between;"><span>季节限定 ····</span><span style="color: #FF6B6B;">¥36</span></div>
+          <div style="display: flex; justify-content: space-between;"><span>海盐可颂 ····</span><span style="color: #C9B98A;">¥18</span></div>
+          <div style="display: flex; justify-content: space-between;"><span>芝士蛋糕 ····</span><span style="color: #C9B98A;">¥26</span></div>
+        </div>
+        <!-- 印章式 promo -->
+        <div style="position: absolute; bottom: 22px; right: 10px; border: 1.5px solid #FF6B6B; color: #FF6B6B; padding: 2px 5px; transform: rotate(-6deg); font-family: 'Long Cang', cursive; font-size: 10px; line-height: 1; text-align: center;">
+          满 50<br>减 8
+        </div>
+        <div style="position: absolute; bottom: 6px; left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 7.5px; color: #C9B98A; letter-spacing: 0.18em;">CAFE ☕</span>
+          <span style="font-family: 'Long Cang', cursive; font-size: 11px; color: #F5F0E6;">营业中</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="page-num">04 / 07</div>
+  </section></div>
+
+  <!-- ========== 卡片 5：怎么用 ========== -->
+  <div class="card-wrap"><section class="card">
+    <div class="corner-tag">No. 05</div>
+
+    <h2 class="page-title">
+      <span class="hl">3 步</span>用起来
+    </h2>
+    <p class="page-sub">不写代码，会聊天就行</p>
+
+    <!-- 步骤 1：装 -->
+    <div style="margin-top: 56px;">
+      <div style="display: flex; align-items: center; gap: 20px;">
+        <span style="font-family: var(--font-display); font-size: 64px; font-weight: 700; color: var(--accent); line-height: 1;">1</span>
+        <span style="font-family: var(--font-display); font-size: 40px; font-weight: 700; color: var(--ink);">把 skill 装到 Claude Code</span>
+      </div>
+      <div class="code" style="margin-left: 84px; margin-top: 16px; font-size: 26px;">
+        <span class="prompt">$</span> git clone https://github.com/<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;KellyGong0301/frontend-post<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;~/.claude/skills/frontend-post
+      </div>
+    </div>
+
+    <!-- 步骤 2：说 -->
+    <div style="margin-top: 40px;">
+      <div style="display: flex; align-items: center; gap: 20px;">
+        <span style="font-family: var(--font-display); font-size: 64px; font-weight: 700; color: var(--accent); line-height: 1;">2</span>
+        <span style="font-family: var(--font-display); font-size: 40px; font-weight: 700; color: var(--ink);">直接告诉 Claude 想要啥</span>
+      </div>
+      <div style="margin-left: 84px; margin-top: 16px; background: #FFFFFF; border: 3px dashed var(--ink-pen); border-radius: 12px; padding: 22px 28px; font-family: var(--font-display); font-size: 32px; color: var(--ink-pen); line-height: 1.45;">
+        "用<span class="hl">校园手账</span>风，给我做<br>
+        一篇周末复盘的小红书"
+      </div>
+    </div>
+
+    <!-- 步骤 3：拿 -->
+    <div style="margin-top: 40px;">
+      <div style="display: flex; align-items: center; gap: 20px;">
+        <span style="font-family: var(--font-display); font-size: 64px; font-weight: 700; color: var(--accent); line-height: 1;">3</span>
+        <span style="font-family: var(--font-display); font-size: 40px; font-weight: 700; color: var(--ink);">收 6 张 1080×1440 PNG</span>
+      </div>
+      <div style="margin-left: 84px; margin-top: 16px; font-family: var(--font-mono); font-size: 26px; color: var(--ink-soft); line-height: 1.7;">
+        → png_output/card_01.png<br>
+        &nbsp;&nbsp;png_output/card_02.png ... 06.png
+      </div>
+    </div>
+
+    <div class="red-note" style="position: absolute; bottom: 130px; right: 80px; font-size: 36px; transform: rotate(-3deg);">
+      全程没写一行代码 ✓
+    </div>
+
+    <div class="page-num">05 / 07</div>
+  </section></div>
+
+  <!-- ========== 卡片 6：为什么不撞款 ========== -->
+  <div class="card-wrap"><section class="card">
+    <div class="corner-tag">No. 06</div>
+
+    <h2 class="page-title">
+      更少<br>
+      <span class="hl">AI 味</span>
+    </h2>
+
+    <ul class="check-list" style="margin-top: 56px;">
+      <li><span style="color: var(--accent); font-weight: 700;">禁</span> AI 通用紫色渐变</li>
+      <li><span style="color: var(--accent); font-weight: 700;">禁</span> 默认苹方 / Inter 字体</li>
+      <li><span style="color: var(--accent-green); font-weight: 700;">✓</span> 字数硬上限，超量自动拆</li>
+      <li><span style="color: var(--accent-green); font-weight: 700;">✓</span> 中文字体精挑配对</li>
+      <li><span style="color: var(--accent-green); font-weight: 700;">✓</span> 每张装饰元素不重样</li>
+    </ul>
+
+    <div class="red-note" style="position: absolute; bottom: 200px; right: 80px; font-size: 40px;">
+      产出有底线 ✓
+    </div>
+
+    <div class="page-num">06 / 07</div>
+  </section></div>
+
+  <!-- ========== 卡片 7：GitHub 地址 ========== -->
+  <div class="card-wrap"><section class="card">
+    <div class="tape" style="top: 80px; left: 80px; transform: rotate(-5deg);"></div>
+    <div class="tape" style="top: 100px; right: 60px; background: var(--bg-tape2); transform: rotate(7deg);"></div>
+
+    <div class="corner-tag">No. 07 / END</div>
+
+    <div style="margin-top: 320px; text-align: center;">
+      <p style="font-family: var(--font-display); font-size: 44px; color: var(--ink-soft); margin-bottom: 40px; line-height: 1.4;">
+        <span class="hl">已开源</span> ↓
+      </p>
+
+      <!-- GitHub 地址主框 -->
+      <div style="border: 5px solid var(--ink-pen); border-radius: 20px; padding: 48px 56px; display: inline-block; background: var(--bg); position: relative;">
+        <div style="font-family: var(--font-mono); font-size: 22px; color: var(--ink-soft); letter-spacing: 0.25em; margin-bottom: 18px;">
+          GITHUB.COM /
+        </div>
+        <div style="font-family: var(--font-mono); font-size: 64px; font-weight: 700; color: var(--ink-pen); letter-spacing: 0.01em; line-height: 1.15;">
+          KellyGong0301<br>
+          <span style="color: var(--accent);">/ frontend-post</span>
+        </div>
+      </div>
+
+      <p style="font-family: var(--font-display); font-size: 34px; color: var(--ink); margin-top: 64px; line-height: 1.6;">
+        一个排小红书图的 <b>Claude Code Skill</b>
+      </p>
+    </div>
+
+    <div class="red-note" style="position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%) rotate(-2deg); font-size: 44px;">
+      ♥ star 一下嘛
+    </div>
+  </section></div>
+
+</div>
+</body>
+</html>

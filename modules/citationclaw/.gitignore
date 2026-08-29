@@ -1,0 +1,48 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# MinerU local models (symlinked, ~2GB)
+data/models/
+
+# Runtime outputs (keep result-template examples)
+data/result-*/
+!data/result-template1/
+!data/result-template2/
+runtime/
+
+# Runtime cache and config
+data/cache/
+config.json
+.superpowers/
+autor-test/.env
+
+# Local-only files (Claude instructions)
+CLAUDE.md
+.playwright-mcp/
+debug/
+
+# Test/benchmark scripts with API keys (DO NOT COMMIT)
+test_papers.py
+run_benchmark.py
+benchmark_papers.py
+benchmark_result.txt
+run_benchmark_baseline.py
+
+# Office temp files
+~$*

@@ -1,0 +1,53 @@
+name: Upstream Sync
+
+permissions:
+  contents: write # 必须有写权限才能合并代码
+
+on:
+  workflow_dispatch: # 允许用户手动点击触发
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync_latest_from_upstream:
+    name: Sync latest commits from upstream repo
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: ${{ github.event.repository.fork }} # 只有 Fork 的仓库才运行
+
+    steps:
+      # 1. 检出用户仓库的代码
+      - name: Checkout target repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # 2. 配置 .gitattributes 中的 merge=ours 驱动，用于保护用户运行态文件
+      - name: Configure protected merge driver
+        run: |
+          git config --global merge.ours.driver true
+
+      # 3. 运行同步 Action
+      - name: Sync upstream changes
+        id: sync
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
+        with:
+          # 👇 【重要】这里写死你的源仓库地址 (Developer's Repo)
+          upstream_sync_repo: ziwenhahaha/daily-paper-reader
+          upstream_sync_branch: main
+          target_sync_branch: main
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }} # 自动生成，无需用户配置
+          
+          # 👇 【关键配置】设置为 'false' 表示进行 Git Merge (合并)，而不是覆盖
+          # 默认行为其实就是 merge，但为了保险起见，不要开启 'hard_reset' 类的选项
+          test_mode: false
+
+      # 4. 如果同步失败（比如有冲突），打印错误
+      - name: Sync check
+        if: failure()
+        run: |
+          echo "[Error] 自动同步失败！可能是因为你修改了源代码导致冲突。"
+          echo "请手动前往 GitHub 页面解决冲突。"
+          exit 1

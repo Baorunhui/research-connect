@@ -1,0 +1,19 @@
+openai
+requests
+PyMuPDF>=1.24
+arxiv<3
+numpy
+pyyaml
+beautifulsoup4
+selenium
+webdriver-manager
+Pillow
+opencv-python-headless
+huggingface_hub
+dill
+
+# 综述流水线论文聚类（肘部法则 + KMeans）
+scikit-learn
+
+# 本地服务系统资源快照（/api/local/system）
+psutil

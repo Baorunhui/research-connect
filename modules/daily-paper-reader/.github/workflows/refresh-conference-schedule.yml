@@ -1,0 +1,67 @@
+name: refresh-conference-schedule
+
+on:
+  schedule:
+    # 每周一 01:00 UTC（避免整点高峰）刷新会议日程日期
+    - cron: '7 1 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-conference-schedule
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Regenerate conference schedule
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/sync_ccfddl_deadlines.py
+
+      - name: Commit refreshed schedule
+        # 上游 main 不自动提交，保护 fork 用户 "Sync fork" 习惯；fork 仓库自动提交各自刷新后的日程。
+        if: github.repository != 'ziwenhahaha/daily-paper-reader'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="${GITHUB_REF_NAME:-main}"
+
+          git add app/conference-schedule.json
+          if git diff --cached --quiet; then
+            echo "No schedule changes to commit."
+            exit 0
+          fi
+
+          git commit -m "[chore] refresh conference schedule"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin "$branch"
+            if git merge-base --is-ancestor "origin/$branch" HEAD 2>/dev/null; then
+              git push origin HEAD:"$branch" && { echo "[OK] push (fast-forward) on attempt $attempt"; exit 0; }
+            fi
+            if git rebase "origin/$branch" 2>/dev/null; then
+              git push origin HEAD:"$branch" && { echo "[OK] push (rebase) on attempt $attempt"; exit 0; }
+              git reset --hard ORIG_HEAD 2>/dev/null || true
+            else
+              git rebase --abort 2>/dev/null || true
+            fi
+            echo "[WARN] push attempt $attempt failed, retrying..."
+            [ "$attempt" -eq 5 ] && { echo "::error::Failed to push after 5 attempts"; exit 1; }
+            sleep "$((attempt * 3))"
+          done

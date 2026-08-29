@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1080, initial-scale=1">
+  <title>{{TITLE}}</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1080px; height: 1440px; }
+    body { font-family: "Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", sans-serif; }
+    .card { width: 1080px; height: 1440px; padding: 84px 76px 60px; background: linear-gradient(165deg, #0a0e1a, #101936 56%, #0d1225); color: #f0f4ff; position: relative; overflow: hidden; }
+    .grid { position: absolute; inset: 0; opacity: .08; background-image: linear-gradient(#00d4ff 1px, transparent 1px), linear-gradient(90deg, #00d4ff 1px, transparent 1px); background-size: 64px 64px; }
+    .glow-a { position: absolute; right: -160px; top: -120px; width: 440px; height: 440px; border-radius: 50%; background: rgba(0,212,255,.16); filter: blur(48px); }
+    .glow-b { position: absolute; left: -120px; bottom: -100px; width: 380px; height: 380px; border-radius: 50%; background: rgba(99,102,241,.16); filter: blur(42px); }
+    .content { position: relative; z-index: 2; }
+    .issue { display: flex; justify-content: space-between; color: rgba(240,244,255,.62); font: 22px "Noto Sans Mono CJK SC", monospace; }
+    h1 { margin: 96px 0 0; max-width: 900px; font-size: 76px; line-height: 1.18; font-weight: 900; }
+    .subtitle { color: #00d4ff; font-size: 34px; line-height: 1.42; margin-top: 28px; }
+    .steps { margin-top: 104px; display: grid; gap: 26px; }
+    .step { border: 1px solid rgba(0,212,255,.28); border-radius: 22px; background: rgba(15,24,52,.72); padding: 30px 34px; }
+    .step span { color: #00d4ff; font: 22px "Noto Sans Mono CJK SC", monospace; }
+    .step strong { display: block; margin-top: 18px; font-size: 34px; line-height: 1.32; }
+    footer { position: absolute; left: 76px; right: 76px; bottom: 60px; color: rgba(240,244,255,.62); font-size: 24px; border-top: 1px solid rgba(0,212,255,.25); padding-top: 26px; }
+  </style>
+</head>
+<body>
+  <section class="card">
+    <div class="grid"></div><div class="glow-a"></div><div class="glow-b"></div>
+    <main class="content">
+      <header class="issue"><span>{{KICKER}}</span><span>{{PAGE}}/{{TOTAL}}</span></header>
+      <h1>{{TITLE}}</h1>
+      <p class="subtitle">{{SUBTITLE}}</p>
+      <div class="steps">
+        <article class="step"><span>01</span><strong>{{POINT_1}}</strong></article>
+        <article class="step"><span>02</span><strong>{{POINT_2}}</strong></article>
+        <article class="step"><span>03</span><strong>{{POINT_3}}</strong></article>
+      </div>
+    </main>
+    <footer>{{FOOTER}}</footer>
+  </section>
+</body>
+</html>

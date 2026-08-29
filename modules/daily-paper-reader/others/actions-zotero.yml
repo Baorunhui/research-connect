@@ -1,0 +1,1020 @@
+type: ActionsTagsBackup
+author: zwwen0711
+platformVersion: 7.0.30
+pluginVersion: 2.2.4
+timestamp: '2025-12-28T17:22:32.173Z'
+actions:
+  1766933168242-lENQeb2s:
+    event: 1
+    operation: 4
+    data: >-
+      const MARKER_CHAT = "## 💬 Chat History";
+      const MARKER_ORIG = "## 📄 Original Abstract";
+      const MARKER_TLDR = "## 📝 TLDR";
+      const MARKER_GLANCE = "## 🧭 速览区";
+      const MARKER_DETAIL = "## 🧩 论文详细总结区";
+      const BR_PLACEHOLDER = /__BR__/g;
+      const AUTO_NOTE_TAG = "dpr-ai-summary-note";
+      const RETRY_DELAYS = [300, 800, 1500];
+
+      const targetItems = (typeof items !== "undefined" && items && items.length > 0)
+        ? items
+        : ((typeof item !== "undefined" && item) ? [item] : []);
+
+      if (!targetItems || targetItems.length === 0) {
+        return "❌ 错误：未接收到有效条目（请先在条目上触发脚本）";
+      }
+
+      function normalizeText(v) {
+        return (v || "").toString();
+      }
+
+      function normalizeSourceText(v) {
+        const plain = normalizeText(v)
+          .replace(/<br\s*\/?>/gi, "\n")
+          .replace(/<\/p>/gi, "\n")
+          .replace(/<p[^>]*>/gi, "")
+          .replace(/<[^>]+>/g, "")
+          .replace(BR_PLACEHOLDER, "\n")
+          .replace(/\r/g, "\n");
+        return plain
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
+      function hasAnyMarker(text) {
+        return (
+          text.includes(MARKER_CHAT) ||
+          text.includes(MARKER_ORIG) ||
+          text.includes(MARKER_TLDR) ||
+          text.includes(MARKER_GLANCE) ||
+          text.includes(MARKER_DETAIL)
+        );
+      }
+
+      function cleanForCompare(v) {
+        return normalizeSourceText(v).replace(/\s+/g, "");
+      }
+
+      function normalizeSectionFingerprint(value) {
+        return normalizeSourceText(value)
+          .toLowerCase()
+          .replace(/\s+/g, "")
+          .replace(/\u200b/g, "");
+      }
+
+      function normalizeTitleKey(title) {
+        return normalizeSourceText(title)
+          .toLowerCase()
+          .replace(/\s+/g, "")
+          .replace(/[^\w\u4e00-\u9fa5]/g, "");
+      }
+
+      function escapeHtml(v) {
+        return normalizeText(v)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function getFieldSafe(targetItem, fieldName) {
+        try {
+          return normalizeText(targetItem.getField(fieldName));
+        } catch (err) {
+          return "";
+        }
+      }
+
+      function getSourceText(targetItem) {
+        const candidateFields = [
+          "citation_abstract",
+          "abstractNote",
+          "abstract",
+          "description",
+          "dc.description",
+          "DC.description",
+        ];
+        let firstFieldFound = "";
+        let firstText = "";
+        for (const fieldName of candidateFields) {
+          const rawValue = getFieldSafe(targetItem, fieldName);
+          const raw = normalizeSourceText(rawValue);
+          if (!raw) {
+            continue;
+          }
+          if (!firstFieldFound) {
+            firstFieldFound = fieldName;
+            firstText = raw;
+          }
+
+          if (hasAnyMarker(raw)) {
+            return {
+              text: raw,
+              field: fieldName,
+            };
+          }
+        }
+
+        return {
+          text: firstText,
+          field: firstFieldFound,
+        };
+      }
+
+      function getMarkerTitle(lineText) {
+        const text = normalizeText(lineText).trim();
+        if (!text) return "";
+        const markerText = [
+          MARKER_CHAT,
+          MARKER_ORIG,
+          MARKER_TLDR,
+          MARKER_GLANCE,
+          MARKER_DETAIL,
+        ].map((v) =>
+          normalizeText(v).trim(),
+        );
+        const map = {
+          [markerText[0]]: "💬 Chat History",
+          [markerText[1]]: "📄 Original Abstract",
+          [markerText[2]]: "📝 TLDR",
+          [markerText[3]]: "🧭 速览区",
+          [markerText[4]]: "🧩 论文详细总结区",
+        };
+        for (const marker of markerText) {
+          if (text.startsWith(marker)) {
+            return map[marker] || text;
+          }
+        }
+        return "";
+      }
+
+      function trimLeadingMetadataLines(text) {
+        const lines = normalizeSourceText(text).split("\n");
+        const filtered = [];
+        let started = false;
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t) {
+            if (!started) {
+              continue;
+            }
+          }
+          if (!started && /^> 由 daily-paper-reader 自动生成/i.test(t)) {
+            continue;
+          }
+          if (!started && t.includes("daily-paper-reader 自动生成")) {
+            continue;
+          }
+          started = true;
+          filtered.push(t);
+        }
+        return filtered
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
+      function normalizeSectionTitle(line) {
+        const text = normalizeText(line).trim();
+        const markerTitle = getMarkerTitle(text);
+        if (markerTitle) return markerTitle;
+        return text
+          .replace(/^#{1,6}\s*/, "")
+          .replace(/^[🤖💬📄]\s*/, "")
+          .replace(/^\*\s*/, "")
+          .trim();
+      }
+
+      function canonicalizeSectionTitle(line) {
+        const raw = normalizeText(line || "").trim();
+        const text = raw.toLowerCase();
+        if (!text) {
+          return "📝 文章内容";
+        }
+        if (text.includes("📝 tldr") || text.includes("tldr")) {
+          return "📝 TLDR";
+        }
+        if (text.includes("💬") || text.includes("chat history")) {
+          return "💬 Chat History";
+        }
+        if (text.includes("🧭 速览区") || text.includes("速览区")) {
+          return "🧭 速览区";
+        }
+        if (
+          text.includes("🧩 论文详细总结") ||
+          text.includes("论文详细总结区")
+        ) {
+          return "🧩 论文详细总结区";
+        }
+        if (
+          text.includes("📄") ||
+          text.includes("original abstract") ||
+          text.includes("原文摘要")
+        ) {
+          return "📄 Original Abstract";
+        }
+        if (text.includes("paper-title-row") || text.includes("双语标题区域")) {
+          return "paper-title-row（双语标题区域）";
+        }
+        if (text.includes("paper-meta-row") || text.includes("中间信息区")) {
+          return "paper-meta-row（中间信息区）";
+        }
+        if (text.includes("paper-glance-section") || text.includes("速览卡")) {
+          return "paper-glance-section（速览卡）";
+        }
+        if (
+          text.includes("页面导航与交互层") ||
+          text.includes("dpr-title-bar") ||
+          text.includes("paper-chat-container") ||
+          text.includes("chat-history")
+        ) {
+          return "页面导航与交互层";
+        }
+        if (text.includes("论文正文") || text.includes("paper-content")) {
+          return "📝 论文正文";
+        }
+        if (text.includes("文章元信息")) {
+          return "📋 文章元信息";
+        }
+        return normalizeSectionTitle(raw).trim();
+      }
+
+      function isSectionHeading(line) {
+        const text = normalizeText(line).trim();
+        if (!text) {
+          return false;
+        }
+        if (getMarkerTitle(text)) {
+          return true;
+        }
+
+        const fixedHeading = canonicalizeSectionTitle(text);
+        const fixedHeadings = new Set([
+          "💬 Chat History",
+          "📄 Original Abstract",
+          "📝 TLDR",
+          "🧭 速览区",
+          "🧩 论文详细总结区",
+          "paper-title-row（双语标题区域）",
+          "paper-meta-row（中间信息区）",
+          "paper-glance-section（速览卡）",
+          "📝 论文正文",
+          "📋 文章元信息",
+          "页面导航与交互层",
+        ]);
+        return fixedHeadings.has(fixedHeading);
+      }
+
+      function splitSectionsByHeadings(fullText) {
+        const lines = normalizeSourceText(fullText).split("\n");
+        const result = [];
+        let currentTitle = "📝 文章内容";
+        let currentBuffer = [];
+
+        const flush = () => {
+          const content = trimLeadingMetadataLines(currentBuffer.join("\n"));
+          if (content) {
+            result.push({
+              title: currentTitle,
+              content,
+            });
+          }
+          currentBuffer = [];
+        };
+
+        for (const rawLine of lines) {
+          const headingTitle = normalizeSectionTitle(rawLine);
+          if (isSectionHeading(rawLine)) {
+            flush();
+            currentTitle = headingTitle ? headingTitle : currentTitle;
+            if (!currentTitle) {
+              currentTitle = "📝 文章内容";
+            }
+            continue;
+          }
+          currentBuffer.push(rawLine);
+        }
+        flush();
+
+        return result;
+      }
+
+      function splitSectionsByKnownMarkdownHeadings(fullText) {
+        const text = normalizeSourceText(fullText);
+        const headingSpecs = [
+          {
+            title: "💬 Chat History",
+            regex: /#{1,6}\s*💬\s*Chat\s*History/i,
+          },
+          {
+            title: "💬 Chat History",
+            regex: /#{1,6}\s*Chat\s*History/i,
+          },
+          {
+            title: "📄 Original Abstract",
+            regex: /#{1,6}\s*📄\s*(?:Original\s*Abstract|原文摘要)/i,
+          },
+          {
+            title: "📄 Original Abstract",
+            regex: /#{1,6}\s*(?:Original\s*Abstract|原文摘要)/i,
+          },
+          {
+            title: "📝 TLDR",
+            regex: /#{1,6}\s*📝\s*TLDR/i,
+          },
+          {
+            title: "📝 TLDR",
+            regex: /#{1,6}\s*TLDR/i,
+          },
+          {
+            title: "🧭 速览区",
+            regex: /#{1,6}\s*🧭\s*速览区/i,
+          },
+          {
+            title: "🧭 速览区",
+            regex: /#{1,6}\s*速览区/i,
+          },
+          {
+            title: "🧩 论文详细总结区",
+            regex: /#{1,6}\s*🧩\s*论文详细总结(?:区|（自动生成）)?/i,
+          },
+          {
+            title: "🧩 论文详细总结区",
+            regex: /#{1,6}\s*论文详细总结(?:区|（自动生成）)?/i,
+          },
+        ];
+
+        const matches = [];
+        headingSpecs.forEach((spec) => {
+          const pattern = new RegExp(spec.regex.source, 'gi');
+          let m;
+          while ((m = pattern.exec(text)) !== null) {
+            matches.push({
+              index: m.index,
+              markerLength: m[0].length,
+              title: spec.title,
+            });
+          }
+        });
+
+        if (!matches.length) {
+          return [];
+        }
+
+        const unique = new Map();
+        matches.forEach((match) => {
+          const existing = unique.get(match.index);
+          if (!existing || existing.markerLength < match.markerLength) {
+            unique.set(match.index, match);
+          }
+        });
+        const sorted = Array.from(unique.values()).sort((a, b) => a.index - b.index);
+
+        const sections = [];
+        for (let i = 0; i < sorted.length; i += 1) {
+          const current = sorted[i];
+          const next = sorted[i + 1];
+          const sectionStart = current.index + current.markerLength;
+          const sectionEnd = next ? next.index : text.length;
+          const content = trimLeadingMetadataLines(text.slice(sectionStart, sectionEnd));
+          if (content) {
+            sections.push({
+              title: current.title,
+              content,
+            });
+          }
+        }
+
+        if (!sections.length) {
+          return sections;
+        }
+
+        const firstIndex = sorted[0].index;
+        if (firstIndex > 0) {
+          const prefix = trimLeadingMetadataLines(text.slice(0, firstIndex));
+          if (prefix) {
+            sections.unshift({
+              title: "📝 文章内容",
+              content: prefix,
+            });
+          }
+        }
+
+        return sections;
+      }
+
+      function hasPotentialSectionHeading(text) {
+        const normalized = normalizeSourceText(text);
+        const detectPatterns = [
+          /#{1,6}\s*💬\s*Chat\s*History/i,
+          /#{1,6}\s*📄\s*(?:Original\s*Abstract|原文摘要)/i,
+          /#{1,6}\s*📝\s*TLDR/i,
+          /#{1,6}\s*🧭\s*速览区/i,
+          /#{1,6}\s*🧩\s*论文详细总结(?:区|（自动生成）)?/i,
+          /#{1,6}\s*Chat\s*History/i,
+          /#{1,6}\s*(?:Original\s*Abstract|原文摘要)/i,
+          /#{1,6}\s*TLDR/i,
+          /#{1,6}\s*速览区/i,
+          /#{1,6}\s*论文详细总结(?:区|（自动生成）)?/i,
+        ];
+        return detectPatterns.some((pattern) => pattern.test(normalized));
+      }
+
+      function splitSectionsByMarkers(fullText) {
+        const cleaned = normalizeSourceText(fullText);
+        const marks = [
+          { marker: MARKER_CHAT, title: "💬 Chat History" },
+          { marker: MARKER_ORIG, title: "📄 Original Abstract" },
+          { marker: MARKER_TLDR, title: "📝 TLDR" },
+          { marker: MARKER_GLANCE, title: "🧭 速览区" },
+          { marker: MARKER_DETAIL, title: "🧩 论文详细总结区" },
+        ];
+        const matched = marks
+          .map((m) => ({
+            marker: m.marker,
+            title: m.title,
+            index: cleaned.indexOf(m.marker),
+          }))
+          .filter((item) => item.index > -1)
+          .sort((a, b) => a.index - b.index);
+
+        if (!matched.length) {
+          return [];
+        }
+
+        const result = [];
+        for (let i = 0; i < matched.length; i += 1) {
+          const current = matched[i];
+          const nextIndex =
+            i + 1 < matched.length ? matched[i + 1].index : cleaned.length;
+          const rawSection = cleaned.substring(
+            current.index + current.marker.length,
+            nextIndex,
+          );
+          const content = trimLeadingMetadataLines(rawSection);
+          if (!content) {
+            continue;
+          }
+          result.push({ title: current.title, content });
+          if (i === 0 && current.index > 0) {
+            const prefix = trimLeadingMetadataLines(cleaned.substring(0, current.index));
+            if (prefix) {
+              result.unshift({ title: "📝 文章内容", content: prefix });
+            }
+          }
+        }
+        return result;
+      }
+
+      function dedupeSections(sections) {
+        const output = [];
+        const seenSignatures = new Set();
+
+        for (const section of sections) {
+          const rawTitle = normalizeText(section.title || "📝 文章内容");
+          const title = canonicalizeSectionTitle(rawTitle);
+          const content = trimLeadingMetadataLines(section.content || "");
+          if (!content) {
+            continue;
+          }
+          const c = normalizeSectionFingerprint(content);
+          const t = normalizeTitleKey(title);
+          const signature = `${t}|||${c}`;
+          if (seenSignatures.has(signature)) {
+            continue;
+          }
+          seenSignatures.add(signature);
+          output.push({
+            title: title || rawTitle,
+            content,
+          });
+        }
+        return output;
+      }
+
+      function splitSections(fullText) {
+        const cleaned = normalizeSourceText(fullText);
+        if (!cleaned) {
+          return {
+            valid: false,
+            reason: "⚠️ 条目摘要为空，等待重试中。",
+          };
+        }
+
+        const markerSections = splitSectionsByMarkers(cleaned);
+        if (markerSections.length) {
+          const segments = dedupeSections(markerSections);
+          if (segments.length) {
+            return {
+              valid: true,
+              sections: segments,
+            };
+          }
+        }
+
+        const markdownSections = splitSectionsByKnownMarkdownHeadings(cleaned);
+        if (markdownSections.length) {
+          const segments = dedupeSections(markdownSections);
+          if (segments.length) {
+            return {
+              valid: true,
+              sections: segments,
+            };
+          }
+        }
+
+        const lines = cleaned.split("\n");
+        const parsedSections = [];
+        let currentTitle = "📝 文章内容";
+        let currentBuffer = [];
+
+        const flush = () => {
+          const title = canonicalizeSectionTitle(currentTitle);
+          const content = trimLeadingMetadataLines(currentBuffer.join("\n"));
+          if (content) {
+            parsedSections.push({
+              title,
+              content,
+            });
+          }
+          currentBuffer = [];
+        };
+
+        for (const rawLine of lines) {
+          if (isSectionHeading(rawLine)) {
+            flush();
+            const heading = normalizeSectionTitle(rawLine);
+            currentTitle = heading || currentTitle;
+            continue;
+          }
+          currentBuffer.push(rawLine);
+        }
+        flush();
+
+        const sections = dedupeSections(parsedSections);
+        if (
+          sections.length === 1 &&
+          normalizeSectionTitle(sections[0].title) === "📝 文章内容"
+        ) {
+          const fallbackMarkdownSections = splitSectionsByKnownMarkdownHeadings(
+            sections[0].content,
+          );
+          if (
+            fallbackMarkdownSections.length > 1 &&
+            hasPotentialSectionHeading(sections[0].content)
+          ) {
+            return {
+              valid: true,
+              sections: dedupeSections(fallbackMarkdownSections),
+            };
+          }
+          if (fallbackMarkdownSections.length > 1 && hasAnyMarker(sections[0].content)) {
+            return {
+              valid: true,
+              sections: dedupeSections(fallbackMarkdownSections),
+            };
+          }
+        }
+
+        if (!sections.length) {
+          return {
+            valid: true,
+            sections: [{ title: "📝 文章内容", content: cleaned }],
+          };
+        }
+
+        return {
+          valid: true,
+          sections,
+        };
+      }
+
+      function collectItemMetadata(targetItem) {
+        const creators = targetItem.getCreators ? targetItem.getCreators() : [];
+        const authorTexts = creators
+          .map((author) => {
+            const part =
+              normalizeText(author.lastName) ||
+              normalizeText(author.name) ||
+              normalizeText(author.fieldMode) ||
+              "";
+            const display = normalizeText(author.firstName)
+              ? `${part} ${normalizeText(author.firstName)}`
+              : part;
+            return display.trim();
+          })
+          .filter(Boolean);
+
+        const tags = targetItem.getTags ? targetItem.getTags() : [];
+        const tagTexts = tags
+          .map((t) => normalizeText(t.tag).trim())
+          .filter(Boolean);
+
+        const metadataItems = [
+          ["标题", normalizeText(targetItem.getField("title"))],
+          ["作者", authorTexts.join("；")],
+          ["发表年份", normalizeText(targetItem.getField("year"))],
+          ["日期", normalizeText(targetItem.getField("date"))],
+          ["期刊", normalizeText(targetItem.getField("publicationTitle"))],
+          ["出版社", normalizeText(targetItem.getField("publisher"))],
+          ["DOI", normalizeText(targetItem.getField("DOI"))],
+          ["文章类型", normalizeText(targetItem.getField("itemType"))],
+          ["URL", normalizeText(targetItem.getField("url"))],
+          ["标签", tagTexts.join("；")],
+        ].filter((tuple) => tuple[1]);
+
+        if (!metadataItems.length && !authorTexts.length && !tagTexts.length) {
+          return "";
+        }
+
+        const lines = [];
+        metadataItems.forEach(([k, v]) => {
+          lines.push(`- **${k}**: ${normalizeText(v)}`);
+        });
+        return lines.join("\n");
+      }
+
+      function formatChatMarkdown(rawChatString) {
+        if (!rawChatString) {
+          return "";
+        }
+        const segments = rawChatString.split(/(?=👤 User:|🤖 AI:)/g);
+        const lines = [];
+        for (const seg of segments) {
+          const cleanText = normalizeSourceText(seg).trim();
+          if (!cleanText) {
+            continue;
+          }
+          if (cleanText.startsWith("👤 User:")) {
+            lines.push(`**👤 User:**\n${cleanText.replace("👤 User:", "").trim()}`);
+          } else if (cleanText.startsWith("🤖 AI:")) {
+            lines.push(`**🤖 AI:**\n${cleanText.replace("🤖 AI:", "").trim()}`);
+          }
+        }
+        return lines.join("\n\n");
+      }
+
+      function buildNoteMarkdown(targetItem, parsed) {
+        const blocks = [];
+        const rawText = parsed && parsed.rawText ? normalizeSourceText(parsed.rawText) : "";
+        const addBlock = (title, content) => {
+          if (!content) return;
+          blocks.push(`## ${title}`);
+          blocks.push(content);
+        };
+
+        const stripLeadingHeading = (text, title) => {
+          const escaped = title.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&",
+          );
+          return text
+            .replace(
+              new RegExp(`^\\s*#{1,6}\\s*${escaped}\\s*\\n+`, "i"),
+              "",
+            )
+            .trim();
+        };
+
+        const metadata = collectItemMetadata(targetItem);
+        if (metadata) {
+          addBlock("📋 文章元信息", metadata);
+        }
+
+        const sections = parsed.sections || [];
+        const hasChat = sections.some((item) => /chat history|💬/i.test(item.title));
+        const ignoredSectionTitleSet = new Set(["页面导航与交互层", "📝 论文正文"]);
+        sections.forEach((section) => {
+          const title = normalizeText(section.title || "📝 文章内容");
+          let content = trimLeadingMetadataLines(section.content);
+          if (!content) {
+            return;
+          }
+          if (ignoredSectionTitleSet.has(title)) {
+            return;
+          }
+
+          if (/chat history|💬/i.test(title)) {
+            content = formatChatMarkdown(content) || content;
+          }
+          addBlock(title, content);
+        });
+
+        if (!sections.length) {
+          addBlock("📝 文章内容", "（无可解析内容）");
+        }
+
+        if (!hasChat && rawText && rawText.includes("💬 Chat History")) {
+          const markerStart = normalizeSourceText(parsed.rawText).indexOf(MARKER_CHAT);
+          if (markerStart > -1) {
+            const markerChat = normalizeSourceText(parsed.rawText).substring(
+              markerStart + MARKER_CHAT.length,
+            );
+            addBlock("💬 Chat History", formatChatMarkdown(markerChat));
+          }
+        }
+
+        return blocks.join("\n\n");
+      }
+
+      function markdownToPlainHtml(markdownText) {
+        const lines = normalizeText(markdownText).split(/\n/);
+        const htmlParts = [];
+        let paragraphBuffer = [];
+        let listType = "";
+        let listItems = [];
+
+        const renderInline = (text) => {
+          const escaped = escapeHtml(text);
+          return escaped
+            .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+            .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+            .replace(/`([^`]+)`/g, "<code>$1</code>")
+            .replace(/\n/g, "<br>");
+        };
+
+        const flushParagraph = () => {
+          if (!paragraphBuffer.length) {
+            return;
+          }
+          const blockText = paragraphBuffer.join("\n").trim();
+          if (!blockText) {
+            paragraphBuffer = [];
+            return;
+          }
+          const headingMatch = blockText.match(/^(#{1,6})\s+(.*)$/);
+          if (headingMatch) {
+            const level = Math.min(6, headingMatch[1].length);
+            htmlParts.push(
+              `<h${level} style=\"margin: 14px 0 8px 0; color:#0277bd; border-bottom:1px solid #e3f2fd;\">${renderInline(
+                headingMatch[2],
+              )}</h${level}>`,
+            );
+          } else if (/^\s*>\s*/.test(blockText)) {
+            htmlParts.push(
+              `<blockquote style=\"margin: 12px 0; padding-left: 12px; color:#666; border-left: 3px solid #bbdefb; white-space: pre-wrap;\">${renderInline(
+                blockText.replace(/^\s*>\s*/, ""),
+              )}</blockquote>`,
+            );
+          } else {
+            htmlParts.push(
+              `<p style=\"display:block; color: #333; font-size: 1em; line-height: 1.6; white-space: pre-wrap; margin: 0 0 12px 0;\">${renderInline(
+                blockText,
+              )}</p>`,
+            );
+          }
+          paragraphBuffer = [];
+        };
+
+        const flushList = () => {
+          if (!listType || !listItems.length) {
+            listType = "";
+            listItems = [];
+            return;
+          }
+          const wrappedItems = listItems.map((item) => `<li>${renderInline(item)}</li>`).join("");
+          if (listType === "ol") {
+            htmlParts.push(
+              `<ol style=\"margin: 8px 0 12px 0; padding-left: 24px;\">${wrappedItems}</ol>`,
+            );
+          } else {
+            htmlParts.push(
+              `<ul style=\"margin: 8px 0 12px 0; padding-left: 24px;\">${wrappedItems}</ul>`,
+            );
+          }
+          listType = "";
+          listItems = [];
+        };
+
+        const flushAll = () => {
+          flushParagraph();
+          flushList();
+        };
+
+        const orderedMatch = (line) => /^\s{0,3}\d+\.\s+(.*)$/.exec(line);
+        const unorderedMatch = (line) => /^\s{0,3}[-*+]\s+(.*)$/.exec(line);
+
+        for (const line of lines) {
+          const headingLine = line.match(/^(#{1,6})\s+(.*)$/);
+          if (headingLine) {
+            flushAll();
+            const level = Math.min(6, headingLine[1].length);
+            htmlParts.push(
+              `<h${level} style=\"margin: 14px 0 8px 0; color:#0277bd; border-bottom:1px solid #e3f2fd;\">${renderInline(
+                headingLine[2],
+              )}</h${level}>`,
+            );
+            continue;
+          }
+
+          if (/^\s*>\s*/.test(line)) {
+            flushAll();
+            htmlParts.push(
+              `<blockquote style=\"margin: 12px 0; padding-left: 12px; color:#666; border-left: 3px solid #bbdefb; white-space: pre-wrap;\">${renderInline(
+                line.replace(/^\s*>\s*/, ""),
+              )}</blockquote>`,
+            );
+            continue;
+          }
+
+          const ordered = orderedMatch(line);
+          if (ordered) {
+            flushParagraph();
+            if (listType !== "ol") {
+              flushList();
+              listType = "ol";
+            }
+            listItems.push(ordered[1]);
+            continue;
+          }
+
+          const unordered = unorderedMatch(line);
+          if (unordered) {
+            flushParagraph();
+            if (listType !== "ul") {
+              flushList();
+              listType = "ul";
+            }
+            listItems.push(unordered[1]);
+            continue;
+          }
+
+          if (!line.trim()) {
+            flushAll();
+            continue;
+          }
+          flushList();
+          paragraphBuffer.push(line);
+        }
+        flushAll();
+
+        return `<div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; color: #333; line-height: 1.6;">${htmlParts
+          .filter(Boolean)
+          .join("")}</div>`;
+      }
+
+      function hasAutoSummaryNote(targetItem) {
+        try {
+          const notes = Zotero.Items.get(targetItem.getNotes()) || [];
+          return notes.some((note) => {
+            const tags = note.getTags ? note.getTags() : [];
+            if (tags?.some((tagItem) => tagItem.tag === AUTO_NOTE_TAG)) {
+              return true;
+            }
+            const title = normalizeText(note.getNoteTitle ? note.getNoteTitle() : "")
+              .toLowerCase();
+            if (title.includes("ai summary") || title.includes("daily-paper")) {
+              return true;
+            }
+            const noteHtml = normalizeText(note.getNote()).toLowerCase();
+            return (
+              noteHtml.includes("🤖 ai summary") ||
+              noteHtml.includes("📄 original abstract") ||
+              noteHtml.includes("dpr-ai-summary-note")
+            );
+          });
+        } catch (err) {
+          return false;
+        }
+      }
+
+      function hasLatexFormula(content) {
+        const text = normalizeSourceText(content || "");
+        return /\${1,2}[^$]+?\${1,2}/.test(text);
+      }
+
+      function normalizeRenderedHtml(html) {
+        return normalizeText(html)
+          .replace(/<strong>/gi, "<b>")
+          .replace(/<\/strong>/gi, "</b>")
+          .replace(/<em>/gi, "<i>")
+          .replace(/<\/em>/gi, "</i>");
+      }
+
+      async function removeAutoSummaryNotes(targetItem) {
+        try {
+          const notes = Zotero.Items.get(targetItem.getNotes()) || [];
+          for (const note of notes) {
+            const tags = note.getTags ? note.getTags() : [];
+            const hasTag = tags?.some((tagItem) => tagItem.tag === AUTO_NOTE_TAG);
+            if (!hasTag) {
+              const title = normalizeText(note.getNoteTitle ? note.getNoteTitle() : "")
+                .toLowerCase();
+              const noteHtml = normalizeText(note.getNote()).toLowerCase();
+              const isAuto =
+                title.includes("ai summary") ||
+                title.includes("daily-paper") ||
+                noteHtml.includes("🤖 ai summary") ||
+                noteHtml.includes("📄 original abstract");
+              if (!isAuto) {
+                continue;
+              }
+            }
+
+            try {
+              if (note.eraseTx) {
+                await note.eraseTx();
+              } else if (note.deleteTx) {
+                await note.deleteTx();
+              }
+            } catch (err) {
+              // ignore removal failure
+            }
+          }
+        } catch (err) {
+          // ignore removal process
+        }
+      }
+
+      async function processItem(targetItem) {
+        const title = normalizeText(targetItem.getField("title")) || "[无标题]";
+
+        if (hasAutoSummaryNote(targetItem)) {
+          await removeAutoSummaryNotes(targetItem);
+        }
+
+        let sourceText = "";
+        let sourceField = "";
+        for (let i = 0; i <= RETRY_DELAYS.length; i += 1) {
+          const sourceResult = getSourceText(targetItem);
+          sourceText = sourceResult && sourceResult.text ? sourceResult.text : "";
+          sourceField = sourceResult && sourceResult.field ? sourceResult.field : "";
+          if (sourceText) {
+            break;
+          }
+          if (triggerType === "createItem" && i < RETRY_DELAYS.length) {
+            await sleep(RETRY_DELAYS[i]);
+          }
+        }
+
+        if (!sourceText) {
+          const failHint = sourceField
+            ? `（读取到字段: ${sourceField}，但内容为空）`
+            : "（未检测到可用摘要字段）";
+          return `⚠️ [${escapeHtml(title)}] 暂未读到摘要，导入失败 ${failHint}`;
+        }
+
+        const parsed = splitSections(sourceText);
+        if (!parsed.valid) {
+          return parsed.reason;
+        }
+
+        const noteMarkdown = buildNoteMarkdown(targetItem, {
+          ...parsed,
+          rawText: sourceText,
+        });
+        let noteHtml = "";
+        const canUseBetterNotes =
+          !!(
+            Zotero.BetterNotes &&
+            Zotero.BetterNotes.api &&
+            Zotero.BetterNotes.api.convert &&
+            Zotero.BetterNotes.api.convert.md2html &&
+            Zotero.BetterNotes.api.note &&
+            Zotero.BetterNotes.api.note.insert
+          );
+        const hasMathFormula = hasLatexFormula(noteMarkdown);
+
+        if (canUseBetterNotes && !hasMathFormula) {
+          try {
+            noteHtml = await Zotero.BetterNotes.api.convert.md2html(noteMarkdown);
+            noteHtml = normalizeRenderedHtml(noteHtml);
+          } catch (err) {
+            noteHtml = markdownToPlainHtml(noteMarkdown);
+          }
+        } else {
+          noteHtml = markdownToPlainHtml(noteMarkdown);
+        }
+
+        const newNote = new Zotero.Item("note");
+        newNote.libraryID = targetItem.libraryID;
+        newNote.parentID = targetItem.id;
+        newNote.addTag(AUTO_NOTE_TAG, 1);
+        newNote.setNote(noteHtml);
+        await newNote.saveTx();
+
+        return `✅ [${escapeHtml(title)}] 已自动创建摘要条目笔记`;
+      }
+
+      const results = [];
+      for (let i = 0; i < targetItems.length; i += 1) {
+        results.push(await processItem(targetItems[i]));
+      }
+
+      return results.join("\n");
+    shortcut: ''
+    enabled: true
+    menu: ''
+    name: Process DPR Summary Note
+    showInMenu:
+      item: false
+      collection: false
+      tools: false
+      reader: false
+      readerAnnotation: false

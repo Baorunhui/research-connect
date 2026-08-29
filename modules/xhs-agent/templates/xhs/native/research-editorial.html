@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1080, initial-scale=1">
+  <title>{{TITLE}}</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1080px; height: 1440px; }
+    body { font-family: "Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", sans-serif; }
+    .card {
+      width: 1080px; height: 1440px; position: relative; overflow: hidden;
+      background: #f3f0e8; color: #111; padding: 84px 72px 54px;
+    }
+    .card::before { content: ""; position: absolute; inset: 0 0 auto; height: 28px; background: #202020; }
+    .issue {
+      display: flex; justify-content: space-between; border-bottom: 2px solid #c8bfb1;
+      padding-bottom: 28px; color: #6b6257; font-family: "Noto Sans Mono CJK SC", monospace; font-size: 22px;
+    }
+    .kicker { margin-top: 40px; color: #6b6257; font-family: "Noto Sans Mono CJK SC", monospace; font-size: 22px; }
+    h1 {
+      margin: 86px 0 0; max-width: 920px; font-family: "Noto Serif CJK SC", "Noto Serif SC", serif;
+      font-size: 94px; line-height: 1.12; letter-spacing: 0; font-weight: 700;
+    }
+    .subtitle { margin-top: 26px; font-size: 38px; line-height: 1.35; color: #315d93; font-weight: 700; }
+    .rule { margin: 116px 0 66px; height: 8px; background: #202020; }
+    ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 28px; }
+    li { display: grid; grid-template-columns: 76px 1fr; align-items: baseline; }
+    li span { color: #6b6257; font-family: "Noto Sans Mono CJK SC", monospace; font-size: 24px; }
+    li strong { font-size: 40px; line-height: 1.26; }
+    footer {
+      position: absolute; left: 72px; right: 72px; bottom: 54px; border-top: 2px solid #c8bfb1;
+      padding-top: 28px; color: #6b6257; font-size: 26px;
+    }
+  </style>
+</head>
+<body>
+  <section class="card">
+    <header class="issue"><span>{{KICKER}}</span><span>{{PAGE}}/{{TOTAL}}</span></header>
+    <div class="kicker">{{SOURCE}}</div>
+    <h1>{{TITLE}}</h1>
+    <p class="subtitle">{{SUBTITLE}}</p>
+    <div class="rule"></div>
+    <ol>
+      <li><span>01</span><strong>{{POINT_1}}</strong></li>
+      <li><span>02</span><strong>{{POINT_2}}</strong></li>
+      <li><span>03</span><strong>{{POINT_3}}</strong></li>
+    </ol>
+    <footer>{{FOOTER}}</footer>
+  </section>
+</body>
+</html>

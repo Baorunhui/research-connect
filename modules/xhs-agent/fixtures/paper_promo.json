@@ -1,0 +1,68 @@
+{
+  "schema_version": "xhs_agent.request.v1",
+  "request_id": "demo-paper-001",
+  "intent": "paper_promo",
+  "mode": "generate_package",
+  "audience": {
+    "who": "AI研究生/青椒/博士生",
+    "context": "刷小红书时快速理解一个新的科研工作",
+    "question": "这项工作解决了什么问题，值不值得点开看"
+  },
+  "goal": {
+    "takeaway": "读者能用一句话复述这项工作的价值",
+    "action": "收藏并打开论文或代码链接继续看"
+  },
+  "source": {
+    "kind": "paper",
+    "title": "StructBench: A Structured Benchmark for Reliable Scientific Agents",
+    "summary": "该工作提出一个面向科研 agent 的结构化评测基准，用统一任务 schema 覆盖论文理解、代码检查、引用追踪和内容生成等场景，并报告了多个主流模型在不同任务上的表现差异。",
+    "materials": [
+      {
+        "id": "M1",
+        "type": "problem",
+        "text": "现有科研 agent 评测往往只看单点任务，难以反映从论文到代码再到传播材料的完整工作流。"
+      },
+      {
+        "id": "M2",
+        "type": "method",
+        "text": "作者把任务拆成结构化输入、工具调用轨迹、最终产物和人工 QA 四类信号。"
+      },
+      {
+        "id": "M3",
+        "type": "result",
+        "text": "论文报告模型在引用核查和代码运行检查上更容易出错，而结构化中间状态能提升可审计性。"
+      },
+      {
+        "id": "M4",
+        "type": "scenario",
+        "text": "适合用来测试 paper agent、citation agent 和科研宣发 agent 的端到端可靠性。"
+      }
+    ],
+    "links": [
+      {
+        "type": "paper",
+        "url": "https://arxiv.org/abs/2601.00001"
+      },
+      {
+        "type": "code",
+        "url": "https://github.com/example/structbench"
+      }
+    ],
+    "entities": {
+      "authors": ["Demo Author", "Example Researcher"],
+      "venue": "ICLR 2026",
+      "lab": "USTC Agent Lab"
+    }
+  },
+  "requirements": {
+    "platform": "xiaohongshu",
+    "deliverables": ["note", "carousel"],
+    "card_count": 5,
+    "style": "专业但像真人科研分享",
+    "publish": false
+  },
+  "constraints": {
+    "must_include": ["结构化评测", "科研 agent", "人工 QA"],
+    "must_avoid": ["夸大成全面替代科研助理", "编造榜单排名", "编造真实 arXiv 论文状态"]
+  }
+}

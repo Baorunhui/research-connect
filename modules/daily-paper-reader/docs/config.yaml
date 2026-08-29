@@ -1,0 +1,27 @@
+github:
+  owner: ''
+  repo: daily-paper-reader
+arxiv_paper_setting:
+  mode: standard
+  days_window: 9
+  docs_dir: docs
+  prefer_supabase_read: true
+supabase:
+  enabled: true
+  url: https://lyucdwgefyfbmaiopjbk.supabase.co
+  anon_key: sb_publishable_lX-oi64Uxyd7SIVv3_w2Uw_MTOojeKq
+  papers_table: arxiv_papers
+  use_vector_rpc: true
+  vector_rpc: match_arxiv_papers
+  vector_rpc_ann: match_arxiv_papers
+  vector_rpc_exact: match_arxiv_papers_exact
+  use_bm25_rpc: true
+  bm25_rpc: match_arxiv_papers_bm25
+  sync_table: arxiv_sync_status
+  sync_success_value: success
+  schema: public
+subscriptions:
+  schema_migration:
+    stage: A
+    diff_threshold_pct: 15
+  keyword_recall_mode: or
