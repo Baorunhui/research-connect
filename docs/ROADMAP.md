@@ -5,9 +5,9 @@
 - [x] 建立单仓库并导入 Connect Hub、Daily Paper、CitationClaw 和 XHS Agent 源码快照。
 - [x] 排除虚拟环境、运行数据、缓存、生成结果和真实密钥。
 - [ ] 把 Connect Hub 长任务调用改成真正的异步 submit，禁止飞书工作线程等待任务结束。
-- [ ] 实现只读公共任务页：创建任务即得到 URL，支持移动端。
+- [x] 实现只读公共任务页：创建任务即得到 URL，支持移动端。
 - [ ] 实现 Hub WebSocket：快照恢复、增量事件、心跳和重连。
-- [ ] 定义并实现 `PublicAccessProvider`，先完成 `custom` 与一个零配置临时 Provider。
+- [x] 实现独立 Report Hub v1：固定链接、SQLite、WebSocket、静态报告上传。
 - [ ] 公网失败时继续通过飞书汇报，并在完成后发送可长期保存的附件。
 
 ## P0：模块接入
@@ -25,7 +25,7 @@
 - [ ] Linux Bash 安装/启动脚本。
 - [ ] Windows PowerShell 安装/启动脚本。
 - [ ] 自动创建核心 venv 和按需模块 venv。
-- [ ] 检查 Python、Playwright、Docling、字体、端口和隧道二进制。
+- [ ] 检查 Python、Playwright、Docling、字体、端口和 Report Hub 连通性。
 - [ ] CI 覆盖 `ubuntu-latest` 与 `windows-latest`。
 
 ## P1：Docker 发行
@@ -35,13 +35,12 @@
 - [ ] 验证 Linux Docker 与 Windows Docker Desktop/WSL2。
 - [ ] 镜像启动时运行配置检查，不把密钥烘焙到镜像。
 
-## P1：公网 Provider 实测
+## P1：Report Hub 生产化
 
-- [ ] 在中国大陆网络实测临时 Provider 的启动成功率、WebSocket、手机访问和重连。
-- [ ] 实测 cpolar 固定/临时地址及其账号配置成本。
-- [ ] 实测 Cloudflare Quick/Named Tunnel，并标注大陆网络风险。
-- [ ] 记录临时 URL 重启失效行为，完成飞书附件兜底。
-- [ ] 决定是否需要项目方运营轻量公共中继。
+- [ ] 实测国内手机网络访问 Report Hub 的速度、WebSocket 稳定性和报告带宽。
+- [ ] 配置正式域名、HTTPS、磁盘监控、备份和报告保留周期。
+- [ ] Report Hub 不可达或上传失败时，完成飞书报错和最终附件兜底。
+- [ ] 评估共享上传 token 的轮换方式；需要多用户隔离时再增加账号层。
 
 ## P2：体验与维护
 
@@ -49,5 +48,4 @@
 - [ ] 一页式配置向导和敏感项检查。
 - [ ] 模块升级脚本及上游版本差异检查。
 - [ ] 发布前许可证和第三方资源清单。
-- [ ] 可选的稳定域名/固定隧道配置指南。
-
+- [x] 公网 Report Hub 的域名、HTTPS、Python/Docker 配置指南。

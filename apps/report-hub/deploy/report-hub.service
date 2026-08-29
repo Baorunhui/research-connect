@@ -1,0 +1,23 @@
+[Unit]
+Description=Research Connect Report Hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=research-connect
+Group=research-connect
+WorkingDirectory=/opt/research-connect/apps/report-hub
+EnvironmentFile=/opt/research-connect/apps/report-hub/.env
+ExecStart=/opt/research-connect/apps/report-hub/.venv/bin/report-hub --env-file /opt/research-connect/apps/report-hub/.env
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/research-connect/apps/report-hub/data
+
+[Install]
+WantedBy=multi-user.target
+

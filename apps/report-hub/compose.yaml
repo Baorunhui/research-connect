@@ -1,0 +1,14 @@
+services:
+  report-hub:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8787:8787"
+    volumes:
+      - report-hub-data:/data
+    environment:
+      REPORT_HUB_DATA_DIR: /data
+
+volumes:
+  report-hub-data:
