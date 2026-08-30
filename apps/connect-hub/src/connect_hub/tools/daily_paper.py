@@ -288,7 +288,15 @@ def daily_paper_tools(
                                 "minItems": 1,
                                 "items": {"type": "string", "minLength": 1},
                             },
-                            "intent_queries": {"type": "array", "items": {"type": "string"}},
+                            "intent_queries": {
+                                "type": "array",
+                                "maxItems": 4,
+                                "description": (
+                                    "用户确认或修改后的联网 Intent 候选。必须是完整英文语义查询，"
+                                    "覆盖不同任务、方法或 benchmark 角度，不能只是关键词拼接。"
+                                ),
+                                "items": {"type": "string", "minLength": 12},
+                            },
                             "paper_sources": {
                                 "type": "array",
                                 "description": (

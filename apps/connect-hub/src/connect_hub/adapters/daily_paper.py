@@ -209,16 +209,21 @@ class DailyPaperAdapter:
                     raise DailyPaperUnavailable(
                         f"Daily Paper workflow {run_id} failed: {log or current.get('error')}"
                     )
+                completion_log = log_text
+                local_log_path = Path(str(current.get("log_path") or "")).expanduser()
+                if local_log_path.is_file():
+                    try:
+                        completion_log = local_log_path.read_text(
+                            encoding="utf-8", errors="replace"
+                        )
+                    except OSError:
+                        pass
+                result = self._load_local_recommendation(completion_log, arguments)
                 return {
                     "schema_version": SCHEMA_VERSION,
                     "id": run_id,
                     "status": "completed",
-                    "result": {
-                        "generated_at": datetime.now(timezone.utc).isoformat(),
-                        "mode": str(arguments.get("mode") or "standard"),
-                        "deep_dive": [],
-                        "quick_skim": [],
-                    },
+                    "result": result,
                     "run": current,
                     "log": log_text,
                     "report_bundle_path": str(self.project_dir / "docs") if self.project_dir else "",
@@ -234,6 +239,37 @@ class DailyPaperAdapter:
                     technical_message=f"Daily Paper workflow {run_id} timed out",
                 )
             time.sleep(self.poll_seconds)
+
+    def _load_local_recommendation(
+        self, log_text: str, arguments: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Read the recommendation JSON produced by this exact local run."""
+        matches = re.findall(
+            r"\[INFO\] saved: ([^\r\n]*[/\\]recommend[/\\][^\r\n]+\.json)",
+            log_text,
+        )
+        candidate = Path(matches[-1]).expanduser() if matches else None
+        if candidate is not None and not candidate.is_absolute() and self.project_dir:
+            candidate = self.project_dir / candidate
+        if candidate is not None and candidate.is_file():
+            try:
+                decoded = json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                decoded = None
+            if isinstance(decoded, Mapping):
+                result = dict(decoded)
+                result.setdefault("generated_at", datetime.now(timezone.utc).isoformat())
+                result.setdefault("mode", str(arguments.get("mode") or "standard"))
+                result.setdefault("deep_dive", [])
+                result.setdefault("quick_skim", [])
+                return result
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "mode": str(arguments.get("mode") or "standard"),
+            "deep_dive": [],
+            "quick_skim": [],
+            "result_warning": "recommendation JSON was not found in this run log",
+        }
 
     def _cancel_local(self, run_id: str) -> bool:
         try:
@@ -661,6 +697,32 @@ def _build_subscriptions(raw_topics: Any) -> dict[str, Any]:
             for value in (item.get("intent_queries") or [])
             if str(value).strip()
         ]
+        if not intents:
+            # Defensive fallback for CLI/direct module callers. Feishu uses a
+            # web-grounded confirmation turn, but the stable adapter must never
+            # allow keyword-only input to skip reranking and collapse 991→0.
+            tag = str(item.get("tag") or "Research").strip() or "Research"
+            description = str(item.get("description") or "").strip()
+            focus = description or tag
+            distinct_keywords: list[str] = []
+            seen_keywords = {focus.casefold(), tag.casefold()}
+            for value in (item.get("keywords") or []):
+                keyword = str(value).strip()
+                if not keyword or keyword.casefold() in seen_keywords:
+                    continue
+                seen_keywords.add(keyword.casefold())
+                distinct_keywords.append(keyword)
+                if len(distinct_keywords) >= 3:
+                    break
+            if distinct_keywords:
+                focus += ", especially " + ", ".join(distinct_keywords)
+            intents = [
+                {
+                    "query": f"Find recent papers on {focus}.",
+                    "enabled": True,
+                    "source": "connect-hub-template-fallback",
+                }
+            ]
         profiles.append(
             {
                 "tag": str(item.get("tag") or "Research").strip(),

@@ -243,6 +243,11 @@ def test_explicit_business_request_executes_once_without_extra_model_call(tmp_pa
         }
 
     registry = _registry(store, _daily_tool(generate))
+    store.append(
+        "s",
+        "assistant",
+        "联网生成的 Intent 候选：\n1. Find recent papers on grounded 3D visual understanding.",
+    )
     gateway = ScriptedGateway(
         [
             FakeResponse(
@@ -250,7 +255,19 @@ def test_explicit_business_request_executes_once_without_extra_model_call(tmp_pa
                     ToolCall(
                         "daily-1",
                         "generate_daily_paper_report",
-                        json.dumps({"topics": [{"tag": "3DVG"}]}),
+                        json.dumps(
+                            {
+                                "topics": [
+                                    {
+                                        "tag": "3DVG",
+                                        "intent_queries": [
+                                            "Find recent papers on grounded 3D visual understanding.",
+                                            "Find recent work on language-guided 3D scene reasoning benchmarks.",
+                                        ],
+                                    }
+                                ]
+                            }
+                        ),
                     ),
                 )
             )
@@ -260,10 +277,62 @@ def test_explicit_business_request_executes_once_without_extra_model_call(tmp_pa
 
     reply = service.handle("s", "帮我生成一份 3DVG 论文日报")
 
-    assert calls == [{"topics": [{"tag": "3DVG"}]}]
+    assert calls == [
+        {
+            "topics": [
+                {
+                    "tag": "3DVG",
+                    "intent_queries": [
+                        "Find recent papers on grounded 3D visual understanding.",
+                        "Find recent work on language-guided 3D scene reasoning benchmarks.",
+                    ],
+                }
+            ]
+        }
+    ]
     assert "论文日报已生成" in reply.text
     run = store.recent_agent_runs("s", 1)[0]
     assert (run["model_calls"], run["business_tool_calls"]) == (1, 1)
+
+
+def test_daily_report_requires_web_grounded_intent_proposal(tmp_path):
+    store = ConversationStore(tmp_path / "intent-gate.sqlite3")
+    calls = []
+    registry = _registry(
+        store,
+        _daily_tool(lambda arguments, context: calls.append(arguments) or {"ok": True}),
+    )
+    gateway = ScriptedGateway(
+        [
+            FakeResponse(
+                tool_calls=(
+                    ToolCall(
+                        "daily-too-early",
+                        "generate_daily_paper_report",
+                        json.dumps(
+                            {
+                                "topics": [
+                                    {
+                                        "tag": "RAG",
+                                        "intent_queries": ["Find recent papers on advanced RAG evaluation."],
+                                    }
+                                ]
+                            }
+                        ),
+                    ),
+                )
+            ),
+            FakeResponse("我会先联网查询，再给出 Intent 候选供你确认。"),
+        ]
+    )
+    service = ChatService(gateway, store, tools=registry)
+
+    reply = service.handle("s", "帮我生成 RAG 论文日报")
+
+    assert calls == []
+    assert "Intent 候选" in reply.text
+    run = store.recent_agent_runs("s", 1)[0]
+    assert run["business_tool_calls"] == 0
 
 
 def test_mcp_sse_and_exa_result_parsing():

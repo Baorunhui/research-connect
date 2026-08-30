@@ -1,4 +1,8 @@
-from connect_hub.adapters.daily_paper import DailyPaperAdapter, DailyPaperRequest
+from connect_hub.adapters.daily_paper import (
+    DailyPaperAdapter,
+    DailyPaperRequest,
+    _build_subscriptions,
+)
 from connect_hub.contracts import ConnectJobError
 
 
@@ -133,6 +137,50 @@ def test_reports_pipeline_diagnostics_once():
     assert any("并发=4" in message and "输出有效评分 58" in message for message in messages)
     assert any("llm_score≥8.0" in message and "速读 14" in message for message in messages)
     assert any("缺少 pypdfium2" in message for message in messages)
+
+
+def test_keyword_only_topic_gets_intent_query_fallback():
+    subscriptions = _build_subscriptions(
+        [
+            {
+                "tag": "RAG",
+                "description": "retrieval-augmented generation for scientific QA",
+                "keywords": ["RAG", "citation grounding", "retrieval evaluation"],
+                "intent_queries": [],
+            }
+        ]
+    )
+
+    profile = subscriptions["intent_profiles"][0]
+    assert profile["intent_queries"] == [
+        {
+            "query": (
+                "Find recent papers on retrieval-augmented generation for scientific QA, "
+                "especially citation grounding, retrieval evaluation."
+            ),
+            "enabled": True,
+            "source": "connect-hub-template-fallback",
+        }
+    ]
+
+
+def test_loads_actual_local_recommendation_instead_of_empty_result(tmp_path):
+    recommend_dir = tmp_path / "archive" / "run" / "recommend"
+    recommend_dir.mkdir(parents=True)
+    result_path = recommend_dir / "papers.skims.json"
+    result_path.write_text(
+        '{"mode":"skims","generated_at":"2026-08-30T00:00:00Z",'
+        '"deep_dive":[],"quick_skim":[{"id":"2608.1","title":"A paper"}]}',
+        encoding="utf-8",
+    )
+    adapter = DailyPaperAdapter(project_dir=tmp_path)
+
+    result = adapter._load_local_recommendation(
+        f"[INFO] saved: {result_path}\n", {"mode": "skims"}
+    )
+
+    assert len(result["quick_skim"]) == 1
+    assert result["quick_skim"][0]["title"] == "A paper"
 
 
 def test_reports_structured_events_once():
