@@ -258,6 +258,7 @@ def command_serve(env_file: str | Path | None = None) -> int:
                 cwd=MONOREPO_ROOT / "modules" / "citationclaw",
             )
         )
+        _publish_original_module_sites(settings)
         return command_feishu(env_file)
     finally:
         for service in reversed(services):
@@ -273,6 +274,50 @@ def _module_site_id(settings: object, module_name: str) -> str:
             else str(getattr(settings, "citationclaw_endpoint", ""))
         )
     return module_name + "-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+
+
+def _publish_original_module_sites(settings: object) -> None:
+    """Best-effort startup sync of the two original module web frontends."""
+    api_url = str(getattr(settings, "report_hub_api_url", "") or "")
+    agent_token = str(getattr(settings, "report_hub_agent_token", "") or "")
+    if not api_url or not agent_token:
+        return
+    report_hub = ReportHubClient(
+        api_url,
+        agent_token,
+        timeout_seconds=int(getattr(settings, "report_hub_timeout_seconds", 10)),
+    )
+    specs = (
+        (
+            "daily-paper",
+            "Daily Paper Reader",
+            Path(getattr(settings, "daily_paper_dir")),
+            "daily-paper",
+        ),
+        (
+            "citationclaw",
+            "CitationClaw",
+            MONOREPO_ROOT / "modules" / "citationclaw",
+            "citationclaw",
+        ),
+    )
+    for module_name, title, project_dir, site_kind in specs:
+        site_id = _module_site_id(settings, module_name)
+        try:
+            report_hub.ensure_site(
+                site_id=site_id, module_name=module_name, title=title
+            )
+            public_url = report_hub.upload_site(
+                site_id, project_dir, site_kind=site_kind
+            )
+            logging.getLogger(__name__).info(
+                "published %s original site at %s", module_name, public_url
+            )
+        except ReportHubError as exc:
+            # The bot remains useful when the public host is temporarily down.
+            logging.getLogger(__name__).warning(
+                "could not publish %s original site: %s", module_name, exc
+            )
 
 
 def command_module(module_name: str, env_file: str | Path | None = None) -> int:

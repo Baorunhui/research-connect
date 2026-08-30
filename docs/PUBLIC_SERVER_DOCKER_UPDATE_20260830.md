@@ -85,6 +85,8 @@ curl -fsS "$BASE/api/v1/sites/deploy-check/config" \
 
 完成后把上述三条命令的状态结果发回即可，不要发送 Agent Token。
 
+服务器验收通过后，用户电脑只需重启一次 `connect-hub serve`。Connect Hub 会在启动阶段自动创建并上传 Daily Paper 与 CitationClaw 的原版网页；这不是公网容器的第二次更新，也不需要服务器管理员手工复制网页文件。
+
 ## 它是不是“动态网络”或内网穿透？
 
 不是。它是一个轻量的公网中转、配置与静态网页托管服务：
