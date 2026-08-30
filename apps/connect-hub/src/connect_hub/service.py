@@ -98,6 +98,7 @@ class ChatService:
         max_search_calls: int = 1,
         max_url_fetch_calls: int = 1,
         max_business_tool_calls: int = 1,
+        shortcut_urls: Mapping[str, str] | None = None,
     ) -> None:
         self.gateway = gateway
         self.store = store
@@ -107,6 +108,11 @@ class ChatService:
         self.max_search_calls = max(0, max_search_calls)
         self.max_url_fetch_calls = max(0, max_url_fetch_calls)
         self.max_business_tool_calls = max(0, max_business_tool_calls)
+        self.shortcut_urls = {
+            str(name).strip().lower(): str(url).strip()
+            for name, url in (shortcut_urls or {}).items()
+            if str(name).strip() and str(url).strip()
+        }
 
     def set_feishu_user_web_mode(self, open_id: str, mode: str) -> ServiceReply:
         """Apply a web mode selected from the Feishu bot custom menu."""
@@ -163,6 +169,8 @@ class ChatService:
                 "/jobs - 查看当前会话最近任务\n"
                 "/job <任务ID> - 查看任务详情、事件、产物与用量\n"
                 "/cancel - 取消当前会话最近的运行中任务\n"
+                "/paper_reader - 打开论文日报网页\n"
+                "/citationclaw - 打开查引用网页\n"
                 "/help - 显示帮助\n\n"
                 "其他文字会发送到统一 LLM 中台。"
             )
@@ -171,6 +179,14 @@ class ChatService:
         if content == "/tools":
             names = self.tools.names if self.tools is not None else ()
             return ServiceReply("已注册工具：" + (", ".join(names) if names else "无"))
+        shortcut = content.lower().replace("-", "_")
+        if shortcut in {"/paper_reader", "/citationclaw"}:
+            key = shortcut[1:]
+            url = self.shortcut_urls.get(key, "")
+            if not url:
+                return ServiceReply("对应公网网页尚未配置或暂时不可用。")
+            label = "论文日报" if key == "paper_reader" else "查引用"
+            return ServiceReply(f"{label}网页：\n{url}")
         web_command = _parse_web_command(content)
         if web_command is not None:
             if web_command:

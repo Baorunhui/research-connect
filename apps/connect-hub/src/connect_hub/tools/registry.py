@@ -84,6 +84,7 @@ class ToolRegistry:
                 input_data=dict(arguments),
                 notifier=context.progress,
                 start_message=definition.progress_message,
+                start_url=definition.start_url,
                 publish_public=(
                     definition.module_name == "citationclaw"
                     and bool(arguments.get("publish_web", True))

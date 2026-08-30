@@ -224,6 +224,7 @@ def test_registry_persists_events_and_notifies(tmp_path):
                 context.report_progress("正在处理第二步") or {"ok": True}
             ),
             progress_message="正在处理第一步",
+            start_url="https://reports.test/site/",
             module_name="demo",
             module_version="1.0.0",
         )
@@ -247,6 +248,7 @@ def test_registry_persists_events_and_notifies(tmp_path):
     ]
     assert any("正在处理第一步" in item for item in notifications)
     assert any("正在处理第二步" in item for item in notifications)
+    assert notifications[0].endswith("网页版：https://reports.test/site/")
 
 
 def test_cancel_stops_managed_process_and_marks_job_cancelled(tmp_path):

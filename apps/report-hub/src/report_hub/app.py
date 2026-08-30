@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import mimetypes
 import re
 import secrets
+import shutil
 import time
 import urllib.error
 import urllib.request
@@ -172,6 +174,80 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         storage.mark_site_ready(site_id)
         return {
             "accepted": True,
+            "size_bytes": size,
+            "public_url": f"{settings.public_base_url}/s/{site['public_token']}/",
+        }
+
+    @app.put(
+        "/api/v1/sites/{site_id}/uploads/{upload_id}/parts/{part_number}",
+        dependencies=[Depends(require_agent)],
+    )
+    async def upload_site_part(
+        site_id: str,
+        upload_id: str,
+        part_number: int,
+        total_parts: int,
+        request: Request,
+        x_chunk_sha256: str = Header(default=""),
+    ) -> dict[str, Any]:
+        site = resolve_site(site_id)
+        if not JOB_ID_PATTERN.fullmatch(upload_id):
+            raise HTTPException(status_code=422, detail="invalid upload_id")
+        if total_parts < 1 or total_parts > 4096 or part_number < 0 or part_number >= total_parts:
+            raise HTTPException(status_code=422, detail="invalid chunk coordinates")
+        max_chunk = min(settings.max_upload_mb * 1024 * 1024, 8 * 1024 * 1024)
+        try:
+            content_length = int(request.headers.get("content-length", "0") or 0)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="invalid content-length") from exc
+        if content_length > max_chunk:
+            raise HTTPException(status_code=413, detail="site chunk is too large")
+        data = await request.body()
+        if len(data) > max_chunk:
+            raise HTTPException(status_code=413, detail="site chunk is too large")
+        digest = hashlib.sha256(data).hexdigest()
+        if x_chunk_sha256 and not secrets.compare_digest(x_chunk_sha256.lower(), digest):
+            raise HTTPException(status_code=422, detail="chunk checksum mismatch")
+
+        upload_dir = settings.data_dir / "site_uploads" / site_id / upload_id
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        destination = upload_dir / f"{part_number:08d}.part"
+        temporary = destination.with_suffix(".tmp")
+        temporary.write_bytes(data)
+        temporary.replace(destination)
+        received = sum(1 for path in upload_dir.glob("*.part") if path.is_file())
+        if received < total_parts:
+            return {
+                "accepted": True,
+                "completed": False,
+                "received_parts": received,
+                "total_parts": total_parts,
+            }
+
+        expected = [upload_dir / f"{index:08d}.part" for index in range(total_parts)]
+        if not all(path.is_file() for path in expected):
+            raise HTTPException(status_code=409, detail="site upload has missing chunks")
+        total_size = sum(path.stat().st_size for path in expected)
+        if total_size > settings.max_upload_mb * 1024 * 1024:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise HTTPException(status_code=413, detail="site upload is too large")
+        archive_data = b"".join(path.read_bytes() for path in expected)
+        try:
+            size = install_report_zip(
+                archive_data,
+                storage.site_dir / site_id,
+                settings.max_expanded_mb * 1024 * 1024,
+            )
+        except InvalidReportArchive as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        finally:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+        storage.mark_site_ready(site_id)
+        return {
+            "accepted": True,
+            "completed": True,
+            "received_parts": total_parts,
+            "total_parts": total_parts,
             "size_bytes": size,
             "public_url": f"{settings.public_base_url}/s/{site['public_token']}/",
         }

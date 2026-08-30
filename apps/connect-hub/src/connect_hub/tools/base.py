@@ -124,6 +124,7 @@ class ToolDefinition:
     handler: ToolHandler
     timeout_seconds: int = 30
     progress_message: str = ""
+    start_url: str = ""
     module_name: str = "connect-hub"
     module_version: str = "0.1.0"
     job_type: str = ""

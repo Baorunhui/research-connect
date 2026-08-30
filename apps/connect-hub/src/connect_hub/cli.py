@@ -46,6 +46,22 @@ def _build_runtime(
         if settings.report_hub_api_url and settings.report_hub_agent_token
         else None
     )
+    daily_site_id = _module_site_id(settings, "daily-paper")
+    citation_site_id = _module_site_id(settings, "citationclaw")
+    shortcut_urls: dict[str, str] = {}
+    if report_hub is not None and report_hub.configured:
+        for shortcut, site_id, module_name, title in (
+            ("paper_reader", daily_site_id, "daily-paper", "Daily Paper Reader"),
+            ("citationclaw", citation_site_id, "citationclaw", "CitationClaw"),
+        ):
+            try:
+                shortcut_urls[shortcut], _ready = report_hub.ensure_site(
+                    site_id=site_id, module_name=module_name, title=title
+                )
+            except ReportHubError as exc:
+                logging.getLogger(__name__).warning(
+                    "could not resolve %s public site: %s", module_name, exc
+                )
     tools = ToolRegistry(
         store,
         jobs=JobCoordinator(
@@ -107,14 +123,9 @@ def _build_runtime(
         for definition in daily_paper_tools(
             daily_paper,
             output_dir=DataPaths.for_module("daily-paper-reader").artifacts,
-            public_url=settings.daily_paper_public_url,
+            public_url=(shortcut_urls.get("paper_reader") or settings.daily_paper_public_url),
             report_hub=report_hub,
-            site_id=(
-                "daily-paper-"
-                + hashlib.sha256(
-                    (settings.feishu_app_id or str(settings.daily_paper_dir)).encode("utf-8")
-                ).hexdigest()[:16]
-            ),
+            site_id=daily_site_id,
         ):
             tools.register(definition)
     citationclaw = CitationClawAdapter(
@@ -127,13 +138,9 @@ def _build_runtime(
             citationclaw_tool(
                 citationclaw,
                 report_hub=report_hub,
-                site_id=(
-                    "citationclaw-"
-                    + hashlib.sha256(
-                        (settings.feishu_app_id or settings.citationclaw_endpoint).encode("utf-8")
-                    ).hexdigest()[:16]
-                ),
+                site_id=citation_site_id,
                 project_dir=MONOREPO_ROOT / "modules" / "citationclaw",
+                public_url=shortcut_urls.get("citationclaw", ""),
             )
         )
     search_provider = None
@@ -169,6 +176,7 @@ def _build_runtime(
         store,
         history_messages=settings.history_messages,
         tools=tools,
+        shortcut_urls=shortcut_urls,
     )
     return settings, gateway, store, service
 

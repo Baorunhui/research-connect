@@ -124,7 +124,7 @@ def daily_paper_tools(
                 )
                 if not ready:
                     stable_public_url = report_hub.upload_site(site_id, adapter.project_dir or "")
-                if publish_web:
+                if publish_web and not public_url:
                     context.report_progress(
                         f"论文日报站点已就绪，可实时查看进度和历史结果：\n{stable_public_url}",
                         stage="publish",
@@ -335,6 +335,7 @@ def daily_paper_tools(
             "论文日报任务已启动。将执行 BM25召回、语义向量召回、RRF、专用 reranker 和 LLM 精筛；"
             "每进入一个步骤都会在这里汇报。"
         ),
+        start_url=public_url,
         module_name="daily-paper",
         module_version=adapter.manifest.module_version,
         job_type="daily_report",

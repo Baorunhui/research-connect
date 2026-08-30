@@ -122,6 +122,7 @@ class JobCoordinator:
         options: Mapping[str, Any] | None = None,
         notifier: UserNotifier | None = None,
         start_message: str = "",
+        start_url: str = "",
         publish_public: bool = False,
         public_title: str = "",
     ) -> JobHandle:
@@ -165,7 +166,7 @@ class JobCoordinator:
         self.emit(
             job_id,
             JobEventType.ACCEPTED,
-            message=f"{_job_label(job_type)}任务已创建。",
+            message=(f"网页版：{start_url}" if start_url else ""),
         )
         self.store.update_job(job_id, status=JobStatus.RUNNING.value)
         self.emit(
@@ -445,7 +446,10 @@ def short_job_id(job_id: str) -> str:
 def format_job_event(event: JobEvent) -> str:
     short_id = short_job_id(event.job_id)
     if event.event_type == JobEventType.ACCEPTED.value:
-        return f"任务 {short_id} 已创建。"
+        text = f"任务 {short_id} 已创建。"
+        if event.message:
+            text += "\n" + event.message
+        return text
     if event.event_type == JobEventType.STARTED.value:
         return event.message or f"任务 {short_id} 已开始。"
     if event.event_type == JobEventType.PROGRESS.value:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import io
 import json
 import mimetypes
 import urllib.error
 import urllib.request
+import uuid
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -16,6 +18,9 @@ from connect_hub.contracts import JobEvent
 
 class ReportHubError(RuntimeError):
     """A public Report Hub request failed."""
+
+
+SITE_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 
 
 class ReportHubClient:
@@ -107,10 +112,16 @@ class ReportHubClient:
             if site_kind == "citationclaw"
             else build_daily_paper_site_archive(Path(project_dir))
         )
+        if len(archive) > SITE_UPLOAD_CHUNK_BYTES:
+            try:
+                return self._upload_site_chunks(site_id, archive)
+            except ReportHubError as exc:
+                # One-release compatibility with an older public server. Once the
+                # server update is deployed, large sites never use this path.
+                if "status=404" not in str(exc):
+                    raise
         response = self._request(
-            "PUT",
-            f"/api/v1/sites/{site_id}/report",
-            archive,
+            "PUT", f"/api/v1/sites/{site_id}/report", archive,
             content_type="application/zip",
         )
         try:
@@ -118,6 +129,41 @@ class ReportHubClient:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ReportHubError("REPORT_PUBLISH_FAILED: invalid site upload response") from exc
         return str(payload.get("public_url") or "").strip()
+
+    def _upload_site_chunks(self, site_id: str, archive: bytes) -> str:
+        upload_id = uuid.uuid4().hex
+        total = (len(archive) + SITE_UPLOAD_CHUNK_BYTES - 1) // SITE_UPLOAD_CHUNK_BYTES
+        public_url = ""
+        for index in range(total):
+            chunk = archive[
+                index * SITE_UPLOAD_CHUNK_BYTES:(index + 1) * SITE_UPLOAD_CHUNK_BYTES
+            ]
+            path = (
+                f"/api/v1/sites/{site_id}/uploads/{upload_id}/parts/{index}"
+                f"?total_parts={total}"
+            )
+            response = b""
+            for attempt in range(3):
+                try:
+                    response = self._request(
+                        "PUT", path, chunk,
+                        content_type="application/octet-stream",
+                        extra_headers={"X-Chunk-SHA256": hashlib.sha256(chunk).hexdigest()},
+                    )
+                    break
+                except ReportHubError:
+                    if attempt == 2:
+                        raise
+            try:
+                payload = json.loads(response.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ReportHubError(
+                    "REPORT_PUBLISH_FAILED: invalid chunk upload response"
+                ) from exc
+            public_url = str(payload.get("public_url") or public_url).strip()
+        if not public_url:
+            raise ReportHubError("REPORT_PUBLISH_FAILED: chunk upload did not complete")
+        return public_url
 
     def update_site_run(
         self, site_id: str, run_id: str, run: Mapping[str, Any], log_text: str
@@ -149,19 +195,22 @@ class ReportHubClient:
         return decoded
 
     def _request(
-        self, method: str, path: str, data: bytes | None, *, content_type: str
+        self, method: str, path: str, data: bytes | None, *, content_type: str,
+        extra_headers: Mapping[str, str] | None = None,
     ) -> bytes:
         if not self.configured:
             raise ReportHubError("REPORT_HUB_NOT_CONFIGURED")
+        headers = {
+            "Authorization": f"Bearer {self.agent_token}",
+            "Content-Type": content_type,
+            "User-Agent": "research-connect/0.2",
+        }
+        headers.update(dict(extra_headers or {}))
         request = urllib.request.Request(
             f"{self.api_url}{path}",
             data=data,
             method=method,
-            headers={
-                "Authorization": f"Bearer {self.agent_token}",
-                "Content-Type": content_type,
-                "User-Agent": "research-connect/0.2",
-            },
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:

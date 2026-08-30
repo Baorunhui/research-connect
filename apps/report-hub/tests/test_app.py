@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import zipfile
 
@@ -163,6 +164,29 @@ def test_stable_site_keeps_url_and_exposes_runs_and_public_config(tmp_path):
     ).json()["config"]
     assert preserved["local"]["chat"]["api_key"] == "secret-value"
     assert preserved["local"]["chat"]["model"] == "new-model"
+
+
+def test_stable_site_accepts_chunked_atomic_upload(tmp_path):
+    api = client(tmp_path)
+    site = api.post(
+        "/api/v1/sites",
+        headers=auth(),
+        json={"site_id": "chunked-site", "module_name": "daily-paper", "title": "日报"},
+    ).json()
+    token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
+    payload = report_zip(content=b"<h1>chunked site</h1>")
+    split = max(1, len(payload) // 2)
+    chunks = [payload[:split], payload[split:]]
+    for index, chunk in enumerate(chunks):
+        response = api.put(
+            f"/api/v1/sites/chunked-site/uploads/upload-1/parts/{index}?total_parts=2",
+            headers={**auth(), "X-Chunk-SHA256": hashlib.sha256(chunk).hexdigest()},
+            content=chunk,
+        )
+        assert response.status_code == 200
+        assert response.json()["completed"] is (index == 1)
+    assert api.get(f"/s/{token}/").text == "<h1>chunked site</h1>"
+    assert not (tmp_path / "site_uploads" / "chunked-site" / "upload-1").exists()
 
 
 def test_report_zip_rejects_traversal_and_missing_index(tmp_path):

@@ -36,6 +36,23 @@ def test_commands_and_history(tmp_path):
     assert service.handle("s", "/reset").text.startswith("已清空当前会话")
 
 
+def test_module_page_shortcuts_do_not_call_llm(tmp_path):
+    gateway = FakeGateway()
+    store = ConversationStore(tmp_path / "shortcuts.sqlite3")
+    service = ChatService(
+        gateway,
+        store,
+        shortcut_urls={
+            "paper_reader": "https://reports.test/papers/",
+            "citationclaw": "https://reports.test/citations/",
+        },
+    )
+
+    assert service.handle("s", "/paper_reader").text.endswith("https://reports.test/papers/")
+    assert service.handle("s", "/citationclaw").text.endswith("https://reports.test/citations/")
+    assert gateway.messages == []
+
+
 def test_job_query_commands_are_session_scoped(tmp_path):
     gateway = FakeGateway()
     store = ConversationStore(tmp_path / "jobs.sqlite3")

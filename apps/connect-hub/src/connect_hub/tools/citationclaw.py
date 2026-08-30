@@ -17,11 +17,12 @@ def citationclaw_tool(
     report_hub: ReportHubClient | None = None,
     site_id: str = "",
     project_dir: Path | None = None,
+    public_url: str = "",
 ) -> ToolDefinition:
     def lookup(arguments: Mapping[str, Any], context: ToolContext) -> Mapping[str, Any]:
         papers = [dict(item) for item in arguments.get("papers", []) if isinstance(item, Mapping)]
         prefix = re.sub(r"[^A-Za-z0-9_.-]+", "-", context.job_id[-12:]) or "citation"
-        stable_public_url = ""
+        stable_public_url = public_url
         if report_hub is not None and report_hub.configured and site_id and project_dir:
             try:
                 stable_public_url, ready = report_hub.ensure_site(
@@ -125,6 +126,7 @@ def citationclaw_tool(
         handler=lookup,
         timeout_seconds=adapter.timeout_seconds + 30,
         progress_message="查引用任务已启动，正在检索引用论文并生成引用画像。",
+        start_url=public_url,
         module_name="citationclaw",
         module_version=adapter.manifest.module_version,
         job_type="citation_lookup",

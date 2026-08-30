@@ -5,10 +5,32 @@ import zipfile
 
 from connect_hub.contracts import JobEvent
 from connect_hub.reporting import (
+    ReportHubClient,
     _public_event_type,
     build_daily_paper_site_archive,
     build_report_archive,
 )
+
+
+def test_site_chunk_client_sends_small_numbered_parts(monkeypatch):
+    client = ReportHubClient("https://reports.test", "x" * 40)
+    calls = []
+
+    def fake_request(method, path, data, *, content_type, extra_headers=None):
+        calls.append((method, path, data, extra_headers))
+        completed = len(calls) == 3
+        return (
+            '{"accepted":true,"completed":%s,"public_url":"%s"}'
+            % ("true" if completed else "false", "https://reports.test/s/token/" if completed else "")
+        ).encode()
+
+    monkeypatch.setattr(client, "_request", fake_request)
+    url = client._upload_site_chunks("daily-site", b"x" * (8 * 1024 * 1024 + 1))
+
+    assert url == "https://reports.test/s/token/"
+    assert len(calls) == 3
+    assert all(len(item[2]) <= 4 * 1024 * 1024 for item in calls)
+    assert all(item[3]["X-Chunk-SHA256"] for item in calls)
 
 
 def test_build_report_archive_from_static_directory(tmp_path):
