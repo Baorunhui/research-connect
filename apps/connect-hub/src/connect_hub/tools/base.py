@@ -19,6 +19,7 @@ class ToolContext:
     usage_recorder: Callable[..., int] | None = None
     process_started: Callable[[int, str], None] | None = None
     process_finished: Callable[[int], None] | None = None
+    public_url: str = ""
 
     def report_progress(
         self,

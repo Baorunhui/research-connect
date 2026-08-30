@@ -84,6 +84,11 @@ class ToolRegistry:
                 input_data=dict(arguments),
                 notifier=context.progress,
                 start_message=definition.progress_message,
+                publish_public=(
+                    definition.module_name in {"daily-paper", "citationclaw"}
+                    and bool(arguments.get("publish_web", True))
+                ),
+                public_title=_public_title(definition, arguments),
             )
             job_id = handle.job_id
         audit_id = self._audit_store.start_tool_run(
@@ -113,6 +118,7 @@ class ToolRegistry:
                 process_finished=lambda pid: self._audit_store.clear_job_process(
                     job_id, pid
                 ),
+                public_url=self._jobs.public_url(job_id),
             )
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"tool-{name}")
         future = executor.submit(definition.handler, dict(arguments), execution_context)
@@ -121,6 +127,11 @@ class ToolRegistry:
             if handle is not None:
                 handle.cancellation.raise_if_cancelled()
                 _record_output_artifacts(output, execution_context)
+                report_source = _report_source(output)
+                if report_source:
+                    published_url = self._jobs.publish_report(job_id, report_source)
+                    if published_url and isinstance(output, dict):
+                        output["public_url"] = published_url
                 self._jobs.complete(job_id, output)
             elapsed = int((time.monotonic() - started) * 1000)
             execution = ToolExecution(
@@ -189,6 +200,38 @@ def _record_output_artifacts(output: Any, context: ToolContext) -> None:
             text = str(path or "").strip()
             if text:
                 context.record_artifact(kind="image", path=text)
+
+
+def _report_source(output: Any) -> str:
+    if not isinstance(output, Mapping):
+        return ""
+    for key in ("report_bundle_path", "report_path"):
+        value = str(output.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _public_title(definition: ToolDefinition, arguments: Mapping[str, Any]) -> str:
+    if definition.module_name == "citationclaw":
+        papers = arguments.get("papers")
+        if isinstance(papers, list) and papers:
+            first = papers[0]
+            if isinstance(first, Mapping):
+                title = str(first.get("title") or "").strip()
+                if title:
+                    return f"查引用：{title}"[:300]
+    if definition.module_name == "daily-paper":
+        topics = arguments.get("topics")
+        if isinstance(topics, list):
+            names = [
+                str(item.get("tag") or "").strip()
+                for item in topics
+                if isinstance(item, Mapping) and str(item.get("tag") or "").strip()
+            ]
+            if names:
+                return f"论文日报：{', '.join(names)}"[:300]
+    return definition.description[:120] or definition.name
 
 
 def _validate(value: Any, schema: Mapping[str, Any], *, path: str) -> None:

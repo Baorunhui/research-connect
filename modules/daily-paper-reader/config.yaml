@@ -83,7 +83,7 @@ source_backends:
 local:
   port: 8567
   schedule:            # 定时自动跑流水线（每天一次）
-    enabled: true
+    enabled: false     # 由 Connect Hub 按用户设置的时间调度；模块本身默认不另起 scheduler
     time: "18:30"      # 后台 UTC 18:30（北京时间 02:30），同现状
     fetch_days: ""     # 留空则用 arxiv_paper_setting.days_window
   chat:                # AI 问答模型；仅存在本机，前端不读

@@ -56,6 +56,13 @@ templates = Jinja2Templates(directory=str(_PKG_DIR / "templates"))
 config_manager = ConfigManager()
 log_manager = LogManager()
 task_executor = TaskExecutor(log_manager, config_manager)
+_connect_task_state: dict = {
+    "schema_version": "connect.job.v1",
+    "external_job_id": "",
+    "status": "idle",
+    "result": None,
+    "error": "",
+}
 
 
 # ── Helper: task done callback ──────────────────────────────────────────
@@ -65,10 +72,15 @@ def _make_task_done_callback(executor: TaskExecutor, lm: LogManager):
         try:
             exc = task.exception()
             if exc:
+                _connect_task_state.update(status="failed", error=str(exc), result=None)
                 lm.error(f"任务异常终止: {exc}")
                 message = str(exc)
                 lm.broadcast_event("task_error", {"message": message, "error": message})
+            else:
+                result = task.result()
+                _connect_task_state.update(status="completed", error="", result=result)
         except asyncio.CancelledError:
+            _connect_task_state.update(status="cancelled", error="任务已取消", result=None)
             message = "任务已取消"
             lm.warning(message)
             lm.broadcast_event("task_finished", {
@@ -82,10 +94,17 @@ def _make_task_done_callback(executor: TaskExecutor, lm: LogManager):
     return _cb
 
 
-def _launch_task(coro):
+def _launch_task(coro, *, external_job_id: str = ""):
     """Set is_running, create task, attach done_callback. Returns task."""
     task_executor.is_running = True
     log_manager.set_task_log_suppressed(False)
+    _connect_task_state.update(
+        schema_version="connect.job.v1",
+        external_job_id=str(external_job_id or "").strip(),
+        status="running",
+        result=None,
+        error="",
+    )
     task = asyncio.create_task(coro)
     task.add_done_callback(_make_task_done_callback(task_executor, log_manager))
     task_executor.current_task = task
@@ -310,6 +329,7 @@ class PaperInput(BaseModel):
 class RunRequest(BaseModel):
     papers: List[PaperInput]
     output_prefix: str = "paper"
+    external_job_id: str = ""
 
 
 @app.get("/api/quota/check")
@@ -348,10 +368,16 @@ async def run_pipeline(request: RunRequest):
             paper_groups=groups,
             config=config,
             output_prefix=request.output_prefix,
-        )
+        ),
+        external_job_id=request.external_job_id,
     )
     total = sum(1 + len(g["aliases"]) for g in groups)
-    return {"status": "success", "message": f"已启动，共 {len(groups)} 篇论文（含 {total} 个搜索标题）"}
+    return {
+        "schema_version": "connect.job.v1",
+        "status": "success",
+        "job_id": request.external_job_id,
+        "message": f"已启动，共 {len(groups)} 篇论文（含 {total} 个搜索标题）",
+    }
 
 
 class FromCacheRequest(BaseModel):
@@ -695,10 +721,26 @@ async def chat_report(request: ChatReportRequest):
     return StreamingResponse(_stream(), media_type="text/plain; charset=utf-8")
 
 
+class CancelTaskRequest(BaseModel):
+    external_job_id: str = ""
+
+
 @app.post("/api/task/cancel")
-async def cancel_task():
+async def cancel_task(request: CancelTaskRequest | None = None):
+    requested_id = str(request.external_job_id if request else "").strip()
+    active_id = str(_connect_task_state.get("external_job_id") or "").strip()
+    if requested_id and active_id and requested_id != active_id:
+        return JSONResponse(
+            status_code=409,
+            content={"status": "error", "error_code": "JOB_ID_MISMATCH", "message": "任务 ID 不匹配"},
+        )
     task_executor.cancel()
-    return {"status": "success", "message": "任务取消中..."}
+    return {
+        "schema_version": "connect.job.v1",
+        "status": "success",
+        "job_id": active_id,
+        "message": "任务取消中...",
+    }
 
 
 @app.post("/api/task/year-traverse-respond")
@@ -816,7 +858,12 @@ async def pretest_light_model(req: PretestRequest):
 
 @app.get("/api/task/status")
 async def get_task_status():
-    return task_executor.get_status()
+    return {
+        **task_executor.get_status(),
+        **_connect_task_state,
+        "progress": dict(log_manager.current_progress),
+        "logs": log_manager.get_recent_logs(80),
+    }
 
 
 # ── Results endpoints with absolute path ──────────────────────────────────

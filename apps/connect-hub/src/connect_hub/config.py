@@ -63,6 +63,10 @@ class Settings:
     daily_paper_rerank_model: str
     daily_paper_rerank_base_url: str
     daily_paper_rerank_api_key: str
+    daily_paper_dir: Path
+    citationclaw_endpoint: str
+    citationclaw_timeout_seconds: int
+    citationclaw_poll_seconds: int
     xhs_agent_dir: Path
     xhs_agent_timeout_seconds: int
     xhs_agent_offline: bool
@@ -73,6 +77,9 @@ class Settings:
     web_search_cache_hours: int
     url_fetch_provider: str
     jina_reader_endpoint: str
+    report_hub_api_url: str
+    report_hub_agent_token: str
+    report_hub_timeout_seconds: int
 
     @property
     def feishu_configured(self) -> bool:
@@ -131,6 +138,10 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
     xhs_agent_dir = Path(configured_xhs) if configured_xhs else MONOREPO_ROOT / "modules" / "xhs-agent"
     if not xhs_agent_dir.is_absolute():
         xhs_agent_dir = PROJECT_ROOT / xhs_agent_dir
+    configured_daily = str(os.getenv("DAILY_PAPER_DIR") or "").strip()
+    daily_paper_dir = Path(configured_daily) if configured_daily else MONOREPO_ROOT / "modules" / "daily-paper-reader"
+    if not daily_paper_dir.is_absolute():
+        daily_paper_dir = PROJECT_ROOT / daily_paper_dir
 
     return Settings(
         feishu_app_id=str(os.getenv("FEISHU_APP_ID") or "").strip(),
@@ -143,8 +154,8 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         history_messages=_as_int("CONNECT_HUB_HISTORY_MESSAGES", 20, minimum=0),
         workers=_as_int("CONNECT_HUB_WORKERS", 4, minimum=1),
         log_level=str(os.getenv("CONNECT_HUB_LOG_LEVEL") or "INFO").strip().upper(),
-        daily_paper_transport=str(os.getenv("DAILY_PAPER_TRANSPORT") or "disabled").strip().lower(),
-        daily_paper_endpoint=str(os.getenv("DAILY_PAPER_ENDPOINT") or "").strip(),
+        daily_paper_transport=str(os.getenv("DAILY_PAPER_TRANSPORT") or "local_http").strip().lower(),
+        daily_paper_endpoint=str(os.getenv("DAILY_PAPER_ENDPOINT") or "http://127.0.0.1:8567").strip(),
         daily_paper_timeout_seconds=_as_int(
             "DAILY_PAPER_TIMEOUT_SECONDS", 1800, minimum=60
         ),
@@ -172,6 +183,12 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         daily_paper_rerank_api_key=str(
             os.getenv("DAILY_PAPER_RERANK_API_KEY") or ""
         ).strip(),
+        daily_paper_dir=daily_paper_dir.resolve(),
+        citationclaw_endpoint=str(
+            os.getenv("CITATIONCLAW_ENDPOINT") or "http://127.0.0.1:8000"
+        ).strip().rstrip("/"),
+        citationclaw_timeout_seconds=_as_int("CITATIONCLAW_TIMEOUT_SECONDS", 3600, minimum=60),
+        citationclaw_poll_seconds=_as_int("CITATIONCLAW_POLL_SECONDS", 2, minimum=1),
         xhs_agent_dir=xhs_agent_dir.resolve(),
         xhs_agent_timeout_seconds=_as_int("XHS_AGENT_TIMEOUT_SECONDS", 900, minimum=30),
         xhs_agent_offline=_as_bool(os.getenv("XHS_AGENT_OFFLINE"), default=False),
@@ -193,4 +210,7 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         jina_reader_endpoint=str(
             os.getenv("JINA_READER_ENDPOINT") or "https://r.jina.ai/"
         ).strip(),
+        report_hub_api_url=str(os.getenv("REPORT_HUB_API_URL") or "").strip().rstrip("/"),
+        report_hub_agent_token=str(os.getenv("REPORT_HUB_AGENT_TOKEN") or "").strip(),
+        report_hub_timeout_seconds=_as_int("REPORT_HUB_TIMEOUT_SECONDS", 10, minimum=2),
     )

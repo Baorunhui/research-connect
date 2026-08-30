@@ -86,6 +86,9 @@ class MinerUParser:
 
     @staticmethod
     def _check_local_mineru() -> bool:
+        enabled = str(os.getenv("CITATIONCLAW_ENABLE_LOCAL_MINERU") or "").strip().lower()
+        if enabled not in {"1", "true", "yes", "on"}:
+            return False
         try:
             from mineru.cli.client import do_parse
             return True

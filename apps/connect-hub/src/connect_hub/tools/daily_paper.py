@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -98,7 +99,7 @@ def daily_paper_tools(
 
     def generate(arguments: Mapping[str, Any], context: ToolContext) -> Mapping[str, Any]:
         request_arguments = dict(arguments)
-        publish_web = bool(request_arguments.pop("publish_web", False))
+        publish_web = bool(request_arguments.pop("publish_web", True))
         source_links = [
             _text(item)
             for item in (request_arguments.pop("source_links", []) or [])
@@ -106,17 +107,33 @@ def daily_paper_tools(
         ]
         request_arguments["schema_version"] = "connect.job.v1"
         request_arguments["job_id"] = context.job_id
-        record = adapter.invoke(
-            DailyPaperRequest("recommend_wait", request_arguments),
-            on_progress=context.report_progress,
-            on_event=lambda event: context.report_progress(
-                _text(event.get("message")) or "论文日报任务有新进度。",
-                stage=_text(event.get("stage")),
-                current=(event.get("current") if isinstance(event.get("current"), int) else None),
-                total=(event.get("total") if isinstance(event.get("total"), int) else None),
-                payload=(event.get("payload") if isinstance(event.get("payload"), Mapping) else None),
-            ),
-            is_cancelled=lambda: context.cancelled,
+        started_at = time.monotonic()
+        try:
+            record = adapter.invoke(
+                DailyPaperRequest("recommend_wait", request_arguments),
+                on_progress=context.report_progress,
+                on_event=lambda event: context.report_progress(
+                    _text(event.get("message")) or "论文日报任务有新进度。",
+                    stage=_text(event.get("stage")),
+                    current=(event.get("current") if isinstance(event.get("current"), int) else None),
+                    total=(event.get("total") if isinstance(event.get("total"), int) else None),
+                    payload=(event.get("payload") if isinstance(event.get("payload"), Mapping) else None),
+                ),
+                is_cancelled=lambda: context.cancelled,
+            )
+        except Exception:
+            context.record_usage(
+                provider="daily-paper",
+                operation="workflow",
+                duration_ms=int((time.monotonic() - started_at) * 1000),
+                status_code=500,
+            )
+            raise
+        context.record_usage(
+            provider="daily-paper",
+            operation="workflow",
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+            status_code=200,
         )
         result = record.get("result")
         if not isinstance(result, Mapping):
@@ -136,7 +153,7 @@ def daily_paper_tools(
                 run_id=run_id,
                 result=result,
                 topics=safe_topics,
-                public_url=(public_url if publish_web else ""),
+                public_url=(context.public_url if publish_web else ""),
             ),
             encoding="utf-8",
         )
@@ -145,7 +162,8 @@ def daily_paper_tools(
             "status": "completed",
             "result": result,
             "report_path": str(report_path),
-            "public_url": (public_url if publish_web else ""),
+            "public_url": (context.public_url if publish_web else ""),
+            "report_bundle_path": _text(record.get("report_bundle_path")),
             "enrichment_sources": source_links,
         }
 
@@ -156,7 +174,7 @@ def daily_paper_tools(
             "LLM 精筛和最终选择，完成后返回排序结果和 Markdown 日报。这是耗时业务工具，"
             "仅在用户明确要求生成论文日报或调研近期论文、且研究主题已能形成有效检索词时调用；"
             "技术缩写含义不清时先搜索或自然询问。用户未指定时使用最近30天、standard、"
-            "不发布网页；不要为了补齐非关键偏好而强制确认。"
+            "发布公网任务页；不要为了补齐非关键偏好而强制确认。"
         ),
         parameters={
             "type": "object",

@@ -19,6 +19,7 @@ from connect_hub.contracts import (
 )
 from connect_hub.processes import CancellationToken, ManagedProcessRunner
 from connect_hub.storage import ConversationStore
+from connect_hub.reporting import ReportHubClient, ReportHubError
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +53,14 @@ class JobCoordinator:
         self,
         store: ConversationStore,
         process_runner: ManagedProcessRunner | None = None,
+        report_hub: ReportHubClient | None = None,
         *,
         interrupt_stale: bool = False,
     ) -> None:
         self.store = store
         self.process_runner = process_runner or ManagedProcessRunner()
+        self.report_hub = report_hub
+        self._public_urls: dict[str, str] = {}
         self._active: dict[str, _ActiveJob] = {}
         self._lock = threading.RLock()
         if interrupt_stale:
@@ -118,6 +122,8 @@ class JobCoordinator:
         options: Mapping[str, Any] | None = None,
         notifier: UserNotifier | None = None,
         start_message: str = "",
+        publish_public: bool = False,
+        public_title: str = "",
     ) -> JobHandle:
         job_id = f"job-{uuid.uuid4().hex}"
         cancellation = CancellationToken()
@@ -133,6 +139,29 @@ class JobCoordinator:
         )
         with self._lock:
             self._active[job_id] = _ActiveJob(handle, notifier)
+        if publish_public and self.report_hub is not None and self.report_hub.configured:
+            try:
+                public_url = self.report_hub.create_job(
+                    job_id=job_id,
+                    module_name=module_name,
+                    title=public_title or _job_label(job_type) or "Research Connect 任务",
+                )
+                self._public_urls[job_id] = public_url
+                self.add_artifact(
+                    job_id,
+                    kind="url",
+                    url=public_url,
+                    name="public report",
+                )
+                if notifier is not None:
+                    notifier(f"任务网页已创建，可实时查看进度：\n{public_url}")
+            except ReportHubError as exc:
+                logger.warning("public report creation failed job_id=%s: %s", job_id, exc)
+                if notifier is not None:
+                    notifier(
+                        "公网任务页创建失败（REPORT_HUB_UNAVAILABLE），本地任务仍会继续；"
+                        "完成后我会在飞书返回结果。"
+                    )
         self.emit(
             job_id,
             JobEventType.ACCEPTED,
@@ -189,7 +218,33 @@ class JobCoordinator:
                         active.notifier(text)
                     except Exception:
                         logger.exception("job notification failed job_id=%s", job_id)
+        if inserted and job_id in self._public_urls and self.report_hub is not None:
+            try:
+                self.report_hub.send_event(event)
+            except ReportHubError as exc:
+                # Public reporting is deliberately best-effort: a temporary
+                # public-server outage must not kill the user's local research.
+                logger.warning("public event upload failed job_id=%s: %s", job_id, exc)
         return event
+
+    def public_url(self, job_id: str) -> str:
+        return self._public_urls.get(job_id, "")
+
+    def publish_report(self, job_id: str, source: str | Path) -> str:
+        if job_id not in self._public_urls or self.report_hub is None:
+            return ""
+        try:
+            url = self.report_hub.upload_report(job_id, source)
+            return url or self._public_urls[job_id]
+        except ReportHubError as exc:
+            logger.warning("public report upload failed job_id=%s: %s", job_id, exc)
+            self.progress(
+                job_id,
+                "最终网页上传失败（REPORT_PUBLISH_FAILED）；任务结果仍保留在本机并会返回飞书。",
+                stage="publish",
+                payload={"error_code": "REPORT_PUBLISH_FAILED", "detail": str(exc)[:500]},
+            )
+            return ""
 
     def progress(
         self,
@@ -416,6 +471,7 @@ def _job_label(job_type: str) -> str:
         "generate_daily_paper_report": "论文日报",
         "daily_report": "论文日报",
         "paper_research": "论文调研",
+        "citation_lookup": "查引用",
         "generate_xhs_package": "小红书内容",
     }
     return labels.get(job_type, "")

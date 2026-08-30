@@ -2203,6 +2203,12 @@ class TaskExecutor:
                 "dashboard": self._data_result_path(html_file),
                 "cost_summary": cost_summary,
             }})
+            return {
+                "excel": str(excel_file),
+                "json": str(json_file),
+                "dashboard": str(html_file) if html_file else "",
+                "cost_summary": cost_summary,
+            }
 
         except Exception as e:
             self.log_manager.error(f"任务错误: {e}")
@@ -2681,6 +2687,13 @@ class TaskExecutor:
                 "dashboard": self._data_result_path(html_file),
                 "cost_summary": cost_summary,
             }})
+
+            return {
+                "excel": str(excel_file),
+                "json": str(json_file),
+                "dashboard": str(html_file) if html_file else "",
+                "cost_summary": cost_summary,
+            }
 
         except Exception as e:
             self.log_manager.error(f"任务错误: {e}")

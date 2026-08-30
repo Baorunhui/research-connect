@@ -26,8 +26,8 @@ ChatService
        └─ optional fallback provider
 
 External adapters
-  ├─ Daily Paper（HTTP，Step 1–5）
-  ├─ Citation Lookup（待接入）
+  ├─ Daily Paper（最新版本地 workflow HTTP）
+  ├─ CitationClaw（外部 job_id + 进度/取消/报告）
   └─ Xiaohongshu Generator（独立子进程）
 ```
 
@@ -37,8 +37,8 @@ External adapters
 
 - `system_status`：无副作用的服务状态检查。
 - `generate_xhs_package`：通过 `xhs_agent` 独立虚拟环境生成文案和卡片，不自动发布。
-- `generate_daily_paper_report`：配置 `DAILY_PAPER_TRANSPORT=http` 后调用日报自带的 `paper_engine` HTTP 层；自动等待完成、把精读/速读摘要发到当前飞书会话，并附上完整 Markdown 日报。
-- 查引用：项目尚未放入工作区，因此暂不注册工具。
+- `generate_daily_paper_report`：调用最新版 Daily Paper workflow，实时转发步骤并发布静态日报网页。
+- `lookup_citations`：调用 CitationClaw，转发进度、支持取消，并发布最终 Dashboard。
 
 工具只能来自静态注册表。LLM不能执行任意 shell、动态导入代码或调用未注册工具；每次工具调用的参数、状态、结果/错误和时间都会审计到 SQLite `tool_runs` 表。
 
@@ -131,10 +131,10 @@ connect-hub check
 connect-hub chat
 ```
 
-再启动飞书长连接：
+部署时用一个命令启动两个轻量模块 API 和飞书长连接：
 
 ```bash
-connect-hub feishu
+connect-hub serve
 ```
 
 连接成功后应看到 `connected to wss://...`。进程需要持续运行，后续可交给 systemd 管理。
@@ -149,7 +149,7 @@ python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 connect-hub check
 connect-hub chat
-connect-hub feishu
+connect-hub serve
 ```
 
 该连接层没有 Linux 专属依赖。Windows后续可用“任务计划程序”或服务包装器保持进程运行。
@@ -163,9 +163,10 @@ connect-hub feishu
 - `FEISHU_ALLOWED_OPEN_IDS`：逗号分隔的用户白名单，空值表示仅依赖飞书应用可用范围。
 - `FEISHU_REQUIRE_MENTION=true`：群聊必须 @机器人；私聊不受影响。
 - `XHS_AGENT_DIR`：已有 `xhs_agent` 项目路径；由独立子进程调用。
-- `DAILY_PAPER_TRANSPORT/ENDPOINT`：日报 HTTP 适配开关和地址，例如 `http://127.0.0.1:8757`。
+- `DAILY_PAPER_TRANSPORT/ENDPOINT`：默认 `local_http` / `http://127.0.0.1:8567`。
 - `DAILY_PAPER_TIMEOUT_SECONDS/POLL_SECONDS`：日报长任务的总等待时间和轮询间隔。
-- `DAILY_PAPER_PUBLIC_URL`：可选的日报网页站点地址。必须是飞书用户能访问的局域网或公网地址；留空时只发送飞书摘要和 Markdown 文件。
+- `CITATIONCLAW_ENDPOINT`：默认 `http://127.0.0.1:8000`。
+- `REPORT_HUB_API_URL/AGENT_TOKEN`：公网永久任务页；任务创建时立即返回链接，完成后上传静态网页。部署见 [`../../docs/PUBLIC_SERVER_HANDOFF.md`](../../docs/PUBLIC_SERVER_HANDOFF.md)。
 - `DAILY_PAPER_SKIP_LLM_REFINE=false`：默认保留逐篇 LLM 精筛；后续通过动态分批、并发限流和 429 退避优化耗时。仅诊断时才临时设为 `true`。
 - `DAILY_PAPER_RERANK_*`：每次任务注入的重排服务配置，不改日报仓库自己的 `.env`。默认使用日报项目已有的 `public-zwwen-rerank`；需要私有服务时再填写 API Key。
 - `WEB_SEARCH_PROVIDER=exa_mcp`：启用匿名 Exa Hosted MCP；填 `disabled` 可全局关闭。
@@ -175,10 +176,10 @@ connect-hub feishu
 
 ## 论文日报边界
 
-`connect_hub.adapters.daily_paper.DailyPaperAdapter` 只调用日报已有的 `paper_engine` HTTP 接口，不导入或修改日报领域源码。机器人收到生成日报的请求后，在自己的工作线程中启动任务并轮询，完成后自动回复原飞书会话。
+`connect_hub.adapters.daily_paper.DailyPaperAdapter` 调用日报最新版 `/api/local/workflows/dispatch`。Connect Hub 的 job ID 是唯一对外任务 ID；日报内部 run ID 仅作为执行句柄。
 
 默认运行日报的逐篇 LLM 精筛。Reranker 仍使用独立 `/rerank` 接口，普通聊天模型 API 不能直接替代；connect-hub 会把主 LLM provider 作为 `SUMMARY/DEEPSEEK` 配置随请求注入。
 
 飞书会在管线进入 BM25、Embedding、RRF、Rerank 和 Top-K 选择时分别发送一次进度消息。相同步骤只汇报一次。
 
-现有 `paper_engine` 为了隔离外部调用，只运行 Step 1–5，返回结构化推荐数据，不运行 Step 5.5/6，也不写日报仓库的 `docs/`。因此 connect-hub 会基于同一结果生成一份可下载的 Markdown 日报。日报项目自己的 Docsify 网页仍可通过 `python src/local_server.py --serve` 在本机查看；要把网页链接发给其他飞书用户，需要先将站点托管到对方能访问的地址，再填写 `DAILY_PAPER_PUBLIC_URL`。
+`serve` 常驻的只是 HTTP 壳和飞书 WebSocket，不预加载 PDF/embedding 模型。流水线与 Docling 按任务启动并退出；最终 `docs/` 静态站点上传到 Report Hub，用户电脑关机后旧链接仍可访问。

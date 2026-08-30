@@ -248,6 +248,9 @@ class ChatService:
         )
         if isinstance(daily_output, Mapping):
             answer, attachments = _format_daily_paper_result(daily_output)
+        citation_output = _latest_tool_output(outcome.executions, "lookup_citations")
+        if isinstance(citation_output, Mapping):
+            answer, attachments = _format_citation_result(citation_output)
         if not answer:
             answer = "模型没有返回文字内容。"
         if outcome.sources:
@@ -805,4 +808,34 @@ def _format_daily_paper_result(
             ),
         )
         lines.extend(["", "Markdown 日报将作为文件发送。"])
+    return "\n".join(lines), attachments
+
+
+def _format_citation_result(
+    output: Mapping[str, Any],
+) -> tuple[str, tuple[OutboundAttachment, ...]]:
+    papers = output.get("papers") if isinstance(output.get("papers"), list) else []
+    titles = [
+        str(item.get("title") or "").strip()
+        for item in papers
+        if isinstance(item, Mapping) and str(item.get("title") or "").strip()
+    ]
+    lines = ["查引用任务已完成。"]
+    if titles:
+        lines.append("论文：" + "；".join(titles))
+    public_url = str(output.get("public_url") or "").strip()
+    if public_url:
+        lines.extend(["", f"永久网页：{public_url}"])
+    cost = output.get("cost_summary")
+    if isinstance(cost, Mapping) and cost:
+        requests = int(cost.get("scraper_requests") or 0)
+        llm_cost = cost.get("llm_cost_rmb")
+        suffix = f"，LLM 估算 ¥{llm_cost}" if llm_cost not in (None, "") else ""
+        lines.extend(["", f"模块统计：Scraper 请求 {requests} 次{suffix}"])
+    dashboard = str(output.get("dashboard") or "").strip()
+    attachments: tuple[OutboundAttachment, ...] = ()
+    if dashboard and Path(dashboard).is_file() and not public_url:
+        attachments = (
+            OutboundAttachment(kind="file", path=dashboard, name=Path(dashboard).name),
+        )
     return "\n".join(lines), attachments

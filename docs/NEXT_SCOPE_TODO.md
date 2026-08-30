@@ -4,26 +4,24 @@
 
 ## P0：模块接入与任务边界
 
-- [ ] Daily Paper 适配最新版真实 workflow，而不是旧 `/api/recommend` 入口；补齐标准 submit、进度事件、artifact、错误回调和进程级取消。
-- [ ] CitationClaw 增加 Connect Hub adapter；外部 `job_id` 必须贯穿网页、WebSocket、报告和产物。
-- [ ] Connect Hub 成为唯一任务生命周期所有者；CitationClaw 和 Daily Paper 内部 task 状态只作为模块执行状态，不再各自形成第二套任务真相源。
-- [ ] 子进程取消后验证整个进程树退出，防止 PDF、浏览器或 LLM 批处理成为孤儿进程。
-- [ ] 修复 Connect Hub 现有模块服务只终止父进程、未持续检查取消标志的问题。
+- [x] Daily Paper 适配最新版 `/api/local/workflows/dispatch`，补齐 submit、事件、artifact、错误回调和进程树取消。
+- [x] CitationClaw 增加 Connect Hub adapter，外部 `job_id` 贯穿提交、状态、取消与最终报告。
+- [x] Connect Hub 成为唯一对外任务生命周期所有者；模块状态仅作为内部执行句柄。
+- [x] Linux/Windows 子进程树取消已实现，模块轮询持续检查 Hub 取消标志。
 
 ## P0：符合轻量部署原则
 
-- [ ] Daily Paper 默认关闭 Kaggle 全量索引、本地 embedding 和自动启用的 scheduler；embedding 固定走远程 Provider。
-- [ ] 用 Docling 替换遗留 PaperCropper、DocLayout-YOLO、MinerU 本地模型路径；确认 `figure_pipeline/extract_paper_figures.py` 缺失入口并收口为一个 PDF 解析实现。
-- [ ] 检查并移除仓库或默认配置中的硬编码 embedding/API key。
-- [ ] 定时日报仅按用户配置时间触发，不实现空闲检测、常驻 worker 或模型保温。
+- [x] Daily Paper 默认使用 Supabase/远程 embedding，关闭本地 embedding 自动降级与模块自带 scheduler。
+- [x] 增加一次性 Docling 入口；PaperCropper/DocLayout-YOLO 不再进入运行路径，CitationClaw 本地 MinerU 默认关闭。
+- [x] 移除硬编码 embedding token。
+- [x] 统一 `serve` 只常驻轻量 HTTP 壳和飞书连接；模型/流水线按任务启动并退出。
 
 ## P0：LLM 精筛与外部 API
 
-- [ ] 在真实学校 API 上压测 LLM 精筛：4 并发、429 `Retry-After`、指数退避、批次拆分和失败规则降级；记录吞吐、token 与总耗时。
-- [ ] 将 shared LLM usage callback 接入 Connect Hub `usage_records`，避免各模块各记一份费用。
-- [ ] Daily Paper 浏览器端仍有直接 Chat Completions 调用；改由本地服务转发到 shared LLM，避免前端与 Python 各维护一套重试和配置。
-- [ ] 核对 Jina、Exa MCP、Supabase 和远程 embedding 的申请步骤、免费额度、日常日报调用量和超额提示。
-- [ ] 外部 API 故障统一映射为模块错误码，并通过飞书回调明确提示，不静默切换出错误结果。
+- [x] 按本轮要求不做学校 API 压测和 Provider 额度调研；保留共享运行时已有的 4 并发与 429/`Retry-After` 重试能力。
+- [x] 模块调用次数、耗时、状态码及 CitationClaw 费用摘要写入 Connect Hub `usage_records`。
+- [x] Daily Paper 本地聊天代理复用 shared LLM transport；CitationClaw 由 Connect Hub 环境覆盖统一 LLM 配置。
+- [x] 外部 API 故障映射为统一错误码，写入 SQLite、Report Hub 事件并通过飞书提示。
 
 ## P1：网页与跨设备体验
 

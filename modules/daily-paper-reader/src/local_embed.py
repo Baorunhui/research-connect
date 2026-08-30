@@ -132,7 +132,7 @@ def _embed_local(texts: List[str], opts: Dict[str, Any]) -> np.ndarray:
   return np.asarray(vectors, dtype=np.float32)
 
 
-def embed_texts(texts: List[str], *, provider: Optional[str] = None, allow_local_fallback: bool = True) -> Tuple[np.ndarray, str]:
+def embed_texts(texts: List[str], *, provider: Optional[str] = None, allow_local_fallback: bool = False) -> Tuple[np.ndarray, str]:
   """编码文本为 L2 归一化向量。返回 (vectors, 实际使用的 provider)。
 
   openai 通道失败且 allow_local_fallback 时自动降级到 local。

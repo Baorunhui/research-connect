@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -232,10 +233,34 @@ class _StepTracker:
         )
 
 
+def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
+    if proc.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    except ProcessLookupError:
+        pass
+
+
 class RunStore:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._runs: dict[str, dict[str, Any]] = {}
+        self._processes: dict[str, subprocess.Popen[str]] = {}
 
     def create(
         self,
@@ -245,6 +270,7 @@ class RunStore:
         command: list[str],
         config: dict[str, Any] | None = None,
         secret: dict[str, Any] | None = None,
+        external_job_id: str = "",
     ) -> dict[str, Any]:
         run_id = uuid.uuid4().hex[:12]
         run_dir = RUNS_DIR / run_id
@@ -275,6 +301,8 @@ class RunStore:
             "config_path": config_path,
             "secret_env": build_secret_env(secret),
             "events": [_run_event("run.accepted", run_id, message="已接收本地运行请求")],
+            "external_job_id": str(external_job_id or "").strip(),
+            "cancel_requested": False,
         }
         with self._lock:
             self._runs[run_id] = run
@@ -328,6 +356,25 @@ class RunStore:
             run["events"].append(event)
             run["updated_at"] = utc_now()
 
+    def cancel(self, run_id: str) -> bool:
+        with self._lock:
+            run = self._runs.get(run_id)
+            proc = self._processes.get(run_id)
+            if not run or run.get("status") not in {"queued", "in_progress"}:
+                return False
+            run["cancel_requested"] = True
+            run["updated_at"] = utc_now()
+        if proc is not None and proc.poll() is None:
+            _terminate_process_tree(proc)
+        self._emit(run_id, _run_event("run.cancelled", run_id, message="任务已取消，子进程树已停止"))
+        self._update(
+            run_id,
+            status="cancelled",
+            conclusion="cancelled",
+            completed_at=utc_now(),
+        )
+        return True
+
     def _run_process(self, run_id: str) -> None:
         run = self._get_private(run_id)
         if not run:
@@ -371,6 +418,11 @@ class RunStore:
                 log.write(f"[local-debug] command={' '.join(run['command'])}\n\n")
                 log.flush()
                 # Popen 逐行流式读 stdout：实时落盘日志 + 解析步骤锚点发进度事件。
+                popen_options: dict[str, Any] = {}
+                if os.name == "nt":
+                    popen_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                else:
+                    popen_options["start_new_session"] = True
                 proc = subprocess.Popen(
                     run["command"],
                     cwd=str(ROOT_DIR),
@@ -380,7 +432,10 @@ class RunStore:
                     text=True,
                     encoding="utf-8",
                     errors="replace",
+                    **popen_options,
                 )
+                with self._lock:
+                    self._processes[run_id] = proc
                 assert proc.stdout is not None
                 for line in proc.stdout:
                     log.write(line)
@@ -390,22 +445,33 @@ class RunStore:
                 returncode = proc.wait()
                 for event in tracker.finalize(returncode == 0):
                     self._emit(run_id, event)
-                conclusion = "success" if returncode == 0 else "failure"
+                latest = self.get(run_id) or {}
+                was_cancelled = bool(latest.get("cancel_requested"))
+                conclusion = "cancelled" if was_cancelled else ("success" if returncode == 0 else "failure")
                 log.write(f"\n[local-debug] completed_at={utc_now()} returncode={returncode}\n")
                 self._emit(
                     run_id,
                     _run_event(
-                        "run.completed" if conclusion == "success" else "run.failed",
+                        "run.cancelled" if was_cancelled else ("run.completed" if conclusion == "success" else "run.failed"),
                         run_id,
                         message="流水线执行完成" if conclusion == "success" else f"流水线执行失败（returncode={returncode}）",
                     ),
                 )
-            self._update(run_id, status="completed", conclusion=conclusion, completed_at=utc_now(), returncode=returncode)
+            self._update(
+                run_id,
+                status="cancelled" if conclusion == "cancelled" else "completed",
+                conclusion=conclusion,
+                completed_at=utc_now(),
+                returncode=returncode,
+            )
         except Exception as exc:
             with log_path.open("a", encoding="utf-8") as log:
                 log.write(f"\n[local-debug] exception={exc!r}\n")
             self._emit(run_id, _run_event("run.failed", run_id, message=f"执行异常：{exc}"))
             self._update(run_id, status="completed", conclusion="failure", completed_at=utc_now(), error=repr(exc))
+        finally:
+            with self._lock:
+                self._processes.pop(run_id, None)
 
 
 RUN_STORE = RunStore()
@@ -2069,6 +2135,12 @@ class Handler(SimpleHTTPRequestHandler):
             return self._survey_create_job()
         if parsed.path.startswith("/api/survey/") and parsed.path.rstrip("/").endswith("/cancel"):
             return self._survey_cancel(parsed.path)
+        if parsed.path.startswith("/api/local/runs/") and parsed.path.rstrip("/").endswith("/cancel"):
+            parts = parsed.path.strip("/").split("/")
+            run_id = parts[3] if len(parts) >= 5 else ""
+            if not run_id or not RUN_STORE.cancel(run_id):
+                return self._json({"ok": False, "error": "run not found or already finished"}, status=404)
+            return self._json({"ok": True, "run_id": run_id, "status": "cancelled"})
         if parsed.path == "/api/local/config":
             return self._save_local_config()
         if parsed.path == "/api/local/config/partial":
@@ -2093,7 +2165,15 @@ class Handler(SimpleHTTPRequestHandler):
             config = payload.get("config") if isinstance(payload.get("config"), dict) else None
             secret = payload.get("secret") if isinstance(payload.get("secret"), dict) else None
             cmd = build_command(workflow_key, workflow_file, inputs)
-            run = RUN_STORE.create(workflow_key, workflow_file, inputs, cmd, config=config, secret=secret)
+            run = RUN_STORE.create(
+                workflow_key,
+                workflow_file,
+                inputs,
+                cmd,
+                config=config,
+                secret=secret,
+                external_job_id=str(payload.get("externalJobId") or ""),
+            )
             return self._json({"ok": True, "run": run})
         except Exception as exc:
             return self._json({"ok": False, "error": str(exc)}, status=400)

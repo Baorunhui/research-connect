@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import List
 from pydantic import BaseModel, Field
@@ -216,8 +217,21 @@ class ConfigManager:
         self.config = config
 
     def get(self) -> AppConfig:
-        """获取配置"""
-        return self.config
+        """获取配置；Connect Hub 的统一 LLM 环境变量优先且不落盘。"""
+        data = self.config.model_dump()
+        api_key = str(os.getenv("LLM_API_KEY") or "").strip()
+        base_url = str(os.getenv("LLM_BASE_URL") or "").strip()
+        model = str(os.getenv("LLM_MODEL") or "").strip()
+        if api_key:
+            data["openai_api_key"] = api_key
+            data["light_api_key"] = api_key
+        if base_url:
+            data["openai_base_url"] = base_url
+            data["light_base_url"] = base_url
+        if model:
+            data["openai_model"] = model
+            data["dashboard_model"] = model
+        return AppConfig(**data)
 
     def update(self, **kwargs):
         """更新配置"""

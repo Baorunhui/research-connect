@@ -167,6 +167,7 @@ class ConnectJobError(RuntimeError):
     def payload(self) -> dict[str, Any]:
         return {
             "code": self.code,
+            "error_code": self.code,
             "stage": self.stage,
             "provider": self.provider,
             "retryable": self.retryable,

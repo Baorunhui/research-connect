@@ -136,16 +136,13 @@ class RemoteSentenceTransformerTest(unittest.TestCase):
         },
         clear=False,
     )
-    def test_load_sentence_transformer_returns_remote_wrapper_with_fixed_key(self):
+    def test_load_sentence_transformer_returns_remote_wrapper_without_hardcoded_key(self):
         model = load_sentence_transformer("BAAI/bge-small-en-v1.5", device="cpu")
         self.assertTrue(getattr(model, "is_remote", False))
         self.assertEqual(model.model_name, "BAAI/bge-small-en-v1.5")
         self.assertEqual(model.endpoint, "https://zwwen.online/embed")
         self.assertEqual(model.timeout, 45)
-        self.assertEqual(
-            model.api_key,
-            "26932a86d772001af60cbd9d2c162bfda3a90e094f797f3d6806f6077478b27a",
-        )
+        self.assertEqual(model.api_key, "")
 
     @patch("src.model_loader._load_local_sentence_transformer")
     def test_load_sentence_transformer_can_force_local(self, mock_load_local):

@@ -21,7 +21,7 @@ _DEFAULT_HF_BACKOFF_RETRIES = 1
 _DEFAULT_REMOTE_TIMEOUT_SECONDS = 60
 _DEFAULT_REMOTE_EMBED_ENDPOINT = os.getenv("DPR_EMBED_API_URL") or "https://zwwen.online/embed"
 # 当前服务使用固定 API key 接入。
-_DEFAULT_REMOTE_EMBED_API_KEY = os.getenv("DPR_EMBED_API_KEY") or "26932a86d772001af60cbd9d2c162bfda3a90e094f797f3d6806f6077478b27a"
+_DEFAULT_REMOTE_EMBED_API_KEY = os.getenv("DPR_EMBED_API_KEY") or ""
 
 
 def _log_default(message: str) -> None:

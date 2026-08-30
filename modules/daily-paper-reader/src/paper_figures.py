@@ -772,16 +772,8 @@ def ensure_paper_media(
             if figures or tables:
                 return figures, tables
 
-        figures, tables = _extract_media_with_papercropper(
-            tmp_pdf_path,
-            figure_dir,
-            figure_relative_prefix,
-            table_dir,
-            table_relative_prefix,
-        )
-        if figures or tables:
-            return figures, tables
-
+        # Lightweight fallback only. PaperCropper/DocLayout-YOLO are no longer
+        # part of the supported runtime path.
         return extract_figures_from_pdf(tmp_pdf_path, figure_dir, figure_relative_prefix), []
     finally:
         if tmp_pdf_path and os.path.exists(tmp_pdf_path):
@@ -807,7 +799,7 @@ def extract_figures_from_pdf_bytes(
     pdf_bytes: bytes,
     output_dir: str,
     *,
-    use_papercropper: bool = True,
+    use_papercropper: bool = False,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     从内存中的 PDF 字节抽取 figure/table，返回 dict 列表（`url` 为本地绝对路径）。
@@ -833,10 +825,6 @@ def extract_figures_from_pdf_bytes(
             )
             if figures:
                 return _absolutize_asset_urls(figures, figures_dir), _absolutize_asset_urls(tables, tables_dir)
-        if use_papercropper:
-            figures, tables = _extract_media_with_papercropper(
-                tmp_pdf.name, figures_dir, "figures", tables_dir, "tables"
-            )
         if not figures:
             try:
                 figures = extract_figures_from_pdf(tmp_pdf.name, figures_dir, "figures")
@@ -844,7 +832,7 @@ def extract_figures_from_pdf_bytes(
                 figures = []
         return _absolutize_asset_urls(figures, figures_dir), _absolutize_asset_urls(tables, tables_dir)
     except Exception as e:
-        _warn_papercropper(f"内存 PDF 抽图失败: {e}")
+        print(f"[WARN] PDF 抽图失败: {e}", flush=True)
         return [], []
     finally:
         try:

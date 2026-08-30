@@ -6,7 +6,11 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Mapping
+
+import yaml
 
 from connect_hub.contracts import (
     ConnectJobError,
@@ -48,6 +52,7 @@ class DailyPaperAdapter:
         poll_seconds: int = 3,
         extra_env: Mapping[str, str] | None = None,
         skip_llm_refine: bool = False,
+        project_dir: str | Path | None = None,
     ) -> None:
         self.transport = transport
         self.endpoint = endpoint
@@ -55,6 +60,7 @@ class DailyPaperAdapter:
         self.poll_seconds = max(1, poll_seconds)
         self.extra_env = dict(extra_env or {})
         self.skip_llm_refine = skip_llm_refine
+        self.project_dir = Path(project_dir).resolve() if project_dir else None
 
     @property
     def configured(self) -> bool:
@@ -70,7 +76,7 @@ class DailyPaperAdapter:
     ) -> Mapping[str, Any]:
         if not self.configured:
             raise DailyPaperUnavailable("Daily Paper adapter is disabled")
-        if self.transport != "http":
+        if self.transport not in {"http", "local_http"}:
             raise DailyPaperUnavailable(
                 f"unsupported Daily Paper transport: {self.transport}"
             )
@@ -82,6 +88,13 @@ class DailyPaperAdapter:
                 raise ValueError("invalid Daily Paper run_id")
             return self._request("GET", f"/api/recommend/{run_id}", None)
         if request.action == "recommend_wait":
+            if self.transport == "local_http":
+                return self._local_workflow_and_wait(
+                    request.arguments,
+                    on_progress=on_progress,
+                    on_event=on_event,
+                    is_cancelled=is_cancelled,
+                )
             return self._recommend_and_wait(
                 request.arguments,
                 on_progress=on_progress,
@@ -89,6 +102,112 @@ class DailyPaperAdapter:
                 is_cancelled=is_cancelled,
             )
         raise ValueError(f"unsupported Daily Paper action: {request.action}")
+
+    def _local_workflow_and_wait(
+        self,
+        arguments: Mapping[str, Any],
+        *,
+        on_progress: Callable[[str], None] | None,
+        on_event: Callable[[Mapping[str, Any]], None] | None,
+        is_cancelled: Callable[[], bool] | None,
+    ) -> Mapping[str, Any]:
+        config_response = self._request("GET", "/api/local/config", None)
+        config_text = str(config_response.get("content") or "")
+        config = yaml.safe_load(config_text) if config_text.strip() else {}
+        if not isinstance(config, dict):
+            config = {}
+        config["subscriptions"] = _build_subscriptions(arguments.get("topics"))
+        paper_settings = config.setdefault("arxiv_paper_setting", {})
+        if isinstance(paper_settings, dict):
+            paper_settings["mode"] = str(arguments.get("mode") or "standard")
+            paper_settings["days_window"] = int(arguments.get("fetch_days") or 30)
+            paper_settings["prefer_supabase_read"] = True
+        local = config.setdefault("local", {})
+        if isinstance(local, dict):
+            schedule = local.setdefault("schedule", {})
+            if isinstance(schedule, dict):
+                schedule["enabled"] = False
+        started = self._request(
+            "POST",
+            "/api/local/workflows/dispatch",
+            {
+                "workflowKey": "daily-now",
+                "workflowFile": "daily-paper-reader.yml",
+                "inputs": {
+                    "fetch_days": str(arguments.get("fetch_days") or 30),
+                    "fetch_mode": str(arguments.get("mode") or "standard"),
+                    "run_enrich": "true",
+                },
+                "config": config,
+                "secret": dict(self.extra_env),
+                "externalJobId": str(arguments.get("job_id") or ""),
+                "schemaVersion": SCHEMA_VERSION,
+            },
+        )
+        run = started.get("run") if isinstance(started.get("run"), Mapping) else {}
+        run_id = str(run.get("id") or "").strip()
+        if not run_id:
+            raise DailyPaperUnavailable("Daily Paper workflow response contains no run id")
+        deadline = time.monotonic() + self.timeout_seconds
+        seen: set[str] = set()
+        while True:
+            if is_cancelled is not None and is_cancelled():
+                if not self._cancel_local(run_id):
+                    raise ConnectJobError(
+                        JobErrorCode.CANCEL_FAILED,
+                        "论文日报取消请求未被模块确认，请检查本地日报服务。",
+                        stage="cancelling",
+                    )
+                raise ConnectJobError(JobErrorCode.JOB_CANCELLED, "论文日报任务已取消。")
+            record = self._request("GET", f"/api/local/runs/{run_id}/log", None)
+            current = record.get("run") if isinstance(record.get("run"), Mapping) else {}
+            events = current.get("events") if isinstance(current.get("events"), list) else []
+            for event in events:
+                if not isinstance(event, Mapping):
+                    continue
+                event_id = str(event.get("event_id") or "")
+                if event_id and event_id not in seen:
+                    seen.add(event_id)
+                    if on_event is not None:
+                        on_event(event)
+            if str(current.get("status") or "queued") == "completed":
+                if str(current.get("conclusion") or "") != "success":
+                    log = str(record.get("log") or "")[-3000:]
+                    raise DailyPaperUnavailable(
+                        f"Daily Paper workflow {run_id} failed: {log or current.get('error')}"
+                    )
+                return {
+                    "schema_version": SCHEMA_VERSION,
+                    "id": run_id,
+                    "status": "completed",
+                    "result": {
+                        "generated_at": datetime.now(timezone.utc).isoformat(),
+                        "mode": str(arguments.get("mode") or "standard"),
+                        "deep_dive": [],
+                        "quick_skim": [],
+                    },
+                    "run": current,
+                    "log": str(record.get("log") or ""),
+                    "report_bundle_path": str(self.project_dir / "docs") if self.project_dir else "",
+                }
+            if str(current.get("status") or "") == "cancelled":
+                raise ConnectJobError(JobErrorCode.JOB_CANCELLED, "论文日报任务已取消。")
+            if time.monotonic() >= deadline:
+                self._cancel_local(run_id)
+                raise ConnectJobError(
+                    JobErrorCode.JOB_TIMEOUT,
+                    "论文日报超过等待时限，已请求终止模块任务。",
+                    retryable=True,
+                    technical_message=f"Daily Paper workflow {run_id} timed out",
+                )
+            time.sleep(self.poll_seconds)
+
+    def _cancel_local(self, run_id: str) -> bool:
+        try:
+            result = self._request("POST", f"/api/local/runs/{run_id}/cancel", {})
+            return bool(result.get("ok"))
+        except DailyPaperUnavailable:
+            return False
 
     def _recommend_and_wait(
         self,
@@ -331,3 +450,36 @@ class DailyPaperAdapter:
         if not isinstance(decoded, Mapping):
             raise DailyPaperUnavailable("Daily Paper returned a non-object response")
         return decoded
+
+
+def _build_subscriptions(raw_topics: Any) -> dict[str, Any]:
+    topics = raw_topics if isinstance(raw_topics, list) else []
+    profiles: list[dict[str, Any]] = []
+    for item in topics:
+        if not isinstance(item, Mapping):
+            continue
+        keywords = [
+            {"query": str(value).strip(), "keyword": str(value).strip()}
+            for value in (item.get("keywords") or [])
+            if str(value).strip()
+        ]
+        intents = [
+            {"query": str(value).strip(), "enabled": True}
+            for value in (item.get("intent_queries") or [])
+            if str(value).strip()
+        ]
+        profiles.append(
+            {
+                "tag": str(item.get("tag") or "Research").strip(),
+                "description": str(item.get("description") or "").strip(),
+                "enabled": True,
+                "keywords": keywords,
+                "intent_queries": intents,
+                "paper_sources": ["arxiv"],
+            }
+        )
+    return {
+        "schema_migration": {"stage": "A", "diff_threshold_pct": 15},
+        "keyword_recall_mode": "or",
+        "intent_profiles": profiles,
+    }
