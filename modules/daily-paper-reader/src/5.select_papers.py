@@ -18,7 +18,7 @@ ARCHIVE_DIR = os.path.join(ARCHIVE_ROOT, TODAY_STR)
 RANKED_DIR = os.path.join(ARCHIVE_DIR, "rank")
 RECOMMEND_DIR = os.path.join(ARCHIVE_DIR, "recommend")
 CARRYOVER_PATH = os.path.join(ARCHIVE_ROOT, "carryover.json")
-CONFIG_FILE = os.path.join(ROOT_DIR, "config.yaml")
+CONFIG_FILE = os.getenv("DPR_CONFIG_FILE") or os.path.join(ROOT_DIR, "config.yaml")
 
 MODES = {
     "standard": {

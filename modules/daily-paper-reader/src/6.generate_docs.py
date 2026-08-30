@@ -49,7 +49,7 @@ try:
 except Exception:  # pragma: no cover
     from src.venue_enrichment import enrich_venue
 
-CONFIG_FILE = os.path.join(ROOT_DIR, "config.yaml")
+CONFIG_FILE = os.getenv("DPR_CONFIG_FILE") or os.path.join(ROOT_DIR, "config.yaml")
 HOME_TEMPLATE_DIR = os.path.join(ROOT_DIR, "docs_init")
 TODAY_STR = str(os.getenv("DPR_RUN_DATE") or "").strip() or datetime.now(timezone.utc).strftime("%Y%m%d")
 RANGE_DATE_RE = re.compile(r"^(\d{8})-(\d{8})$")
@@ -159,6 +159,17 @@ def load_config() -> dict:
     except Exception as e:
         log(f"[WARN] 读取 config.yaml 失败：{e}")
         return {}
+
+
+def resolve_run_config_and_mode(explicit_mode: str | None) -> tuple[dict, str]:
+    config = load_config()
+    mode = str(explicit_mode or "").strip()
+    if not mode:
+        setting = (config or {}).get("arxiv_paper_setting") or {}
+        mode = str(setting.get("mode") or "standard").strip()
+    if "," in mode:
+        mode = mode.split(",", 1)[0].strip()
+    return config, mode
 
 
 def resolve_docs_dir() -> str:
@@ -3113,13 +3124,8 @@ def main() -> None:
     args = parser.parse_args()
 
     date_str = args.date or TODAY_STR
-    mode = args.mode
-    if not mode:
-        config = load_config()
-        setting = (config or {}).get("arxiv_paper_setting") or {}
-        mode = str(setting.get("mode") or "standard").strip()
-    if "," in mode:
-        mode = mode.split(",", 1)[0].strip()
+    # Explicit modes still need the run config for venue/doc generation.
+    config, mode = resolve_run_config_and_mode(args.mode)
 
     docs_dir = args.docs_dir or resolve_docs_dir()
     created_reports = backfill_history_day_reports(docs_dir)

@@ -38,6 +38,17 @@ config.local.*
 **/archive/kaggle_arxiv/
 **/models/
 
+# Daily Paper runtime reports/state. The clean shell lives in docs_init/;
+# generated reports are published by Report Hub instead of committed to Git.
+modules/daily-paper-reader/docs/README.md
+modules/daily-paper-reader/docs/_sidebar.md
+modules/daily-paper-reader/docs/20*/
+modules/daily-paper-reader/docs/assets/figures/arxiv/
+modules/daily-paper-reader/docs/assets/tables/arxiv/
+modules/daily-paper-reader/archive/20*/
+modules/daily-paper-reader/archive/carryover.json
+modules/daily-paper-reader/archive/crawl_state.json
+
 # Local CitationClaw configuration may contain several provider keys.
 modules/citationclaw/config.json
 modules/citationclaw/dot_citationclaw/

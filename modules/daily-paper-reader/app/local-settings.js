@@ -615,6 +615,14 @@
   }
 
   async function open() {
+    if (window.DPR_PUBLIC_READ_ONLY === true) {
+      window.alert(
+        '这是公网只读日报站点，不能在这里写入本机配置。\n\n' +
+        '飞书任务会由 Connect Hub 注入主题、模式和 API 配置。首次部署需要在运行机器上打开 ' +
+        'http://127.0.0.1:8567 完成本地设置；无显示器服务器可使用 SSH 端口转发。',
+      );
+      return;
+    }
     const overlay = createOverlay();
     overlay.style.display = 'flex';
     requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('show')));

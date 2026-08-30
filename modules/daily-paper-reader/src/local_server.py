@@ -52,6 +52,21 @@ SECRET_PATH = ROOT_DIR / "secret.private"
 ENV_PATH = ROOT_DIR / ".env"
 
 
+def ensure_runtime_docs_shell() -> None:
+    """Create ignored runtime entry files from tracked clean templates."""
+    docs_dir = ROOT_DIR / "docs"
+    template_dir = ROOT_DIR / "docs_init"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("README.md", "_sidebar.md"):
+        target = docs_dir / name
+        template = template_dir / name
+        if not target.exists() and template.is_file():
+            target.write_bytes(template.read_bytes())
+
+
+ensure_runtime_docs_shell()
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 

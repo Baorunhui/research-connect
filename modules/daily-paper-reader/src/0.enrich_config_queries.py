@@ -13,7 +13,9 @@ import yaml  # type: ignore
 from llm import OpenAIClient, resolve_llm_api_key, resolve_llm_base_url, resolve_llm_model
 
 SCRIPT_DIR = os.path.dirname(__file__)
-CONFIG_FILE = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "config.yaml"))
+CONFIG_FILE = os.getenv("DPR_CONFIG_FILE") or os.path.abspath(
+    os.path.join(SCRIPT_DIR, "..", "config.yaml")
+)
 
 MODEL_NAME = resolve_llm_model()
 BASE_URL = resolve_llm_base_url()

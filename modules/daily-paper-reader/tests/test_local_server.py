@@ -20,6 +20,21 @@ def test_connect_hub_secret_env_allowlist_includes_remote_embedding():
     assert "UNSAFE_ARBITRARY_ENV" not in env
 
 
+def test_runtime_docs_shell_is_created_from_clean_templates(tmp_path, monkeypatch):
+    from src import local_server
+
+    templates = tmp_path / "docs_init"
+    templates.mkdir()
+    (templates / "README.md").write_text("clean home", encoding="utf-8")
+    (templates / "_sidebar.md").write_text("* Daily Papers\n", encoding="utf-8")
+    monkeypatch.setattr(local_server, "ROOT_DIR", tmp_path)
+
+    local_server.ensure_runtime_docs_shell()
+
+    assert (tmp_path / "docs" / "README.md").read_text(encoding="utf-8") == "clean home"
+    assert (tmp_path / "docs" / "_sidebar.md").read_text(encoding="utf-8") == "* Daily Papers\n"
+
+
 @pytest.fixture(autouse=True)
 def _isolated_summarize_cache(tmp_path, monkeypatch):
     """总结缓存按论文身份跨进程落盘（.local-runs/paper_summarize_cache.json）。
