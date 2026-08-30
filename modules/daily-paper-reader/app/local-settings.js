@@ -523,7 +523,7 @@
         setChatToolStatus('正在获取模型列表...');
         let resp;
         try {
-          resp = await fetch('/api/local/chat/models', {
+          resp = await fetch(apiUrl('/api/local/chat/models'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
@@ -572,7 +572,7 @@
         setChatToolStatus('正在发测试请求（最长约 30 秒）...');
         let resp;
         try {
-          resp = await fetch('/api/local/chat/test', {
+          resp = await fetch(apiUrl('/api/local/chat/test'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ base_url: baseUrl, api_key: apiKey, model: model }),

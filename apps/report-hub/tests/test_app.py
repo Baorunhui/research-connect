@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import zipfile
 
 from fastapi.testclient import TestClient
@@ -177,6 +178,60 @@ def test_report_zip_rejects_traversal_and_missing_index(tmp_path):
     assert api.put(
         "/api/v1/jobs/safe-job/report", headers=auth(), content=report_zip("readme.html")
     ).status_code == 422
+
+
+def test_public_daily_model_tools_use_saved_config(tmp_path, monkeypatch):
+    api = client(tmp_path)
+    site = api.post(
+        "/api/v1/sites",
+        headers=auth(),
+        json={"site_id": "daily-models", "module_name": "daily-paper", "title": "日报"},
+    ).json()
+    token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
+    api.post(
+        f"/s/{token}/api/local/config/partial",
+        json={
+            "local": {
+                "chat": {
+                    "base_url": "https://llm.example/v1",
+                    "api_key": "saved-key",
+                    "model": "model-a",
+                }
+            }
+        },
+    )
+    requests = []
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(self.payload).encode()
+
+    def fake_urlopen(request, timeout):
+        requests.append((request, timeout))
+        if request.full_url.endswith("/models"):
+            return FakeResponse({"data": [{"id": "model-b"}, {"id": "model-a"}]})
+        return FakeResponse({"choices": [{"message": {"content": "pong"}}]})
+
+    monkeypatch.setattr("report_hub.app.urllib.request.urlopen", fake_urlopen)
+    models = api.post(
+        f"/s/{token}/api/local/chat/models", json={"base_url": "", "api_key": ""}
+    )
+    assert models.json()["models"] == ["model-a", "model-b"]
+    probe = api.post(
+        f"/s/{token}/api/local/chat/test",
+        json={"base_url": "", "api_key": "", "model": "model-a"},
+    )
+    assert probe.json()["reply"] == "pong"
+    assert requests[0][0].headers["Authorization"] == "Bearer saved-key"
 
 
 def test_websocket_receives_snapshot_and_event(tmp_path):

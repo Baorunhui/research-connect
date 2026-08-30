@@ -7,7 +7,7 @@
 #   2. 装 CPU 版 PyTorch + Docling + pypdfium2 + Pillow
 #   3. 把 DOCLING_PYTHON 写进 .env（setdefault 语义，不覆盖已有值）
 #   4. 之后项目启动（load_local_env 加载 .env）即默认启用 Docling 整图提取；
-#      日报 ensure_paper_media 会先走 docling，空/失败再回落 papercropper→pymupdf。
+#      日报 ensure_paper_media 会先走 Docling，空/失败只回落 PyMuPDF。
 #
 # 用法：
 #   bash scripts/setup_docling.sh
@@ -119,7 +119,7 @@ if grep -qE "^DOCLING_PYTHON=" "$ENV_FILE"; then
 else
   {
     echo ""
-    echo "# Docling 整图提取解释器（scripts/setup_docling.sh 写入；设为空则回落 papercropper/pymupdf）"
+    echo "# Docling 整图提取解释器（scripts/setup_docling.sh 写入；失败时回落 PyMuPDF）"
     echo "# DPR_DISABLE_DOCLING=1 可整体关闭 Docling"
     echo "DOCLING_PYTHON=$PY_VALUE"
   } >> "$ENV_FILE"
@@ -138,7 +138,7 @@ cat <<EOF
 
 [setup-docling] 完成，Docling 已默认启用。
 - 开启日报图提取时，ensure_paper_media 将先走 Docling 整图提取；
-  空/失败再回落 PaperCropper → PyMuPDF。
+  空/失败只回落 PyMuPDF，不安装或调用 PaperCropper/DocLayout-YOLO/OpenCV。
 - 关闭：在 .env 设 DPR_DISABLE_DOCLING=1。
 - 换解释器：改 .env 的 DOCLING_PYTHON。
 - 模型首次运行会从 HuggingFace 下载（适配层已自动走 hf-mirror、关闭 Xet）。

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import mimetypes
 import re
 import secrets
+import time
+import urllib.error
+import urllib.request
 import uuid
 from collections import defaultdict
 from pathlib import Path
@@ -304,6 +308,97 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         storage.save_site_config(site["site_id"], merged)
         return {"ok": True, "configured": True}
 
+    @app.post("/s/{public_token}/api/local/chat/models")
+    def public_daily_chat_models(
+        public_token: str, body: dict[str, Any]
+    ) -> Any:
+        site = public_site(public_token)
+        try:
+            base_url, api_key, _model = _public_chat_credentials(
+                public_config_payload(site), body
+            )
+            request = urllib.request.Request(
+                _openai_endpoint(base_url, "models"),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "User-Agent": "research-connect-report-hub/0.1",
+                },
+            )
+            with urllib.request.urlopen(request, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+            items = payload.get("data") if isinstance(payload, dict) else []
+            models = sorted(
+                {
+                    str(item.get("id") or "").strip()
+                    for item in (items or [])
+                    if isinstance(item, dict) and str(item.get("id") or "").strip()
+                }
+            )
+            if not models:
+                raise ValueError("端点返回了空模型列表")
+            return {"ok": True, "models": models, "count": len(models)}
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:
+            return JSONResponse(
+                {"ok": False, "error": f"拉取模型列表失败：{_upstream_error(exc)}"},
+                status_code=502,
+            )
+
+    @app.post("/s/{public_token}/api/local/chat/test")
+    def public_daily_chat_test(
+        public_token: str, body: dict[str, Any]
+    ) -> Any:
+        site = public_site(public_token)
+        try:
+            base_url, api_key, model = _public_chat_credentials(
+                public_config_payload(site), body
+            )
+            if not model:
+                raise ValueError("请先填写模型名称")
+            payload = json.dumps(
+                {
+                    "model": model,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 8,
+                    "temperature": 0,
+                    "stream": False,
+                }
+            ).encode("utf-8")
+            request = urllib.request.Request(
+                _openai_endpoint(base_url, "chat/completions"),
+                data=payload,
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "research-connect-report-hub/0.1",
+                },
+            )
+            started = time.monotonic()
+            with urllib.request.urlopen(request, timeout=30) as response:
+                result = json.loads(response.read().decode("utf-8", errors="replace"))
+            latency_ms = int((time.monotonic() - started) * 1000)
+            choices = result.get("choices") if isinstance(result, dict) else []
+            content = ""
+            if choices and isinstance(choices[0], dict):
+                message = choices[0].get("message")
+                if isinstance(message, dict):
+                    content = str(message.get("content") or "").strip()[:40]
+            return {
+                "ok": True,
+                "model": model,
+                "latency_ms": latency_ms,
+                "reply": content,
+            }
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:
+            return JSONResponse(
+                {"ok": False, "error": f"连接失败：{_upstream_error(exc)}"},
+                status_code=502,
+            )
+
     @app.get("/s/{public_token}/api/config")
     def public_citation_config(public_token: str) -> dict[str, Any]:
         site = public_site(public_token)
@@ -433,3 +528,37 @@ def _merge_config(current: dict[str, Any], update: dict[str, Any]) -> dict[str, 
         else:
             merged[key] = value
     return merged
+
+
+def _public_chat_credentials(
+    config: dict[str, Any], request: dict[str, Any]
+) -> tuple[str, str, str]:
+    local = config.get("local") if isinstance(config.get("local"), dict) else {}
+    saved = local.get("chat") if isinstance(local.get("chat"), dict) else {}
+    base_url = str(request.get("base_url") or saved.get("base_url") or "").strip()
+    api_key = str(request.get("api_key") or saved.get("api_key") or "").strip()
+    model = str(request.get("model") or saved.get("model") or "").strip()
+    if not base_url:
+        raise ValueError("缺少 API 端点，请先填写 OpenAI 兼容端点")
+    if not re.match(r"^https?://", base_url, re.IGNORECASE):
+        raise ValueError("API 端点必须以 http:// 或 https:// 开头")
+    if not api_key:
+        raise ValueError("未配置 API Key")
+    return base_url, api_key, model
+
+
+def _openai_endpoint(base_url: str, suffix: str) -> str:
+    base = str(base_url).strip().rstrip("/")
+    if base.lower().endswith("/chat/completions"):
+        base = base[: -len("/chat/completions")].rstrip("/")
+    if not re.search(r"/v\d+$", base, re.IGNORECASE):
+        base += "/v1"
+    return f"{base}/{suffix.lstrip('/')}"
+
+
+def _upstream_error(exc: BaseException) -> str:
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"上游返回 HTTP {exc.code}"
+    if isinstance(exc, urllib.error.URLError):
+        return str(exc.reason)[:200]
+    return str(exc)[:200]
