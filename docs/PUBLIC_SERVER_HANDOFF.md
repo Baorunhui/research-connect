@@ -2,7 +2,7 @@
 
 ## 一句话技术路线
 
-每位用户的 Windows/Linux 电脑负责执行论文日报、查引用和小红书任务；共同的公网 Report Hub 只接收进度/运行快照和最终静态网页。Daily Paper 按安装实例发布一个固定整站地址，保留其原生 `index.html + app/ + docs/` 界面、历史日报和实时步骤；CitationClaw 仍按任务返回独立链接。任务开始时链接就发到飞书，手机和电脑均可查看，任务结束后内容继续保存在公网服务器。
+每位用户的 Windows/Linux 电脑负责执行论文日报、查引用和小红书任务；共同的公网 Report Hub 接收配置、进度/运行快照和最终静态网页。Daily Paper 与 CitationClaw 按安装实例发布固定原版网页地址；任务开始时链接就发到飞书，手机和电脑均可查看，任务结束后内容继续保存在公网服务器。
 
 ```text
 用户飞书 → 用户电脑上的 Connect Hub → 本机领域模块
@@ -10,7 +10,7 @@
                          ├─ HTTPS 上报进度/运行快照 → 公网 Report Hub(SQLite)
                          └─ HTTPS 上传原生静态站点/报告 → 公网磁盘
 
-手机/电脑浏览器 ← Daily Paper 固定整站链接 / CitationClaw 单任务链接
+手机/电脑浏览器 ← Daily Paper / CitationClaw 固定原版网页链接
 ```
 
 这不是反向代理用户电脑，也不把本机 FastAPI 暴露到公网。因此用户不需要公网 IP、内网穿透账号或路由器配置。Daily Paper 与 CitationClaw 的固定原版网页负责保存模块配置，本机 Connect Hub 在任务启动前通过 Agent API 拉取；飞书 Secret 仍只留在本机。由于模块配置包含 LLM/API Key，正式服务必须启用 HTTPS，并妥善保护 Report Hub 数据目录和 Agent Token。公网网页不直接调用用户电脑上的任务接口。
@@ -46,6 +46,8 @@ cp .env.example .env
 # 修改公网地址，并把 token 替换为至少 32 字符的随机值
 docker compose up -d --build
 ```
+
+`report.sinksilk.com` 的本次升级步骤与验收命令见 [`PUBLIC_SERVER_DOCKER_UPDATE_20260830.md`](PUBLIC_SERVER_DOCKER_UPDATE_20260830.md)。
 
 ## 域名与 HTTPS
 
