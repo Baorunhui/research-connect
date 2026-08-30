@@ -176,6 +176,7 @@ class DailyPaperAdapter:
             raise DailyPaperUnavailable("Daily Paper workflow response contains no run id")
         deadline = time.monotonic() + self.timeout_seconds
         seen: set[str] = set()
+        reported_diagnostics: set[str] = set()
         while True:
             if is_cancelled is not None and is_cancelled():
                 if not self._cancel_local(run_id):
@@ -187,8 +188,12 @@ class DailyPaperAdapter:
                 raise ConnectJobError(JobErrorCode.JOB_CANCELLED, "论文日报任务已取消。")
             record = self._request("GET", f"/api/local/runs/{run_id}/log", None)
             current = record.get("run") if isinstance(record.get("run"), Mapping) else {}
+            log_text = str(record.get("log") or "")
+            self._report_log_diagnostics(
+                log_text, reported_diagnostics, on_progress
+            )
             if on_snapshot is not None:
-                on_snapshot(current, str(record.get("log") or ""))
+                on_snapshot(current, log_text)
             events = current.get("events") if isinstance(current.get("events"), list) else []
             for event in events:
                 if not isinstance(event, Mapping):
@@ -215,7 +220,7 @@ class DailyPaperAdapter:
                         "quick_skim": [],
                     },
                     "run": current,
-                    "log": str(record.get("log") or ""),
+                    "log": log_text,
                     "report_bundle_path": str(self.project_dir / "docs") if self.project_dir else "",
                 }
             if str(current.get("status") or "") == "cancelled":
@@ -453,6 +458,166 @@ class DailyPaperAdapter:
             if key not in reported and marker in log:
                 on_progress(message)
                 reported.add(key)
+
+    @staticmethod
+    def _report_log_diagnostics(
+        log: str,
+        reported: set[str],
+        on_progress: Callable[[str], None] | None,
+    ) -> None:
+        """Turn real Daily Paper metrics into concise, deduplicated debug messages.
+
+        The separately maintained pipeline already writes the authoritative
+        parameters and funnel counts to its run log. Connect Hub only extracts
+        known log records; it never estimates or invents missing values.
+        """
+        if on_progress is None or not log:
+            return
+
+        def match(pattern: str) -> re.Match[str] | None:
+            return re.search(pattern, log, flags=re.MULTILINE)
+
+        def emit(key: str, message: str) -> None:
+            if key not in reported:
+                reported.add(key)
+                on_progress(message)
+
+        run_date = match(r"^\[INFO\] DPR_RUN_DATE=(\S+)")
+        run_mode = match(
+            r"^\[INFO\] fetch_days=(\d+), run_mode=([^,\s]+), fetch_mode=([^,\s]+)"
+        )
+        if run_date and run_mode:
+            emit(
+                "run_parameters",
+                "日报运行参数："
+                f"日期范围 {run_date.group(1)}，回看 {run_mode.group(1)} 天，"
+                f"运行模式 {run_mode.group(2)}，抓取模式 {run_mode.group(3)}。",
+            )
+
+        bm25_window = match(r"Supabase BM25 窗口计数.*?：(\d+) 条")
+        bm25_top_k = match(r"Supabase BM25 自适应 Top K = (\d+)")
+        bm25_hits = match(r"Supabase BM25 命中 (\d+) 条")
+        bm25_tagged = match(r"其中带 tag 的论文数：(\d+)")
+        if bm25_window and bm25_top_k and bm25_hits and bm25_tagged:
+            emit(
+                "bm25_funnel",
+                "BM25 召回完成："
+                f"时间窗内 {bm25_window.group(1)} 篇 → 原始命中 {bm25_hits.group(1)} 条 "
+                f"→ 去重且匹配主题 {bm25_tagged.group(1)} 篇；"
+                f"策略为 Supabase BM25、自适应 top_k={bm25_top_k.group(1)}。",
+            )
+
+        embedding_model = match(r"使用远程 embedding 服务：model=([^\s]+)")
+        embedding_queries = match(
+            r"远程 embedding：model=.*? total=(\d+) batch=(\d+)"
+        )
+        embedding_window = match(r"Supabase 向量召回窗口计数.*?：(\d+) 条")
+        embedding_top_k = match(r"Supabase 向量召回自适应 Top K = (\d+)")
+        embedding_hits = match(r"Supabase 向量召回命中 (\d+) 条")
+        tagged_counts = re.findall(r"其中带 tag 的论文数：(\d+)", log)
+        if (
+            embedding_model
+            and embedding_queries
+            and embedding_window
+            and embedding_top_k
+            and embedding_hits
+            and len(tagged_counts) >= 2
+        ):
+            emit(
+                "embedding_funnel",
+                "Embedding 召回完成："
+                f"{embedding_queries.group(1)} 个查询 × top_k={embedding_top_k.group(1)}，"
+                f"在 {embedding_window.group(1)} 篇中得到 {embedding_hits.group(1)} 条按查询命中 "
+                f"→ 去重且匹配主题 {tagged_counts[1]} 篇；"
+                f"远程模型 {embedding_model.group(1)}，batch={embedding_queries.group(2)}。",
+            )
+
+        rrf_keys = match(r"RRF keys=(\d+) \| bm25_queries=(\d+) \| emb_queries=(\d+)")
+        rrf_merged = match(r"merged papers=(\d+)")
+        if rrf_keys and rrf_merged and bm25_tagged and len(tagged_counts) >= 2:
+            emit(
+                "rrf_funnel",
+                "RRF 融合完成："
+                f"输入 BM25 {bm25_tagged.group(1)} 篇 + Embedding {tagged_counts[1]} 篇 "
+                f"→ 合并去重 {rrf_merged.group(1)} 篇；"
+                f"按 {rrf_keys.group(1)} 个查询键做 Reciprocal Rank Fusion。",
+            )
+
+        rerank_provider = match(
+            r"reranker 配置：profile=([^，]+)，provider=([^，]+)，model=([^，]+)"
+        )
+        rerank_start = match(
+            r"开始 rerank：queries=(\d+).*?papers=(\d+)，global_pool=(\d+)"
+            r"（lane_top_k=(\d+), guaranteed_per_lane=(\d+), global_top=(\d+)），"
+            r"batch_size=(\d+)，max_chars=(\d+)"
+        )
+        if rerank_provider and rerank_start:
+            emit(
+                "rerank_strategy",
+                "Reranker 策略："
+                f"输入 {rerank_start.group(2)} 篇，先构造全局候选池 {rerank_start.group(3)} 篇，"
+                f"再按 {rerank_start.group(1)} 个语义查询重排；"
+                f"lane_top_k={rerank_start.group(4)}，每路保底={rerank_start.group(5)}，"
+                f"global_top={rerank_start.group(6)}，batch={rerank_start.group(7)}，"
+                f"模型 {rerank_provider.group(3)}。",
+            )
+
+        refine_start = match(
+            r"start filter: queries=(\d+), papers=(\d+), min_star=(\d+), "
+            r"batch_size=(\d+), max_chars=(\d+), concurrency=(\d+)"
+        )
+        refine_pool = match(r"global candidates=(\d+) batches=(\d+)")
+        scored = match(r"scored_papers=(\d+)")
+        if refine_start and refine_pool:
+            suffix = f"，输出有效评分 {scored.group(1)} 篇" if scored else ""
+            emit(
+                "llm_refine_funnel" if scored else "llm_refine_strategy",
+                "LLM 精筛策略："
+                f"从 reranker 结果中以 min_star={refine_start.group(3)} 取出 "
+                f"{refine_pool.group(1)} 篇，分 {refine_pool.group(2)} 批，"
+                f"batch={refine_start.group(4)}，并发={refine_start.group(6)}，"
+                f"单篇最多 {refine_start.group(5)} 字符{suffix}。",
+            )
+
+        selection = match(r"\[STATS\] (\{[^\n]+\})")
+        if selection:
+            try:
+                stats = json.loads(selection.group(1))
+            except json.JSONDecodeError:
+                stats = None
+            if isinstance(stats, Mapping):
+                emit(
+                    "selection_funnel",
+                    "最终选择完成："
+                    f"输入已评分 {scored.group(1) if scored else '?'} 篇，"
+                    f"阈值 llm_score≥{stats.get('min_score', '?')}，"
+                    f"达标 {stats.get('quick_candidates', '?')} 篇 → "
+                    f"精读 {stats.get('deep_selected', '?')} 篇、"
+                    f"速读 {stats.get('quick_selected', '?')} 篇；"
+                    f"模式 {stats.get('mode', '?')}。",
+                )
+
+        docling_failure = match(r"\[WARN\] Docling 提取降级：([^\n]+)")
+        if docling_failure:
+            detail = docling_failure.group(1)
+            reason = (
+                "缺少 pypdfium2 依赖"
+                if "No module named 'pypdfium2'" in detail
+                else detail[:160]
+            )
+            emit(
+                "docling_fallback",
+                f"图片提取警告：Docling 路线发生降级（{reason}）；正文生成继续执行。",
+            )
+
+        docs = match(r"daily state merged: runs=(\d+), deep=(\d+), quick=(\d+)")
+        if docs:
+            emit(
+                "docs_summary",
+                "网页内容已合并："
+                f"当前日期页累计 {docs.group(1)} 次运行、精读 {docs.group(2)} 篇、"
+                f"速读 {docs.group(3)} 篇；正在完成索引与发布。",
+            )
 
     def _request(
         self, method: str, path: str, payload: Mapping[str, Any] | None
