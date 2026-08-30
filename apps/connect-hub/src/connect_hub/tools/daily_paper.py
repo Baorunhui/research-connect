@@ -198,13 +198,10 @@ def daily_paper_tools(
             record = adapter.invoke(
                 DailyPaperRequest("recommend_wait", request_arguments),
                 on_progress=context.report_progress,
-                on_event=lambda event: context.report_progress(
-                    _text(event.get("message")) or "论文日报任务有新进度。",
-                    stage=_text(event.get("stage")),
-                    current=(event.get("current") if isinstance(event.get("current"), int) else None),
-                    total=(event.get("total") if isinstance(event.get("total"), int) else None),
-                    payload=(event.get("payload") if isinstance(event.get("payload"), Mapping) else None),
-                ),
+                # The original module events remain in snapshots for the web UI.
+                # Feishu uses the stricter, data-rich log contract emitted by
+                # DailyPaperAdapter to avoid duplicate generic start/end lines.
+                on_event=None,
                 on_snapshot=mirror_snapshot,
                 is_cancelled=lambda: context.cancelled,
             )
@@ -335,7 +332,7 @@ def daily_paper_tools(
         handler=generate,
         timeout_seconds=adapter.timeout_seconds + 30,
         progress_message=(
-            "论文日报任务已启动。将执行 BM25、Embedding、RRF、专用 reranker 和 LLM 精筛；"
+            "论文日报任务已启动。将执行 BM25召回、语义向量召回、RRF、专用 reranker 和 LLM 精筛；"
             "每进入一个步骤都会在这里汇报。"
         ),
         module_name="daily-paper",

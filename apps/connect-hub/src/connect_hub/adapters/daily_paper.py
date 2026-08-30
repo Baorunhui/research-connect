@@ -518,6 +518,26 @@ class DailyPaperAdapter:
                 reported.add(key)
                 on_progress(message)
 
+        def saved_json(pattern: str) -> Mapping[str, Any] | None:
+            paths = re.findall(pattern, log, flags=re.MULTILINE)
+            if not paths:
+                return None
+            path = Path(paths[-1]).expanduser()
+            if not path.is_file():
+                return None
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                return None
+            return value if isinstance(value, Mapping) else None
+
+        def distribution(values: list[float], buckets: list[tuple[str, float, float]]) -> str:
+            parts = []
+            for label, lower, upper in buckets:
+                count = sum(1 for value in values if lower <= value < upper)
+                parts.append(f"{label} {count}篇")
+            return "，".join(parts)
+
         run_date = match(r"^\[INFO\] DPR_RUN_DATE=(\S+)")
         run_mode = match(
             r"^\[INFO\] fetch_days=(\d+), run_mode=([^,\s]+), fetch_mode=([^,\s]+)"
@@ -525,10 +545,43 @@ class DailyPaperAdapter:
         if run_date and run_mode:
             emit(
                 "run_parameters",
-                "日报运行参数："
+                "流水线开始执行：日报运行参数："
                 f"日期范围 {run_date.group(1)}，回看 {run_mode.group(1)} 天，"
                 f"运行模式 {run_mode.group(2)}，抓取模式 {run_mode.group(3)}。",
             )
+
+        enrichment_complete = match(
+            r"config\.yaml 所有字段都完整，无需扩充|已更新 config\.yaml 的相关字段"
+        )
+        if enrichment_complete:
+            checks = {
+                name: int(value)
+                for name, value in re.findall(
+                    r"需要扩充 (keywords\.related|keywords\.rewrite|llm_queries\.rewrite): (\d+) 个",
+                    log,
+                )
+            }
+            total_enriched = sum(checks.values())
+            detail = (
+                "本次配置字段完整，未新增关键词。"
+                if total_enriched == 0
+                else (
+                    f"补齐相关词 {checks.get('keywords.related', 0)} 组、"
+                    f"关键词改写 {checks.get('keywords.rewrite', 0)} 项、"
+                    f"Intent 改写 {checks.get('llm_queries.rewrite', 0)} 项。"
+                )
+            )
+            emit("enrich_complete", f"LLM 扩充检索关键词已完成：{detail}")
+
+        fetch_skipped = match(r"跳过 Step 1（([^）]+)）：([^\r\n]+)")
+        if fetch_skipped:
+            emit(
+                "fetch_skipped",
+                f"抓取 arXiv 论文已跳过：理由：{fetch_skipped.group(1)}；{fetch_skipped.group(2)}",
+            )
+
+        if "[INFO] Step 2.1 - BM25:" in log:
+            emit("bm25_start", "BM25 关键词召回开始：")
 
         bm25_window = match(r"Supabase BM25 窗口计数.*?：(\d+) 条")
         bm25_top_k = match(r"Supabase BM25 自适应 Top K = (\d+)")
@@ -542,6 +595,9 @@ class DailyPaperAdapter:
                 f"→ 去重且匹配主题 {bm25_tagged.group(1)} 篇；"
                 f"策略为 Supabase BM25、自适应 top_k={bm25_top_k.group(1)}。",
             )
+
+        if "[INFO] Step 2.2 - Embedding:" in log:
+            emit("embedding_start", "向量语义召回开始：")
 
         embedding_model = match(r"使用远程 embedding 服务：model=([^\s]+)")
         embedding_queries = match(
@@ -561,23 +617,28 @@ class DailyPaperAdapter:
         ):
             emit(
                 "embedding_funnel",
-                "Embedding 召回完成："
-                f"{embedding_queries.group(1)} 个查询 × top_k={embedding_top_k.group(1)}，"
-                f"在 {embedding_window.group(1)} 篇中得到 {embedding_hits.group(1)} 条按查询命中 "
+                "向量语义召回完成："
+                f"在 {embedding_window.group(1)} 篇中按 {embedding_queries.group(1)} 个查询、"
+                f"top_k={embedding_top_k.group(1)} 得到 {embedding_hits.group(1)} 条按查询命中 "
                 f"→ 去重且匹配主题 {tagged_counts[1]} 篇；"
-                f"远程模型 {embedding_model.group(1)}，batch={embedding_queries.group(2)}。",
+                f"使用远程模型 {embedding_model.group(1)}。",
             )
+
+        if "[INFO] Step 2.3 - RRF:" in log:
+            emit("rrf_start", "RRF 融合开始：")
 
         rrf_keys = match(r"RRF keys=(\d+) \| bm25_queries=(\d+) \| emb_queries=(\d+)")
         rrf_merged = match(r"merged papers=(\d+)")
         if rrf_keys and rrf_merged and bm25_tagged and len(tagged_counts) >= 2:
             emit(
                 "rrf_funnel",
-                "RRF 融合完成："
+                "RRF 融合候选池完成："
                 f"输入 BM25 {bm25_tagged.group(1)} 篇 + Embedding {tagged_counts[1]} 篇 "
-                f"→ 合并去重 {rrf_merged.group(1)} 篇；"
-                f"按 {rrf_keys.group(1)} 个查询键做 Reciprocal Rank Fusion。",
+                f"→ 合并去重 {rrf_merged.group(1)} 篇；",
             )
+
+        if "[INFO] Step 3 - Rerank:" in log:
+            emit("rerank_start", "Reranker 开始：")
 
         rerank_provider = match(
             r"reranker 配置：profile=([^，]+)，provider=([^，]+)，model=([^，]+)"
@@ -588,15 +649,50 @@ class DailyPaperAdapter:
             r"batch_size=(\d+)，max_chars=(\d+)"
         )
         if rerank_provider and rerank_start:
-            emit(
-                "rerank_strategy",
-                "Reranker 策略："
-                f"输入 {rerank_start.group(2)} 篇，先构造全局候选池 {rerank_start.group(3)} 篇，"
-                f"再按 {rerank_start.group(1)} 个语义查询重排；"
-                f"lane_top_k={rerank_start.group(4)}，每路保底={rerank_start.group(5)}，"
-                f"global_top={rerank_start.group(6)}，batch={rerank_start.group(7)}，"
-                f"模型 {rerank_provider.group(3)}。",
+            rerank_data = saved_json(
+                r"\[INFO\] 已将打分结果写入：([^\r\n]+(?<!\.llm)\.json)"
             )
+            refine_threshold = match(r"min_star=(\d+)")
+            if rerank_data is not None and refine_threshold:
+                best_stars: dict[str, int] = {}
+                queries = rerank_data.get("queries")
+                if isinstance(queries, list):
+                    for query in queries:
+                        ranked = query.get("ranked") if isinstance(query, Mapping) else None
+                        if not isinstance(ranked, list):
+                            continue
+                        for item in ranked:
+                            if not isinstance(item, Mapping):
+                                continue
+                            paper_id = str(item.get("paper_id") or "").strip()
+                            star = int(item.get("star_rating") or 0)
+                            if paper_id:
+                                best_stars[paper_id] = max(best_stars.get(paper_id, 0), star)
+                threshold = int(refine_threshold.group(1))
+                star_values = [float(value) for value in best_stars.values()]
+                star_dist = distribution(
+                    star_values,
+                    [("5★", 5, 6), ("4★", 4, 5), ("3★", 3, 4), ("2★", 2, 3), ("1★", 1, 2)],
+                )
+                selected = sum(1 for value in star_values if value >= threshold)
+                emit(
+                    "rerank_complete",
+                    f"Reranker 完成：全局候选池 {rerank_start.group(3)} 篇，"
+                    f"模型 {rerank_provider.group(3)}，batch={rerank_start.group(7)}；"
+                    f"{len(best_stars)} 篇分数分布：{star_dist}；"
+                    f"按照 star_rating≥{threshold} 筛选出 {selected} 篇。",
+                )
+
+        rerank_skipped = match(r"当前输入中没有可用于 rerank 的意图查询，跳过 rerank")
+        if rerank_skipped:
+            emit(
+                "rerank_complete",
+                "Reranker 完成：0 篇获得星级；由于缺少 Intent 查询而跳过，"
+                "按照 star_rating≥4 筛选出 0 篇。",
+            )
+
+        if "[INFO] Step 4 - LLM refine:" in log:
+            emit("llm_refine_start", "LLM 精炼打分 开始：")
 
         refine_start = match(
             r"start filter: queries=(\d+), papers=(\d+), min_star=(\d+), "
@@ -604,16 +700,36 @@ class DailyPaperAdapter:
         )
         refine_pool = match(r"global candidates=(\d+) batches=(\d+)")
         scored = match(r"scored_papers=(\d+)")
-        if refine_start and refine_pool:
-            suffix = f"，输出有效评分 {scored.group(1)} 篇" if scored else ""
-            emit(
-                "llm_refine_funnel" if scored else "llm_refine_strategy",
-                "LLM 精筛策略："
-                f"从 reranker 结果中以 min_star={refine_start.group(3)} 取出 "
-                f"{refine_pool.group(1)} 篇，分 {refine_pool.group(2)} 批，"
-                f"batch={refine_start.group(4)}，并发={refine_start.group(6)}，"
-                f"单篇最多 {refine_start.group(5)} 字符{suffix}。",
+        llm_data = saved_json(r"\[INFO\] saved: ([^\r\n]+\.llm\.json)")
+        if refine_start and llm_data is not None:
+            ranked = llm_data.get("llm_ranked")
+            ranked_items = [item for item in ranked if isinstance(item, Mapping)] if isinstance(ranked, list) else []
+            llm_scores = [float(item.get("score") or item.get("llm_score") or 0) for item in ranked_items]
+            threshold = 8.0 if run_mode and run_mode.group(2) == "skims" else 6.0
+            llm_dist = distribution(
+                llm_scores,
+                [("9–10分", 9, 10.000001), ("8–<9分", 8, 9), ("6–<8分", 6, 8), ("<6分", -1e9, 6)],
             )
+            selected = sum(1 for value in llm_scores if value >= threshold)
+            emit(
+                "llm_refine_complete",
+                f"LLM 精炼打分 完成：输入 {refine_start.group(2)} 篇，"
+                f"候选 {len(llm_scores)} 篇，batch={refine_start.group(4)}，"
+                f"并发={refine_start.group(6)}；分数分布：{llm_dist}；"
+                f"按照 llm_score≥{threshold:g} 筛选出 {selected} 篇。",
+            )
+
+        no_llm_candidates = match(r"no candidates found with star_rating >= min_star")
+        if no_llm_candidates:
+            threshold = refine_start.group(3) if refine_start else "4"
+            emit(
+                "llm_refine_complete",
+                f"LLM 精炼打分 完成：输入 0 篇，分数分布为空；"
+                f"Reranker 的 star_rating≥{threshold} 候选为 0 篇。",
+            )
+
+        if "[INFO] Step 5 - Select:" in log:
+            emit("selection_start", "选择论文（精读/速读） 开始：")
 
         selection = match(r"\[STATS\] (\{[^\n]+\})")
         if selection:
@@ -624,14 +740,17 @@ class DailyPaperAdapter:
             if isinstance(stats, Mapping):
                 emit(
                     "selection_funnel",
-                    "最终选择完成："
-                    f"输入已评分 {scored.group(1) if scored else '?'} 篇，"
-                    f"阈值 llm_score≥{stats.get('min_score', '?')}，"
-                    f"达标 {stats.get('quick_candidates', '?')} 篇 → "
-                    f"精读 {stats.get('deep_selected', '?')} 篇、"
-                    f"速读 {stats.get('quick_selected', '?')} 篇；"
-                    f"模式 {stats.get('mode', '?')}。",
+                    "选择论文（精读/速读） 完成："
+                    f"完成 {stats.get('deep_selected', 0)} 篇精读、"
+                    f"{stats.get('quick_selected', 0)} 篇速读。",
                 )
+
+        empty_selection = match(r"没有候选论文（新论文=0 且 carryover=0）")
+        if empty_selection:
+            emit(
+                "selection_complete",
+                "选择论文（精读/速读） 完成：完成 0 篇精读、0 篇速读。",
+            )
 
         docling_failure = match(r"\[WARN\] Docling 提取降级：([^\n]+)")
         if docling_failure:
@@ -646,14 +765,8 @@ class DailyPaperAdapter:
                 f"图片提取警告：Docling 路线发生降级（{reason}）；正文生成继续执行。",
             )
 
-        docs = match(r"daily state merged: runs=(\d+), deep=(\d+), quick=(\d+)")
-        if docs:
-            emit(
-                "docs_summary",
-                "网页内容已合并："
-                f"当前日期页累计 {docs.group(1)} 次运行、精读 {docs.group(2)} 篇、"
-                f"速读 {docs.group(3)} 篇；正在完成索引与发布。",
-            )
+        if "[OK] docs updated:" in log:
+            emit("docs_complete", "生成日报文档完成")
 
     def _request(
         self, method: str, path: str, payload: Mapping[str, Any] | None

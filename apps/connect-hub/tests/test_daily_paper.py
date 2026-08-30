@@ -97,45 +97,73 @@ def test_reports_each_pipeline_step_once():
     assert "最终论文" in messages[-1]
 
 
-def test_reports_pipeline_diagnostics_once():
+def test_reports_pipeline_diagnostics_once(tmp_path):
     messages = []
     reported = set()
+    rank_path = tmp_path / "rank.json"
+    rank_path.write_text(
+        '{"queries":[{"ranked":['
+        '{"paper_id":"a","star_rating":5},'
+        '{"paper_id":"b","star_rating":4},'
+        '{"paper_id":"c","star_rating":3}]}]}',
+        encoding="utf-8",
+    )
+    llm_path = tmp_path / "rank.llm.json"
+    llm_path.write_text(
+        '{"llm_ranked":[{"paper_id":"a","score":9.2},'
+        '{"paper_id":"b","score":8.4},{"paper_id":"c","score":7.1}]}',
+        encoding="utf-8",
+    )
     log = "\n".join(
         [
             "[INFO] DPR_RUN_DATE=20260816-20260830",
             "[INFO] fetch_days=15, run_mode=skims, fetch_mode=skims",
+            "[CHECK] 需要扩充 keywords.related: 0 个",
+            "[CHECK] 需要扩充 keywords.rewrite: 0 个",
+            "[CHECK] 需要扩充 llm_queries.rewrite: 0 个",
+            "[INFO] config.yaml 所有字段都完整，无需扩充。",
+            "[INFO] 跳过 Step 1（全量数据拉取）：Supabase 已完全接管检索。",
+            "[INFO] Step 2.1 - BM25: command",
             "[INFO] Supabase BM25 窗口计数（source=arxiv）：count 查询成功：11830 条",
             "[INFO] Supabase BM25 自适应 Top K = 600",
             "[INFO] Supabase BM25 命中 673 条（source=arxiv）。",
             "[INFO] 其中带 tag 的论文数：517",
+            "[INFO] Step 2.2 - Embedding: command",
             "[INFO] 使用远程 embedding 服务：model=BAAI/bge-small-en-v1.5 endpoint=https://example/embed",
             "[INFO] 远程 embedding：model=BAAI/bge-small-en-v1.5 endpoint=https://example/embed total=5 batch=8",
             "[INFO] Supabase 向量召回窗口计数（source=arxiv）：count 查询成功：11830 条",
             "[INFO] Supabase 向量召回自适应 Top K = 600",
             "[INFO] Supabase 向量召回命中 3000 条。",
             "[INFO] 其中带 tag 的论文数：1890",
+            "[INFO] Step 2.3 - RRF: command",
             "[INFO] RRF keys=5 | bm25_queries=5 | emb_queries=5",
             "[INFO] merged papers=2112",
+            "[INFO] Step 3 - Rerank: command",
             "[INFO] reranker 配置：profile=auto，provider=public，model=Qwen/Reranker，global_pool_limit=auto",
             "[INFO] 开始 rerank：queries=2（仅 intent/语义查询），papers=2112，global_pool=108（lane_top_k=50, guaranteed_per_lane=12, global_top=100），batch_size=64，max_chars=850，token_safety=29000",
+            f"[INFO] 已将打分结果写入：{rank_path}",
+            "[INFO] Step 4 - LLM refine: command",
             "[INFO] start filter: queries=5, papers=2112, min_star=4, batch_size=10, max_chars=850, concurrency=4",
             "[INFO] global candidates=58 batches=6 | user_requirements=6",
+            f"[INFO] saved: {llm_path}",
+            "[INFO] Step 5 - Select: command",
             "[INFO] scored_papers=58",
-            '[STATS] {"mode": "skims", "min_score": 8.0, "quick_candidates": 14, "deep_selected": 0, "quick_selected": 14}',
+            '[STATS] {"mode": "skims", "min_score": 8.0, "quick_candidates": 2, "deep_selected": 0, "quick_selected": 2}',
             "[WARN] Docling 提取降级：ModuleNotFoundError: No module named 'pypdfium2'",
             "[OK] daily state merged: runs=3, deep=0, quick=28, path=/tmp/state.json",
+            "[OK] docs updated: /tmp/docs",
         ]
     )
 
     DailyPaperAdapter._report_log_diagnostics(log, reported, messages.append)
     DailyPaperAdapter._report_log_diagnostics(log, reported, messages.append)
 
-    assert len(messages) == 9
+    assert len(messages) == 17
     assert any("11830 篇 → 原始命中 673" in message for message in messages)
-    assert any("Embedding 召回完成" in message and "1890" in message for message in messages)
-    assert any("输入 2112 篇" in message and "全局候选池 108" in message for message in messages)
-    assert any("并发=4" in message and "输出有效评分 58" in message for message in messages)
-    assert any("llm_score≥8.0" in message and "速读 14" in message for message in messages)
+    assert any("向量语义召回完成" in message and "1890" in message for message in messages)
+    assert any("Reranker 完成" in message and "star_rating≥4" in message for message in messages)
+    assert any("LLM 精炼打分 完成" in message and "llm_score≥8" in message for message in messages)
+    assert any("完成 0 篇精读、2 篇速读" in message for message in messages)
     assert any("缺少 pypdfium2" in message for message in messages)
 
 
