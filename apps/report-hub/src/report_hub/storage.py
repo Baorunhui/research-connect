@@ -67,6 +67,12 @@ class Storage:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS site_configs (
+                    site_id TEXT PRIMARY KEY REFERENCES sites(site_id) ON DELETE CASCADE,
+                    config_json TEXT NOT NULL,
+                    configured_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS site_runs (
                     site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
                     run_id TEXT NOT NULL,
@@ -207,6 +213,31 @@ class Storage:
                 "UPDATE sites SET report_ready = 1, updated_at = ? WHERE site_id = ?",
                 (utc_now(), site_id),
             )
+
+    def get_site_config(self, site_id: str) -> dict[str, Any] | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT config_json, configured_at, updated_at FROM site_configs WHERE site_id = ?",
+                (site_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "config": json.loads(row["config_json"]),
+            "configured_at": row["configured_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def save_site_config(self, site_id: str, config: dict[str, Any]) -> dict[str, Any]:
+        now = utc_now()
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO site_configs(site_id, config_json, configured_at, updated_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(site_id) DO UPDATE SET "
+                "config_json = excluded.config_json, updated_at = excluded.updated_at",
+                (site_id, json.dumps(config, ensure_ascii=False), now, now),
+            )
+        return self.get_site_config(site_id) or {"config": config}
 
     def upsert_site_run(
         self, *, site_id: str, run_id: str, run: dict[str, Any], log_text: str

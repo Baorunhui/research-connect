@@ -217,19 +217,23 @@ class ConfigManager:
         self.config = config
 
     def get(self) -> AppConfig:
-        """获取配置；Connect Hub 的统一 LLM 环境变量优先且不落盘。"""
+        """获取配置；环境变量只为尚未在原版页面填写的字段提供默认值。"""
         data = self.config.model_dump()
         api_key = str(os.getenv("LLM_API_KEY") or "").strip()
         base_url = str(os.getenv("LLM_BASE_URL") or "").strip()
         model = str(os.getenv("LLM_MODEL") or "").strip()
-        if api_key:
+        saved = self.config_path.exists()
+        if api_key and (not saved or not str(data.get("openai_api_key") or "").strip()):
             data["openai_api_key"] = api_key
+        if api_key and (not saved or not str(data.get("light_api_key") or "").strip()):
             data["light_api_key"] = api_key
-        if base_url:
+        if base_url and (not saved or not str(data.get("openai_base_url") or "").strip()):
             data["openai_base_url"] = base_url
+        if base_url and (not saved or not str(data.get("light_base_url") or "").strip()):
             data["light_base_url"] = base_url
-        if model:
+        if model and (not saved or not str(data.get("openai_model") or "").strip()):
             data["openai_model"] = model
+        if model and (not saved or not str(data.get("dashboard_model") or "").strip()):
             data["dashboard_model"] = model
         return AppConfig(**data)
 

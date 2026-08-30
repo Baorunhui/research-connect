@@ -2,7 +2,7 @@
 const _wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
 class WebSocketManager {
-    constructor(url = `${_wsProto}//${window.location.host}/ws`) {
+    constructor(url = `${_wsProto}//${window.location.host}${window.CCR_PUBLIC_API_BASE || ''}/ws`) {
         this.url = url;
         this.ws = null;
         this.handlers = {

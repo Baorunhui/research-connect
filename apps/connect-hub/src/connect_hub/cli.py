@@ -27,7 +27,7 @@ from connect_hub.tools.citationclaw import citationclaw_tool
 from connect_hub.tools.web import web_tools
 from connect_hub.tools.xhs import xhs_generate_tool
 from connect_hub.websearch import ExaMCPWebSearchProvider, JinaReaderProvider
-from connect_hub.reporting import ReportHubClient
+from connect_hub.reporting import ReportHubClient, ReportHubError
 from research_connect_core import DataPaths
 
 
@@ -123,7 +123,19 @@ def _build_runtime(
         poll_seconds=settings.citationclaw_poll_seconds,
     )
     if citationclaw.configured:
-        tools.register(citationclaw_tool(citationclaw))
+        tools.register(
+            citationclaw_tool(
+                citationclaw,
+                report_hub=report_hub,
+                site_id=(
+                    "citationclaw-"
+                    + hashlib.sha256(
+                        (settings.feishu_app_id or settings.citationclaw_endpoint).encode("utf-8")
+                    ).hexdigest()[:16]
+                ),
+                project_dir=MONOREPO_ROOT / "modules" / "citationclaw",
+            )
+        )
     search_provider = None
     if settings.web_search_provider == "exa_mcp":
         search_provider = ExaMCPWebSearchProvider(
@@ -252,6 +264,105 @@ def command_serve(env_file: str | Path | None = None) -> int:
             service.stop()
 
 
+def _module_site_id(settings: object, module_name: str) -> str:
+    identity = str(getattr(settings, "feishu_app_id", "") or "")
+    if not identity:
+        identity = (
+            str(getattr(settings, "daily_paper_dir", ""))
+            if module_name == "daily-paper"
+            else str(getattr(settings, "citationclaw_endpoint", ""))
+        )
+    return module_name + "-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+
+
+def command_module(module_name: str, env_file: str | Path | None = None) -> int:
+    """Start one original module UI after the shared public configuration preflight."""
+    settings = load_settings(env_file)
+    _configure_logging(settings.log_level)
+    if not settings.report_hub_api_url or not settings.report_hub_agent_token:
+        print("未配置 Report Hub，无法提供公网原版配置页面。")
+        return 2
+    report_hub = ReportHubClient(
+        settings.report_hub_api_url,
+        settings.report_hub_agent_token,
+        timeout_seconds=settings.report_hub_timeout_seconds,
+    )
+    site_id = _module_site_id(settings, module_name)
+    project_dir = (
+        settings.daily_paper_dir
+        if module_name == "daily-paper"
+        else MONOREPO_ROOT / "modules" / "citationclaw"
+    )
+    title = "Daily Paper Reader" if module_name == "daily-paper" else "CitationClaw"
+    try:
+        public_url, _ready = report_hub.ensure_site(
+            site_id=site_id, module_name=module_name, title=title
+        )
+        public_url = report_hub.upload_site(
+            site_id,
+            project_dir,
+            site_kind=("citationclaw" if module_name == "citationclaw" else "daily-paper"),
+        )
+        remote_config = report_hub.get_site_config(site_id)
+    except ReportHubError as exc:
+        print(f"公网模块页面不可用：{exc}")
+        return 2
+    if not bool(remote_config.get("configured")):
+        suffix = "?panel=config" if module_name == "citationclaw" else ""
+        print(f"{title} 尚未配置，请先打开原版网页完成设置：\n{public_url}{suffix}")
+        return 2
+
+    service: _LocalService | None = None
+    try:
+        if module_name == "daily-paper":
+            service = _LocalService.start_if_needed(
+                name="daily-paper",
+                endpoint=settings.daily_paper_endpoint,
+                health_path="/api/local/health",
+                command=(
+                    sys.executable,
+                    str(settings.daily_paper_dir / "src" / "local_server.py"),
+                    "--serve",
+                    "--no-schedule",
+                ),
+                cwd=settings.daily_paper_dir,
+            )
+            adapter = DailyPaperAdapter(
+                transport="local_http", endpoint=settings.daily_paper_endpoint
+            )
+            adapter.apply_configuration(dict(remote_config.get("config") or {}))
+            local_url = settings.daily_paper_endpoint
+        else:
+            citation_url = urlparse(settings.citationclaw_endpoint)
+            service = _LocalService.start_if_needed(
+                name="citationclaw",
+                endpoint=settings.citationclaw_endpoint,
+                health_path="/api/task/status",
+                command=(
+                    sys.executable,
+                    "-m",
+                    "citationclaw",
+                    "--host",
+                    citation_url.hostname or "127.0.0.1",
+                    "--port",
+                    str(citation_url.port or 8000),
+                    "--no-browser",
+                ),
+                cwd=project_dir,
+            )
+            adapter = CitationClawAdapter(settings.citationclaw_endpoint)
+            adapter.apply_configuration(dict(remote_config.get("config") or {}))
+            local_url = settings.citationclaw_endpoint
+        print(f"{title} 已启动。\n本机：{local_url}\n公网：{public_url}")
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        if service is not None:
+            service.stop()
+
+
 class _LocalService:
     def __init__(self, name: str, process: subprocess.Popen[str] | None = None) -> None:
         self.name = name
@@ -338,6 +449,8 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("chat", help="test the LLM gateway in a local terminal")
     subparsers.add_parser("feishu", help="start the Feishu WebSocket connector")
     subparsers.add_parser("serve", help="start local module APIs and the Feishu connector")
+    subparsers.add_parser("daily-paper", help="start Daily Paper with public config preflight")
+    subparsers.add_parser("citationclaw", help="start CitationClaw with public config preflight")
     args = parser.parse_args(argv)
     if args.command == "check":
         return command_check(args.env_file)
@@ -347,6 +460,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_feishu(args.env_file)
     if args.command == "serve":
         return command_serve(args.env_file)
+    if args.command in {"daily-paper", "citationclaw"}:
+        return command_module(args.command, args.env_file)
     return 2
 
 

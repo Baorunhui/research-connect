@@ -7,6 +7,7 @@ import mimetypes
 import urllib.error
 import urllib.request
 import zipfile
+from datetime import date
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -98,8 +99,14 @@ class ReportHubClient:
             raise ReportHubError("REPORT_PUBLISH_FAILED: site response has no public_url")
         return public_url, bool(response.get("report_ready"))
 
-    def upload_site(self, site_id: str, project_dir: str | Path) -> str:
-        archive = build_daily_paper_site_archive(Path(project_dir))
+    def upload_site(
+        self, site_id: str, project_dir: str | Path, *, site_kind: str = "daily-paper"
+    ) -> str:
+        archive = (
+            build_citationclaw_site_archive(Path(project_dir))
+            if site_kind == "citationclaw"
+            else build_daily_paper_site_archive(Path(project_dir))
+        )
         response = self._request(
             "PUT",
             f"/api/v1/sites/{site_id}/report",
@@ -121,13 +128,16 @@ class ReportHubClient:
             {"run": dict(run), "log": log_text[-100_000:]},
         )
 
+    def get_site_config(self, site_id: str) -> Mapping[str, Any]:
+        return self._json_request("GET", f"/api/v1/sites/{site_id}/config", None)
+
     def _json_request(
-        self, method: str, path: str, payload: Mapping[str, Any]
+        self, method: str, path: str, payload: Mapping[str, Any] | None
     ) -> Mapping[str, Any]:
         raw = self._request(
             method,
             path,
-            json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             content_type="application/json",
         )
         try:
@@ -138,7 +148,9 @@ class ReportHubClient:
             raise ReportHubError("REPORT_HUB_UNAVAILABLE: unexpected response")
         return decoded
 
-    def _request(self, method: str, path: str, data: bytes, *, content_type: str) -> bytes:
+    def _request(
+        self, method: str, path: str, data: bytes | None, *, content_type: str
+    ) -> bytes:
         if not self.configured:
             raise ReportHubError("REPORT_HUB_NOT_CONFIGURED")
         request = urllib.request.Request(
@@ -211,7 +223,6 @@ def build_daily_paper_site_archive(project_dir: Path) -> bytes:
     (function () {
       var match = String(window.location.pathname || '').match(/^(\/s\/[^/]+)/);
       if (match) window.DPR_LOCAL_API_BASE = match[1];
-      window.DPR_PUBLIC_READ_ONLY = true;
     })();
   </script>
 """
@@ -225,6 +236,50 @@ def build_daily_paper_site_archive(project_dir: Path) -> bytes:
         nojekyll = project_dir / ".nojekyll"
         if nojekyll.is_file():
             archive.write(nojekyll, ".nojekyll")
+    return buffer.getvalue()
+
+
+def build_citationclaw_site_archive(project_dir: Path) -> bytes:
+    """Package CitationClaw's original web UI for its stable public site."""
+    project_dir = project_dir.resolve()
+    package_dir = project_dir / "citationclaw"
+    templates_dir = package_dir / "templates"
+    static_dir = package_dir / "static"
+    if not (templates_dir / "index.html").is_file() or not static_dir.is_dir():
+        raise ReportHubError(
+            f"REPORT_ARTIFACT_INVALID: {project_dir} is not a CitationClaw site"
+        )
+    try:
+        from jinja2 import Environment, FileSystemLoader
+
+        rendered = Environment(loader=FileSystemLoader(str(templates_dir))).get_template(
+            "index.html"
+        ).render(now=date.today().isoformat())
+    except Exception as exc:
+        raise ReportHubError(f"REPORT_ARTIFACT_INVALID: cannot render CitationClaw UI: {exc}") from exc
+    marker = """<script>
+    (function () {
+      var match = String(window.location.pathname || '').match(/^(\/s\/[^/]+)/);
+      if (match) window.CCR_PUBLIC_API_BASE = match[1];
+    })();
+  </script>
+"""
+    rendered = rendered.replace("</head>", marker + "</head>", 1)
+    rendered = rendered.replace('href="/static/', 'href="static/')
+    rendered = rendered.replace('src="/static/', 'src="static/')
+    rendered = rendered.replace('href="/docs-assets/', 'href="docs-assets/')
+    rendered = rendered.replace('src="/docs-assets/', 'src="docs-assets/')
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("index.html", rendered.encode("utf-8"))
+        for path in sorted(static_dir.rglob("*")):
+            if path.is_file() and not path.is_symlink():
+                archive.write(path, f"static/{path.relative_to(static_dir).as_posix()}")
+        docs_assets = project_dir / "docs" / "assets"
+        if docs_assets.is_dir():
+            for path in sorted(docs_assets.rglob("*")):
+                if path.is_file() and not path.is_symlink():
+                    archive.write(path, f"docs-assets/{path.relative_to(docs_assets).as_posix()}")
     return buffer.getvalue()
 
 

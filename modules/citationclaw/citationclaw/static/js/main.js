@@ -258,7 +258,9 @@ function escapeHtml(unsafe) {
 
 // ==================== Safe Fetch Helper ====================
 async function safeFetch(url, opts = {}) {
-    const resp = await fetch(url, opts);
+    const base = String(window.CCR_PUBLIC_API_BASE || '').replace(/\/$/, '');
+    const target = base && String(url).startsWith('/') ? base + url : url;
+    const resp = await fetch(target, opts);
     if (!resp.ok) {
         const text = await resp.text().catch(() => resp.statusText);
         throw new Error(`HTTP ${resp.status}: ${text}`);

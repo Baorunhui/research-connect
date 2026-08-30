@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from connect_hub.adapters.daily_paper import DailyPaperAdapter, DailyPaperRequest
+from connect_hub.contracts import ConnectJobError, JobErrorCode
 from connect_hub.reporting import ReportHubClient, ReportHubError
 from connect_hub.tools.base import ToolContext, ToolDefinition
 
@@ -114,7 +115,7 @@ def daily_paper_tools(
         stable_public_url = public_url
         publish_error_reported = False
         last_snapshot = ""
-        if publish_web and report_hub is not None and report_hub.configured and site_id:
+        if report_hub is not None and report_hub.configured and site_id:
             try:
                 stable_public_url, ready = report_hub.ensure_site(
                     site_id=site_id,
@@ -123,10 +124,11 @@ def daily_paper_tools(
                 )
                 if not ready:
                     stable_public_url = report_hub.upload_site(site_id, adapter.project_dir or "")
-                context.report_progress(
-                    f"论文日报站点已就绪，可实时查看进度和历史结果：\n{stable_public_url}",
-                    stage="publish",
-                )
+                if publish_web:
+                    context.report_progress(
+                        f"论文日报站点已就绪，可实时查看进度和历史结果：\n{stable_public_url}",
+                        stage="publish",
+                    )
             except ReportHubError as exc:
                 publish_error_reported = True
                 context.report_progress(
@@ -134,6 +136,30 @@ def daily_paper_tools(
                     stage="publish",
                     payload={"error_code": "REPORT_HUB_UNAVAILABLE", "detail": str(exc)[:500]},
                 )
+
+        # A saved record is the only preflight condition. Do not probe any LLM,
+        # embedding or rerank provider here.
+        if report_hub is not None and report_hub.configured and site_id:
+            try:
+                remote_config = report_hub.get_site_config(site_id)
+            except ReportHubError as exc:
+                raise ConnectJobError(
+                    JobErrorCode.PROVIDER_UNAVAILABLE,
+                    "暂时无法读取论文日报配置，请稍后重试。",
+                    stage="configuration",
+                    retryable=True,
+                    technical_message=str(exc),
+                ) from exc
+            if not bool(remote_config.get("configured")):
+                raise ConnectJobError(
+                    JobErrorCode.CONFIG_REQUIRED,
+                    "论文日报尚未配置。请先打开原版网页完成设置，再重新发起任务：\n"
+                    + stable_public_url,
+                    stage="configuration",
+                )
+            config_payload = remote_config.get("config")
+            if isinstance(config_payload, Mapping):
+                adapter.apply_configuration(config_payload)
 
         def mirror_snapshot(run: Mapping[str, Any], log_text: str) -> None:
             nonlocal last_snapshot, publish_error_reported

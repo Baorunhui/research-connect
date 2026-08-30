@@ -91,7 +91,7 @@ def test_agent_api_requires_token(tmp_path):
     assert response.status_code == 401
 
 
-def test_stable_site_keeps_url_and_exposes_read_only_runs(tmp_path):
+def test_stable_site_keeps_url_and_exposes_runs_and_public_config(tmp_path):
     api = client(tmp_path)
     created = api.post(
         "/api/v1/sites",
@@ -129,6 +129,39 @@ def test_stable_site_keeps_url_and_exposes_read_only_runs(tmp_path):
     assert api.get(f"/s/{token}/").text == "<h1>Daily Paper Reader</h1>"
     assert api.get(f"/s/{token}/api/local/runs").json()["runs"][0]["id"] == "run-001"
     assert api.get(f"/s/{token}/api/local/runs/run-001/log").json()["log"] == "Step 1"
+    assert api.get(
+        "/api/v1/sites/daily-install-1/config", headers=auth()
+    ).json()["configured"] is False
+    saved = api.post(
+        f"/s/{token}/api/local/config/partial",
+        json={
+            "local": {
+                "chat": {
+                    "base_url": "https://llm.example/v1",
+                    "model": "example-model",
+                    "api_key": "secret-value",
+                }
+            }
+        },
+    )
+    assert saved.status_code == 200
+    public_config = api.get(f"/s/{token}/api/local/config/structured").json()
+    assert public_config["configured"] is True
+    assert public_config["local"]["chat"]["api_key"] == ""
+    agent_config = api.get(
+        "/api/v1/sites/daily-install-1/config", headers=auth()
+    ).json()
+    assert agent_config["configured"] is True
+    assert agent_config["config"]["local"]["chat"]["api_key"] == "secret-value"
+    api.post(
+        f"/s/{token}/api/local/config/partial",
+        json={"local": {"chat": {"api_key": "", "model": "new-model"}}},
+    )
+    preserved = api.get(
+        "/api/v1/sites/daily-install-1/config", headers=auth()
+    ).json()["config"]
+    assert preserved["local"]["chat"]["api_key"] == "secret-value"
+    assert preserved["local"]["chat"]["model"] == "new-model"
 
 
 def test_report_zip_rejects_traversal_and_missing_index(tmp_path):

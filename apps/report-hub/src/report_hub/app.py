@@ -49,6 +49,10 @@ class SiteRunUpdate(BaseModel):
     log: str = Field(default="", max_length=100_000)
 
 
+class SiteConfigUpdate(BaseModel):
+    config: dict[str, Any]
+
+
 class Broker:
     def __init__(self) -> None:
         self.connections: dict[str, set[WebSocket]] = defaultdict(set)
@@ -183,6 +187,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return {"accepted": True, "run_id": run_id}
 
+    @app.get("/api/v1/sites/{site_id}/config", dependencies=[Depends(require_agent)])
+    def agent_site_config(site_id: str) -> dict[str, Any]:
+        resolve_site(site_id)
+        record = storage.get_site_config(site_id)
+        return {
+            "configured": record is not None,
+            "config": (record or {}).get("config") or {},
+            "updated_at": (record or {}).get("updated_at"),
+        }
+
     @app.post("/api/v1/jobs/{job_id}/events", dependencies=[Depends(require_agent)])
     async def append_event(job_id: str, body: EventCreate) -> dict[str, Any]:
         job = resolve_job(job_id)
@@ -257,6 +271,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not record:
             raise HTTPException(status_code=404, detail="run not found")
         return {"ok": True, **record}
+
+    def public_site(public_token: str) -> dict[str, Any]:
+        site = storage.get_site(public_token=public_token)
+        if not site:
+            raise HTTPException(status_code=404, detail="site not found")
+        return site
+
+    def public_config_payload(site: dict[str, Any]) -> dict[str, Any]:
+        record = storage.get_site_config(site["site_id"])
+        return dict((record or {}).get("config") or {})
+
+    @app.get("/s/{public_token}/api/local/config/structured")
+    def public_daily_config(public_token: str) -> dict[str, Any]:
+        site = public_site(public_token)
+        config = public_config_payload(site)
+        local = dict(config.get("local") or {}) if isinstance(config.get("local"), dict) else {}
+        for key in ("subscriptions", "recommend_setting"):
+            if key in config:
+                local[key] = config[key]
+        return {
+            "ok": True,
+            "configured": storage.get_site_config(site["site_id"]) is not None,
+            "local": _redact(local),
+        }
+
+    @app.post("/s/{public_token}/api/local/config/partial")
+    def save_public_daily_config(public_token: str, body: dict[str, Any]) -> dict[str, Any]:
+        site = public_site(public_token)
+        current = public_config_payload(site)
+        merged = _merge_config(current, body)
+        storage.save_site_config(site["site_id"], merged)
+        return {"ok": True, "configured": True}
+
+    @app.get("/s/{public_token}/api/config")
+    def public_citation_config(public_token: str) -> dict[str, Any]:
+        site = public_site(public_token)
+        return _redact(public_config_payload(site))
+
+    @app.post("/s/{public_token}/api/config")
+    def save_public_citation_config(
+        public_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        site = public_site(public_token)
+        current = public_config_payload(site)
+        storage.save_site_config(site["site_id"], _merge_config(current, body))
+        return {"status": "success", "message": "配置已保存", "configured": True}
 
     @app.get("/s/{public_token}")
     def site_without_slash(public_token: str) -> Response:
@@ -341,3 +401,35 @@ def _site_response(site: dict[str, Any], settings: Settings) -> dict[str, Any]:
         "report_ready": bool(site["report_ready"]),
         "public_url": f"{settings.public_base_url}/s/{site['public_token']}/",
     }
+
+
+def _is_secret_field(name: str) -> bool:
+    normalized = name.lower().replace("-", "_")
+    return any(part in normalized for part in ("api_key", "token", "secret", "password"))
+
+
+def _redact(value: Any, key: str = "") -> Any:
+    if key and _is_secret_field(key):
+        if isinstance(value, list):
+            return []
+        return ""
+    if isinstance(value, dict):
+        return {name: _redact(item, str(name)) for name, item in value.items()}
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    return value
+
+
+def _merge_config(current: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(current)
+    for key, value in update.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_config(merged[key], value)
+        elif _is_secret_field(str(key)) and (value == "" or value == []):
+            # Public forms deliberately do not echo secrets. An empty field means
+            # "keep the existing value", not "erase it".
+            if key not in merged:
+                merged[key] = value
+        else:
+            merged[key] = value
+    return merged

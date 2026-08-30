@@ -66,6 +66,29 @@ class DailyPaperAdapter:
     def configured(self) -> bool:
         return self.transport != "disabled" and bool(self.endpoint)
 
+    def apply_configuration(self, config: Mapping[str, Any]) -> None:
+        """Persist configuration collected by the public original UI locally."""
+        self._request("POST", "/api/local/config/partial", config)
+        local = config.get("local") if isinstance(config.get("local"), Mapping) else {}
+        chat = local.get("chat") if isinstance(local.get("chat"), Mapping) else {}
+        api_key = str(chat.get("api_key") or "").strip()
+        base_url = str(chat.get("base_url") or "").strip()
+        model = str(chat.get("model") or "").strip()
+        if api_key:
+            self.extra_env.update(SUMMARY_API_KEY=api_key, DEEPSEEK_API_KEY=api_key)
+        if base_url:
+            self.extra_env.update(
+                SUMMARY_BASE_URL=base_url,
+                DEEPSEEK_BASE_URL=base_url,
+                LLM_PRIMARY_BASE_URL=base_url,
+            )
+        if model:
+            self.extra_env.update(SUMMARY_MODEL=model, DEEPSEEK_MODEL=model)
+        rerank = local.get("rerank") if isinstance(local.get("rerank"), Mapping) else {}
+        profile = str(rerank.get("profile") or "").strip()
+        if profile:
+            self.extra_env["RERANK_PROFILE"] = profile
+
     def invoke(
         self,
         request: DailyPaperRequest,

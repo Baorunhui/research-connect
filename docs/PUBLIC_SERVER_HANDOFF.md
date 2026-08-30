@@ -13,7 +13,7 @@
 手机/电脑浏览器 ← Daily Paper 固定整站链接 / CitationClaw 单任务链接
 ```
 
-这不是反向代理用户电脑，也不把本机 FastAPI 暴露到公网。因此用户不需要公网 IP、内网穿透账号或路由器配置，公网服务器也不接触飞书 Secret、LLM Key 和学校 API Key。Daily Paper 公网站点中的 `/api/local/runs` 是 Report Hub 保存的只读镜像，不会把“发起任务”接口暴露到公网。
+这不是反向代理用户电脑，也不把本机 FastAPI 暴露到公网。因此用户不需要公网 IP、内网穿透账号或路由器配置。Daily Paper 与 CitationClaw 的固定原版网页负责保存模块配置，本机 Connect Hub 在任务启动前通过 Agent API 拉取；飞书 Secret 仍只留在本机。由于模块配置包含 LLM/API Key，正式服务必须启用 HTTPS，并妥善保护 Report Hub 数据目录和 Agent Token。公网网页不直接调用用户电脑上的任务接口。
 
 ## 需要服务器管理员提供
 

@@ -8,8 +8,12 @@
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const OVERLAY_ID = 'dpr-local-settings-overlay';
-  const STRUCTURED_ENDPOINT = '/api/local/config/structured';
-  const PARTIAL_ENDPOINT = '/api/local/config/partial';
+  const apiUrl = (path) => {
+    const base = String(window.DPR_LOCAL_API_BASE || '').trim().replace(/\/$/, '');
+    return base ? `${base}${path}` : path;
+  };
+  const STRUCTURED_ENDPOINT = () => apiUrl('/api/local/config/structured');
+  const PARTIAL_ENDPOINT = () => apiUrl('/api/local/config/partial');
 
   const trimText = (value) => String(value == null ? '' : value).trim();
 
@@ -615,14 +619,6 @@
   }
 
   async function open() {
-    if (window.DPR_PUBLIC_READ_ONLY === true) {
-      window.alert(
-        '这是公网只读日报站点，不能在这里写入本机配置。\n\n' +
-        '飞书任务会由 Connect Hub 注入主题、模式和 API 配置。首次部署需要在运行机器上打开 ' +
-        'http://127.0.0.1:8567 完成本地设置；无显示器服务器可使用 SSH 端口转发。',
-      );
-      return;
-    }
     const overlay = createOverlay();
     overlay.style.display = 'flex';
     requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('show')));
@@ -643,7 +639,7 @@
     }
     setStatus('正在读取配置...');
     try {
-      const resp = await fetch(STRUCTURED_ENDPOINT);
+      const resp = await fetch(STRUCTURED_ENDPOINT());
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       const local = (data && data.local) || {};
@@ -744,7 +740,7 @@
 
     setStatus('保存中...');
     try {
-      const resp = await fetch(PARTIAL_ENDPOINT, {
+      const resp = await fetch(PARTIAL_ENDPOINT(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -771,6 +767,11 @@
   async function saveAndRun() {
     const ok = await persist();
     if (!ok) return;
+    if (window.DPR_LOCAL_API_BASE) {
+      setStatus('已保存 ✓，请返回飞书或 CLI 重新发起任务', '#080');
+      setTimeout(close, 1200);
+      return;
+    }
     setStatus('已保存，正在触发日报生成…', '#086');
     try {
       const runner = window.DPRWorkflowRunner;

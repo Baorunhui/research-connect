@@ -32,6 +32,10 @@ class CitationClawAdapter:
     def configured(self) -> bool:
         return bool(self.endpoint)
 
+    def apply_configuration(self, config: Mapping[str, Any]) -> None:
+        """Persist configuration collected by CitationClaw's public original UI."""
+        self._request("POST", "/api/config", config)
+
     def run(
         self,
         *,

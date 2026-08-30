@@ -46,7 +46,8 @@ def test_daily_site_archive_contains_real_site_and_public_config(tmp_path):
         names = archive.namelist()
         html = archive.read("index.html").decode()
     assert names == ["index.html", "app/main.js", "docs/README.md"]
-    assert "DPR_PUBLIC_READ_ONLY" in html
+    assert "DPR_LOCAL_API_BASE" in html
+    assert "DPR_PUBLIC_READ_ONLY" not in html
     assert "private.py" not in names
 
 
