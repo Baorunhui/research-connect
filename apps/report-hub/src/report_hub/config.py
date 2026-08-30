@@ -12,8 +12,11 @@ class Settings:
     public_base_url: str = "http://127.0.0.1:8787"
     agent_token: str = ""
     data_dir: Path = Path("data")
-    max_upload_mb: int = 50
-    max_expanded_mb: int = 250
+    # Daily Paper sites contain historical figures. A normal site can exceed
+    # 50 MiB after only a few runs, so the standalone defaults must accommodate
+    # the product's actual whole-site publishing mode.
+    max_upload_mb: int = 256
+    max_expanded_mb: int = 1024
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -25,8 +28,8 @@ class Settings:
             ).rstrip("/"),
             agent_token=os.getenv("REPORT_HUB_AGENT_TOKEN", ""),
             data_dir=Path(os.getenv("REPORT_HUB_DATA_DIR", "data")).expanduser().resolve(),
-            max_upload_mb=int(os.getenv("REPORT_HUB_MAX_UPLOAD_MB", "50")),
-            max_expanded_mb=int(os.getenv("REPORT_HUB_MAX_EXPANDED_MB", "250")),
+            max_upload_mb=int(os.getenv("REPORT_HUB_MAX_UPLOAD_MB", "256")),
+            max_expanded_mb=int(os.getenv("REPORT_HUB_MAX_EXPANDED_MB", "1024")),
         )
 
     def validate(self) -> None:
@@ -34,4 +37,3 @@ class Settings:
             raise ValueError("REPORT_HUB_AGENT_TOKEN must contain at least 32 characters")
         if self.max_upload_mb <= 0 or self.max_expanded_mb < self.max_upload_mb:
             raise ValueError("invalid upload size limits")
-

@@ -35,8 +35,8 @@ def initialize_config(path: Path) -> None:
         "REPORT_HUB_PUBLIC_BASE_URL=http://211.86.155.100:8787\n"
         f"REPORT_HUB_AGENT_TOKEN={secrets.token_urlsafe(48)}\n"
         "REPORT_HUB_DATA_DIR=./data\n"
-        "REPORT_HUB_MAX_UPLOAD_MB=50\n"
-        "REPORT_HUB_MAX_EXPANDED_MB=250\n",
+        "REPORT_HUB_MAX_UPLOAD_MB=256\n"
+        "REPORT_HUB_MAX_EXPANDED_MB=1024\n",
         encoding="utf-8",
     )
     try:
@@ -44,4 +44,3 @@ def initialize_config(path: Path) -> None:
     except OSError:
         pass
     print(f"Created {path}. The generated agent token was not printed.")
-

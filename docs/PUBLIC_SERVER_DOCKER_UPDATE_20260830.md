@@ -52,13 +52,22 @@ REPORT_HUB_HOST=0.0.0.0
 REPORT_HUB_PORT=8787
 REPORT_HUB_PUBLIC_BASE_URL=https://report.sinksilk.com:58443
 REPORT_HUB_AGENT_TOKEN=<双方已经约定的 token，不要发到公开仓库或日志>
-REPORT_HUB_MAX_UPLOAD_MB=50
-REPORT_HUB_MAX_EXPANDED_MB=250
+REPORT_HUB_MAX_UPLOAD_MB=256
+REPORT_HUB_MAX_EXPANDED_MB=1024
 ```
 
 Compose 已把持久化目录固定为 `/data`，对应 `report-hub-data` 命名卷，不需要在 `.env` 中另改宿主机路径。
 
-Nginx 应把 `https://report.sinksilk.com:58443` 的全部路径原样反向代理到 Report Hub 的 `8787` 端口，不能只代理 `/healthz` 或 `/api/v1/jobs`。请求体上传限制建议不低于 50 MB，请保留 WebSocket upgrade 头。
+Nginx 应把 `https://report.sinksilk.com:58443` 的全部路径原样反向代理到 Report Hub 的 `8787` 端口，不能只代理 `/healthz` 或 `/api/v1/jobs`。请使用 [nginx-report-hub.conf](../apps/report-hub/deploy/nginx-report-hub.conf) 中的关键设置，尤其是 `client_max_body_size 256m`。论文日报原版站点会保留历史图片，实际压缩包可能超过 50 MiB；Nginx 和 `REPORT_HUB_MAX_UPLOAD_MB` 两层限制必须同时放大。
+
+修改 Nginx 后执行：
+
+```bash
+nginx -t
+nginx -s reload
+```
+
+如果 Nginx 也运行在 Docker 中，请在对应容器内检查并 reload，而不是在宿主机盲目执行上述命令。
 
 ## 升级验收
 
@@ -86,6 +95,8 @@ curl -fsS "$BASE/api/v1/sites/deploy-check/config" \
 完成后把上述三条命令的状态结果发回即可，不要发送 Agent Token。
 
 服务器验收通过后，用户电脑只需重启一次 `connect-hub serve`。Connect Hub 会在启动阶段自动创建并上传 Daily Paper 与 CitationClaw 的原版网页；这不是公网容器的第二次更新，也不需要服务器管理员手工复制网页文件。
+
+如果日报已经生成、但曾收到 `413 Request Entity Too Large`，不需要重新运行日报。先完成上述两层上传限制更新，再重启用户电脑上的 Connect Hub；启动阶段会把本机现有整站补同步到公网。
 
 ## 它是不是“动态网络”或内网穿透？
 
