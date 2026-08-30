@@ -31,6 +31,27 @@ def test_parse_text_and_remove_mention_placeholder():
     assert message.session_key == "feishu:oc_1:ou_user"
 
 
+def test_parse_pdf_file_message():
+    event = {
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_user"}, "sender_type": "user"},
+            "message": {
+                "message_id": "om_pdf",
+                "chat_id": "oc_1",
+                "chat_type": "p2p",
+                "message_type": "file",
+                "content": '{"file_key":"file_abc","file_name":"paper.pdf"}',
+            },
+        }
+    }
+
+    message = parse_message_event(event)
+
+    assert message.file_key == "file_abc"
+    assert message.file_name == "paper.pdf"
+    assert message.message_type == "file"
+
+
 def test_parse_bot_menu_event():
     event = {
         "event": {
@@ -152,3 +173,34 @@ def test_uploads_and_replies_with_file(tmp_path):
     assert uploaded[0].request_body.file_type == "stream"
     assert uploaded[0].request_body.file_name == "daily.md"
     assert replied[0].request_body.msg_type == "file"
+
+
+def test_downloads_inbound_pdf_to_configured_directory(tmp_path):
+    class Resources:
+        def get(self, request):
+            import io
+
+            return SimpleNamespace(
+                success=lambda: True,
+                file=io.BytesIO(b"%PDF-test"),
+                code=0,
+                msg="ok",
+            )
+
+    connector = FeishuConnector(
+        SimpleNamespace(workers=1), service=None, inbound_dir=tmp_path
+    )
+    connector._api_client = SimpleNamespace(
+        im=SimpleNamespace(v1=SimpleNamespace(message_resource=Resources()))
+    )
+    message = SimpleNamespace(
+        message_id="om_pdf",
+        file_key="file_abc",
+        file_name="paper.pdf",
+    )
+
+    path = connector._download_inbound_pdf(message)
+
+    connector._executor.shutdown(wait=True)
+    assert path.parent == tmp_path.resolve()
+    assert path.read_bytes() == b"%PDF-test"

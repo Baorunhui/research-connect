@@ -223,6 +223,12 @@ def _public_title(definition: ToolDefinition, arguments: Mapping[str, Any]) -> s
                 if title:
                     return f"查引用：{title}"[:300]
     if definition.module_name == "daily-paper":
+        if definition.job_type == "paper_summary":
+            url = str(arguments.get("url") or "").strip()
+            return (f"论文总结：{url}" if url else "PDF 论文总结")[:300]
+        if definition.job_type == "paper_survey":
+            query = str(arguments.get("query") or "").strip()
+            return (f"论文综述：{query}" if query else "论文综述")[:300]
         topics = arguments.get("topics")
         if isinstance(topics, list):
             names = [

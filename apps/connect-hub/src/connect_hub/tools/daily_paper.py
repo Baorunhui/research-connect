@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import re
 import time
 import json
@@ -99,8 +100,84 @@ def daily_paper_tools(
     public_url: str = "",
     report_hub: ReportHubClient | None = None,
     site_id: str = "",
+    inbound_dir: Path | None = None,
 ) -> tuple[ToolDefinition, ...]:
     output_dir = output_dir.resolve()
+    safe_inbound_dir = inbound_dir.resolve() if inbound_dir is not None else None
+
+    def prepare_original_site(context: ToolContext) -> str:
+        stable_url = public_url
+        if report_hub is not None and report_hub.configured and site_id:
+            try:
+                stable_url, ready = report_hub.ensure_site(
+                    site_id=site_id,
+                    module_name="daily-paper",
+                    title="Daily Paper Reader",
+                )
+                if not ready:
+                    stable_url = report_hub.upload_site(
+                        site_id, adapter.project_dir or ""
+                    )
+                remote_config = report_hub.get_site_config(site_id)
+            except ReportHubError as exc:
+                raise ConnectJobError(
+                    JobErrorCode.PROVIDER_UNAVAILABLE,
+                    "暂时无法读取论文服务配置，请稍后重试。",
+                    stage="configuration",
+                    retryable=True,
+                    technical_message=str(exc),
+                ) from exc
+            if not bool(remote_config.get("configured")):
+                raise ConnectJobError(
+                    JobErrorCode.CONFIG_REQUIRED,
+                    "论文服务尚未配置。请先打开原版网页完成设置，再重新发起任务：\n"
+                    + stable_url,
+                    stage="configuration",
+                )
+            config_payload = remote_config.get("config")
+            if isinstance(config_payload, Mapping):
+                adapter.apply_configuration(config_payload)
+        if stable_url:
+            context.record_artifact(kind="url", url=stable_url, name="Daily Paper Reader")
+        return stable_url
+
+    def refresh_original_site(context: ToolContext, stable_url: str) -> str:
+        if report_hub is None or not report_hub.configured or not site_id:
+            return stable_url
+        try:
+            return report_hub.upload_site(site_id, adapter.project_dir or "")
+        except ReportHubError as exc:
+            context.report_progress(
+                "结果已经在本机生成，但公网整站更新失败。",
+                stage="publish",
+                payload={"error_code": "REPORT_PUBLISH_FAILED", "detail": str(exc)[:500]},
+            )
+            return stable_url
+
+    def native_event(context: ToolContext, event: Mapping[str, Any]) -> None:
+        if str(event.get("event_type") or "") != "job.progress":
+            return
+        message = _text(event.get("message"))
+        if message:
+            context.report_progress(
+                message,
+                stage=_text(event.get("stage")),
+                current=(event.get("current") if isinstance(event.get("current"), int) else None),
+                total=(event.get("total") if isinstance(event.get("total"), int) else None),
+                payload=(event.get("payload") if isinstance(event.get("payload"), Mapping) else None),
+            )
+
+    def pdf_payload(path_value: Any) -> tuple[str, str]:
+        if safe_inbound_dir is None:
+            raise ValueError("PDF upload directory is not configured")
+        path = Path(_text(path_value)).expanduser().resolve()
+        if not path.is_relative_to(safe_inbound_dir):
+            raise ValueError("PDF path is outside the Feishu upload directory")
+        if not path.is_file() or path.suffix.lower() != ".pdf":
+            raise ValueError("uploaded attachment must be a PDF file")
+        if path.stat().st_size > 30 * 1024 * 1024:
+            raise ValueError("PDF file exceeds the 30 MiB limit")
+        return path.name, base64.b64encode(path.read_bytes()).decode("ascii")
 
     def generate(arguments: Mapping[str, Any], context: ToolContext) -> Mapping[str, Any]:
         request_arguments = dict(arguments)
@@ -260,7 +337,7 @@ def daily_paper_tools(
             "enrichment_sources": source_links,
         }
 
-    tool = ToolDefinition(
+    daily_tool = ToolDefinition(
         name="generate_daily_paper_report",
         description=(
             "按用户指定的研究主题运行论文推荐链：BM25、Embedding、RRF、专用 reranker、"
@@ -342,4 +419,183 @@ def daily_paper_tools(
         job_type="daily_report",
         kind="business",
     )
-    return (tool,)
+
+    def summarize(arguments: Mapping[str, Any], context: ToolContext) -> Mapping[str, Any]:
+        publish_web = bool(arguments.get("publish_web", True))
+        stable_url = prepare_original_site(context)
+        source = _text(arguments.get("source"))
+        payload: dict[str, Any] = {"source": source}
+        if source == "url":
+            url = _text(arguments.get("url"))
+            if not url:
+                raise ValueError("paper URL is required when source=url")
+            payload["url"] = url
+        elif source == "pdf":
+            filename, encoded = pdf_payload(arguments.get("pdf_path"))
+            payload.update(filename=filename, data_b64=encoded)
+        else:
+            raise ValueError("source must be url or pdf")
+        started_at = time.monotonic()
+        try:
+            record = adapter.invoke(
+                DailyPaperRequest("paper_summarize_wait", payload),
+                on_event=lambda event: native_event(context, event),
+                is_cancelled=lambda: context.cancelled,
+            )
+        except Exception:
+            context.record_usage(
+                provider="daily-paper", operation="paper_summary",
+                duration_ms=int((time.monotonic() - started_at) * 1000), status_code=500,
+            )
+            raise
+        context.record_usage(
+            provider="daily-paper", operation="paper_summary",
+            duration_ms=int((time.monotonic() - started_at) * 1000), status_code=200,
+        )
+        result = record.get("result") if isinstance(record.get("result"), Mapping) else {}
+        meta = result.get("meta") if isinstance(result.get("meta"), Mapping) else {}
+        md_path = _text(meta.get("md_path"))
+        if md_path:
+            context.record_artifact(kind="file", path=md_path, name=Path(md_path).name)
+        if publish_web:
+            stable_url = refresh_original_site(context, stable_url)
+        paper_id = _text(meta.get("paper_id"))
+        page_url = f"{stable_url}#/{paper_id}" if stable_url and paper_id else stable_url
+        return {
+            "run_id": _text(record.get("id")),
+            "status": "completed",
+            "title": _text(meta.get("title")),
+            "paper_id": paper_id,
+            "cached": bool(meta.get("cached")),
+            "md_path": md_path,
+            "public_url": (page_url if publish_web else ""),
+        }
+
+    summary_tool = ToolDefinition(
+        name="summarize_paper",
+        description=(
+            "使用 Daily Paper 原版论文总结流水线总结一篇论文，并生成与日报论文页一致的网页。"
+            "用户明确要求总结论文链接时传 source=url；对话里有飞书上传 PDF 的本地路径时传 "
+            "source=pdf 和 pdf_path。不要把普通网页或没有上传过的路径伪装成 PDF。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "source": {"type": "string", "enum": ["url", "pdf"]},
+                "url": {"type": "string", "description": "论文网页或 arXiv 链接。"},
+                "pdf_path": {"type": "string", "description": "系统消息中给出的飞书 PDF 本地路径。"},
+                "publish_web": {"type": "boolean", "description": "默认 true。"},
+            },
+            "required": ["source"],
+            "additionalProperties": False,
+        },
+        handler=summarize,
+        timeout_seconds=adapter.timeout_seconds + 30,
+        progress_message="论文总结任务已启动。将按原版流程解析论文、生成速览与精读内容、处理图表并落盘论文页。",
+        start_url=public_url,
+        module_name="daily-paper",
+        module_version=adapter.manifest.module_version,
+        job_type="paper_summary",
+        kind="business",
+    )
+
+    def survey(arguments: Mapping[str, Any], context: ToolContext) -> Mapping[str, Any]:
+        publish_web = bool(arguments.get("publish_web", True))
+        stable_url = prepare_original_site(context)
+        payload = {
+            key: value for key, value in arguments.items()
+            if key not in {"publish_web", "source_links", "seed"}
+        }
+        seed = arguments.get("seed")
+        if isinstance(seed, Mapping):
+            seed_source = _text(seed.get("source"))
+            if seed_source == "url":
+                payload["seed"] = {"source": "url", "url": _text(seed.get("url"))}
+            elif seed_source == "pdf":
+                filename, encoded = pdf_payload(seed.get("pdf_path"))
+                payload["seed"] = {"source": "pdf", "filename": filename, "data_b64": encoded}
+            else:
+                raise ValueError("survey seed source must be url or pdf")
+        started_at = time.monotonic()
+        try:
+            record = adapter.invoke(
+                DailyPaperRequest("survey_wait", payload),
+                on_event=lambda event: native_event(context, event),
+                is_cancelled=lambda: context.cancelled,
+            )
+        except Exception:
+            context.record_usage(
+                provider="daily-paper", operation="paper_survey",
+                duration_ms=int((time.monotonic() - started_at) * 1000), status_code=500,
+            )
+            raise
+        context.record_usage(
+            provider="daily-paper", operation="paper_survey",
+            duration_ms=int((time.monotonic() - started_at) * 1000), status_code=200,
+        )
+        result = record.get("result") if isinstance(record.get("result"), Mapping) else {}
+        report = result.get("report") if isinstance(result.get("report"), Mapping) else {}
+        md_path = _text(report.get("md_path"))
+        if md_path:
+            context.record_artifact(kind="file", path=md_path, name=Path(md_path).name)
+        if publish_web:
+            stable_url = refresh_original_site(context, stable_url)
+        route = _text(report.get("paper_id") or report.get("route"))
+        page_url = f"{stable_url}#/{route}" if stable_url and route else stable_url
+        return {
+            "run_id": _text(record.get("id")),
+            "status": "completed",
+            "title": _text(report.get("title")),
+            "paper_count": report.get("n_papers"),
+            "clusters": report.get("cluster_names") or [],
+            "route": route,
+            "md_path": md_path,
+            "warnings": result.get("warnings") or [],
+            "public_url": (page_url if publish_web else ""),
+            "enrichment_sources": arguments.get("source_links") or [],
+        }
+
+    survey_tool = ToolDefinition(
+        name="generate_paper_survey",
+        description=(
+            "生成一个研究主题的领域综述。若联网可用，先搜索一次以补充准确概念、方法和 benchmark，"
+            "再把富化后的主题写入 query 并调用；无需像论文日报 Intent 预检那样等待固定确认。"
+            "可选使用 arXiv 链接或飞书上传 PDF 作为种子论文。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "minLength": 3, "description": "富化后的明确综述主题。"},
+                "max_papers": {"type": "integer", "minimum": 5, "maximum": 200, "description": "最终精选候选上限，默认30。"},
+                "fetch_days": {"type": "integer", "minimum": 1, "maximum": 1095, "description": "回溯天数，默认365。"},
+                "use_rerank": {"type": "boolean", "description": "是否使用 reranker，默认true。"},
+                "deep_read": {"type": "boolean", "description": "是否深读核心论文，默认true。"},
+                "use_deepxiv": {"type": "boolean", "description": "是否启用 DeepXiv 补充，默认false。"},
+                "use_kaggle": {"type": "boolean", "description": "是否使用本地 Kaggle 快照，默认true；未安装时原模块自行降级。"},
+                "coarse_top_k": {"type": "integer", "minimum": 500, "maximum": 30000, "description": "粗筛候选量，默认10000。"},
+                "seed": {
+                    "type": "object",
+                    "properties": {
+                        "source": {"type": "string", "enum": ["url", "pdf"]},
+                        "url": {"type": "string"},
+                        "pdf_path": {"type": "string"},
+                    },
+                    "required": ["source"],
+                    "additionalProperties": False,
+                },
+                "publish_web": {"type": "boolean", "description": "默认true。"},
+                "source_links": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        handler=survey,
+        timeout_seconds=max(adapter.timeout_seconds, 2700) + 30,
+        progress_message="论文综述任务已启动。将执行种子分析、召回、精选、逐篇抽取、聚类、深读、写作与审校。",
+        start_url=public_url,
+        module_name="daily-paper",
+        module_version=adapter.manifest.module_version,
+        job_type="paper_survey",
+        kind="business",
+    )
+    return (daily_tool, summary_tool, survey_tool)

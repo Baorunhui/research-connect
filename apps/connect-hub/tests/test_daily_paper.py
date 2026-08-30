@@ -4,18 +4,93 @@ from connect_hub.adapters.daily_paper import (
     _build_subscriptions,
 )
 from connect_hub.contracts import ConnectJobError
+from connect_hub.tools import ToolContext
 from connect_hub.tools.daily_paper import daily_paper_tools
 
 
 def test_daily_tool_schema_requires_structured_intent_candidates(tmp_path):
-    definition = daily_paper_tools(
+    definitions = daily_paper_tools(
         DailyPaperAdapter(project_dir=tmp_path),
         output_dir=tmp_path / "output",
-    )[0]
+        inbound_dir=tmp_path / "inbound",
+    )
+    definition = definitions[0]
     topic_schema = definition.parameters["properties"]["topics"]["items"]
 
     assert "intent_queries" in topic_schema["required"]
     assert topic_schema["properties"]["intent_queries"]["minItems"] == 2
+    assert [item.name for item in definitions] == [
+        "generate_daily_paper_report",
+        "summarize_paper",
+        "generate_paper_survey",
+    ]
+
+
+def test_native_summary_job_polls_events_and_returns_result(monkeypatch):
+    adapter = DailyPaperAdapter("local_http", "http://127.0.0.1:8567", poll_seconds=1)
+    responses = iter(
+        [
+            {"ok": True, "schema_version": "connect.job.v1", "job_id": "sum-test", "status": "queued"},
+            {"ok": True, "job": {"job_id": "sum-test", "status": "running", "events": [
+                {"schema_version": "connect.job.v1", "event_id": "evt-1", "event_type": "job.progress", "stage": "parse_pdf", "message": "正在解析 PDF"}
+            ]}},
+            {"ok": True, "job": {"job_id": "sum-test", "status": "completed", "events": [], "result": {"meta": {"paper_id": "paper-1"}}}},
+        ]
+    )
+    monkeypatch.setattr(adapter, "_request", lambda method, path, payload: next(responses))
+    monkeypatch.setattr("connect_hub.adapters.daily_paper.time.sleep", lambda _: None)
+    events = []
+
+    result = adapter.invoke(
+        DailyPaperRequest("paper_summarize_wait", {"source": "url", "url": "https://arxiv.org/abs/1"}),
+        on_event=events.append,
+    )
+
+    assert result["id"] == "sum-test"
+    assert result["result"]["meta"]["paper_id"] == "paper-1"
+    assert events[0]["stage"] == "parse_pdf"
+
+
+def test_summary_and_survey_tools_encode_uploaded_pdf(tmp_path):
+    inbound = tmp_path / "inbound"
+    inbound.mkdir()
+    pdf = inbound / "seed.pdf"
+    pdf.write_bytes(b"%PDF-test")
+
+    class FakeAdapter:
+        timeout_seconds = 60
+        project_dir = tmp_path
+        manifest = DailyPaperAdapter.manifest
+
+        def __init__(self):
+            self.calls = []
+
+        def invoke(self, request, **kwargs):
+            self.calls.append(request)
+            if request.action == "paper_summarize_wait":
+                return {"id": "sum-1", "result": {"meta": {"paper_id": "p1", "title": "Paper"}}}
+            return {"id": "sv-1", "result": {"report": {"paper_id": "survey/s1", "title": "Survey", "n_papers": 12}}}
+
+    adapter = FakeAdapter()
+    definitions = daily_paper_tools(
+        adapter,
+        output_dir=tmp_path / "output",
+        public_url="https://report.test/site/",
+        inbound_dir=inbound,
+    )
+    by_name = {item.name: item for item in definitions}
+    summary = by_name["summarize_paper"].handler(
+        {"source": "pdf", "pdf_path": str(pdf)}, ToolContext("s")
+    )
+    survey = by_name["generate_paper_survey"].handler(
+        {"query": "RAG evaluation", "seed": {"source": "pdf", "pdf_path": str(pdf)}},
+        ToolContext("s"),
+    )
+
+    assert adapter.calls[0].arguments["data_b64"]
+    assert adapter.calls[1].arguments["seed"]["data_b64"]
+    assert summary["public_url"].endswith("#/p1")
+    assert survey["public_url"].endswith("#/survey/s1")
 
 
 def test_recommend_wait_polls_until_complete(monkeypatch):

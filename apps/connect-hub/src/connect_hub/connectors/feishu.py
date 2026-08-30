@@ -4,6 +4,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from pathlib import Path
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,8 @@ class InboundMessage:
     message_type: str
     text: str
     mentioned: bool
+    file_key: str = ""
+    file_name: str = ""
 
     @property
     def session_key(self) -> str:
@@ -68,6 +71,8 @@ def parse_message_event(payload: Mapping[str, Any]) -> InboundMessage:
     except json.JSONDecodeError:
         content = {"text": raw_content}
     text = str(content.get("text") or "") if isinstance(content, Mapping) else ""
+    file_key = str(content.get("file_key") or "") if isinstance(content, Mapping) else ""
+    file_name = str(content.get("file_name") or "") if isinstance(content, Mapping) else ""
     mentions = message.get("mentions") if isinstance(message.get("mentions"), list) else []
     for mention in mentions:
         if isinstance(mention, Mapping):
@@ -84,6 +89,8 @@ def parse_message_event(payload: Mapping[str, Any]) -> InboundMessage:
         message_type=str(message.get("message_type") or ""),
         text=text.strip(),
         mentioned=bool(mentions),
+        file_key=file_key.strip(),
+        file_name=file_name.strip(),
     )
 
 
@@ -107,7 +114,13 @@ class FeishuConnector:
     returns within Feishu's three-second acknowledgement window.
     """
 
-    def __init__(self, settings: Settings, service: ChatService) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        service: ChatService,
+        *,
+        inbound_dir: str | Path | None = None,
+    ) -> None:
         self.settings = settings
         self.service = service
         self._executor = ThreadPoolExecutor(
@@ -117,6 +130,8 @@ class FeishuConnector:
         self._seen_set: set[str] = set()
         self._seen_lock = threading.Lock()
         self._api_client: Any = None
+        self._inbound_dir = Path(inbound_dir or ".").expanduser().resolve()
+        self._inbound_dir.mkdir(parents=True, exist_ok=True)
 
     def _mark_seen(self, message_id: str) -> bool:
         if not message_id:
@@ -150,11 +165,6 @@ class FeishuConnector:
 
         if message.sender_type == "app":
             return
-        if message.message_type != "text":
-            self._executor.submit(
-                self._reply_text, message.message_id, "目前先支持文字消息。"
-            )
-            return
         if message.chat_type == "group" and self.settings.feishu_require_mention and not message.mentioned:
             return
         if not self._authorized(message):
@@ -162,7 +172,16 @@ class FeishuConnector:
             return
         if not self._mark_seen(message.message_id):
             return
-        self._executor.submit(self._process_message, message)
+        if message.message_type == "text":
+            self._executor.submit(self._process_message, message)
+        elif message.message_type == "file":
+            self._executor.submit(self._process_file_message, message)
+        else:
+            self._executor.submit(
+                self._reply_text,
+                message.message_id,
+                "目前支持文字和 PDF 文件；其他附件类型暂不处理。",
+            )
 
     def _on_bot_menu(self, data: Any) -> None:
         try:
@@ -244,6 +263,69 @@ class FeishuConnector:
         except Exception as exc:
             logger.exception("message processing failed")
             self._reply_text(message.message_id, f"处理失败：{type(exc).__name__}")
+
+    def _process_file_message(self, message: InboundMessage) -> None:
+        try:
+            path = self._download_inbound_pdf(message)
+        except Exception as exc:
+            logger.exception("failed to download inbound Feishu file")
+            self._reply_text(
+                message.message_id,
+                f"PDF 接收失败：{exc}。请确认文件不超过 30 MiB，并检查机器人 im:resource 权限。",
+            )
+            return
+        synthetic = InboundMessage(
+            message_id=message.message_id,
+            chat_id=message.chat_id,
+            chat_type=message.chat_type,
+            sender_open_id=message.sender_open_id,
+            sender_type=message.sender_type,
+            message_type="text",
+            text=(
+                "[用户刚刚上传了一个 PDF 附件]\n"
+                f"文件名：{message.file_name or path.name}\n"
+                f"系统保存路径：{path}\n"
+                "请结合完整对话判断用户用途：若用户已要求总结这篇论文，调用 summarize_paper；"
+                "若用户要求把它作为种子论文生成领域综述，调用 generate_paper_survey；"
+                "若用途尚不明确，只需自然询问用户想总结单篇论文还是生成领域综述。"
+                "不要在对用户的回复中暴露系统保存路径。"
+            ),
+            mentioned=message.mentioned,
+            file_key=message.file_key,
+            file_name=message.file_name,
+        )
+        self._process_message(synthetic)
+
+    def _download_inbound_pdf(self, message: InboundMessage) -> Path:
+        from lark_oapi.api.im.v1 import GetMessageResourceRequest
+
+        raw_name = Path(message.file_name or "paper.pdf").name
+        if Path(raw_name).suffix.lower() != ".pdf":
+            raise ValueError("只接受 .pdf 文件")
+        if not message.file_key:
+            raise ValueError("飞书事件没有提供 file_key")
+        request = (
+            GetMessageResourceRequest.builder()
+            .message_id(message.message_id)
+            .file_key(message.file_key)
+            .type("file")
+            .build()
+        )
+        response = self._api_client.im.v1.message_resource.get(request)
+        if not response.success() or response.file is None:
+            raise RuntimeError(
+                f"飞书资源下载失败 code={response.code} msg={response.msg}"
+            )
+        data = response.file.read(30 * 1024 * 1024 + 1)
+        if len(data) > 30 * 1024 * 1024:
+            raise ValueError("PDF 超过 30 MiB")
+        safe_name = "".join(
+            char if (char.isalnum() or char in "._- ") else "_"
+            for char in raw_name
+        ).strip(" .") or "paper.pdf"
+        path = self._inbound_dir / f"{uuid.uuid4().hex[:12]}-{safe_name}"
+        path.write_bytes(data)
+        return path
 
     def _reply_text(self, message_id: str, text: str) -> None:
         from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody

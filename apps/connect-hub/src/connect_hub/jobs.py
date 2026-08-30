@@ -475,6 +475,8 @@ def _job_label(job_type: str) -> str:
         "generate_daily_paper_report": "论文日报",
         "daily_report": "论文日报",
         "paper_research": "论文调研",
+        "paper_summary": "论文总结",
+        "paper_survey": "论文综述",
         "citation_lookup": "查引用",
         "generate_xhs_package": "小红书内容",
     }

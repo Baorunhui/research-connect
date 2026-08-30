@@ -119,6 +119,8 @@ def _build_runtime(
         skip_llm_refine=settings.daily_paper_skip_llm_refine,
         project_dir=settings.daily_paper_dir,
     )
+    feishu_inbound_dir = DataPaths.for_module("connect-hub").artifacts / "inbound"
+    feishu_inbound_dir.mkdir(parents=True, exist_ok=True)
     if daily_paper.configured:
         for definition in daily_paper_tools(
             daily_paper,
@@ -126,6 +128,7 @@ def _build_runtime(
             public_url=(shortcut_urls.get("paper_reader") or settings.daily_paper_public_url),
             report_hub=report_hub,
             site_id=daily_site_id,
+            inbound_dir=feishu_inbound_dir,
         ):
             tools.register(definition)
     citationclaw = CitationClawAdapter(
@@ -221,7 +224,11 @@ def command_feishu(env_file: str | Path | None = None) -> int:
         interrupt_stale_jobs=True, env_file=env_file
     )
     _configure_logging(settings.log_level)
-    connector = FeishuConnector(settings, service)
+    connector = FeishuConnector(
+        settings,
+        service,
+        inbound_dir=DataPaths.for_module("connect-hub").artifacts / "inbound",
+    )
     connector.start()
     return 0
 

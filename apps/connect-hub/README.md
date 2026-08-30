@@ -38,6 +38,10 @@ External adapters
 - `system_status`：无副作用的服务状态检查。
 - `generate_xhs_package`：通过 `xhs_agent` 独立虚拟环境生成文案和卡片，不自动发布。
 - `generate_daily_paper_report`：调用最新版 Daily Paper workflow，实时转发步骤，并把原生 Daily Paper 整站发布到该安装实例的固定公网地址。
+- `summarize_paper`：按原版 `/api/paper/summarize` 流程总结论文 URL 或飞书上传的 PDF，实时回传解析、图表和落盘进度，完成后刷新固定站点并返回论文页。
+- `generate_paper_survey`：按原版 `/api/survey` 综述流水线执行召回、精选、抽取、聚类、深读、写作与审校；支持联网富化主题，以及 URL/PDF 种子论文。
+
+飞书入站 PDF 需要机器人具备已发布的 `im:resource` 权限。附件限制为 PDF、最大 30 MiB；文件保存到统一 data root 的 `modules/connect-hub/artifacts/inbound/`，不会写入 Git 仓库。
 - `lookup_citations`：调用 CitationClaw，转发进度、支持取消，并发布最终 Dashboard。
 
 工具只能来自静态注册表。LLM不能执行任意 shell、动态导入代码或调用未注册工具；每次工具调用的参数、状态、结果/错误和时间都会审计到 SQLite `tool_runs` 表。

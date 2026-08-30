@@ -40,7 +40,12 @@ class DailyPaperAdapter:
     manifest = ModuleManifest(
         module_name="daily-paper",
         module_version="0.1.0",
-        supported_job_types=("daily_report", "paper_research"),
+        supported_job_types=(
+            "daily_report",
+            "paper_research",
+            "paper_summary",
+            "paper_survey",
+        ),
     )
 
     def __init__(
@@ -126,7 +131,99 @@ class DailyPaperAdapter:
                 on_event=on_event,
                 is_cancelled=is_cancelled,
             )
+        if request.action == "paper_summarize_wait":
+            return self._async_job_and_wait(
+                "/api/paper/summarize",
+                request.arguments,
+                on_event=on_event,
+                is_cancelled=is_cancelled,
+                timeout_seconds=self.timeout_seconds,
+            )
+        if request.action == "survey_wait":
+            return self._async_job_and_wait(
+                "/api/survey",
+                request.arguments,
+                on_event=on_event,
+                is_cancelled=is_cancelled,
+                timeout_seconds=max(self.timeout_seconds, 2700),
+            )
         raise ValueError(f"unsupported Daily Paper action: {request.action}")
+
+    def _async_job_and_wait(
+        self,
+        endpoint: str,
+        arguments: Mapping[str, Any],
+        *,
+        on_event: Callable[[Mapping[str, Any]], None] | None,
+        is_cancelled: Callable[[], bool] | None,
+        timeout_seconds: int,
+    ) -> Mapping[str, Any]:
+        """Run one of Daily Paper's native connect.job.v1 HTTP jobs."""
+
+        started = self._request("POST", endpoint, dict(arguments))
+        self._validate_schema(started)
+        job_id = str(started.get("job_id") or "").strip()
+        if not job_id or not job_id.replace("-", "").isalnum():
+            raise DailyPaperUnavailable(
+                f"Daily Paper {endpoint} response contains no valid job_id"
+            )
+        deadline = time.monotonic() + timeout_seconds
+        seen_events: set[str] = set()
+        while True:
+            if is_cancelled is not None and is_cancelled():
+                acknowledged = self._cancel_async_job(endpoint, job_id)
+                if not acknowledged:
+                    raise ConnectJobError(
+                        JobErrorCode.CANCEL_FAILED,
+                        "已停止等待，但论文服务没有确认后台任务已取消。",
+                        stage="cancelling",
+                        technical_message=f"cancel not acknowledged for {endpoint}/{job_id}",
+                    )
+                raise ConnectJobError(JobErrorCode.JOB_CANCELLED, "任务已取消。")
+
+            response = self._request("GET", f"{endpoint}/{job_id}", None)
+            self._validate_schema(response)
+            job = response.get("job") if isinstance(response.get("job"), Mapping) else {}
+            self._report_structured_events(job, seen_events, on_event)
+            status = str(job.get("status") or "queued").strip().lower()
+            if status == "completed":
+                result = job.get("result")
+                if not isinstance(result, Mapping):
+                    raise DailyPaperUnavailable(
+                        f"Daily Paper job {job_id} completed without a structured result"
+                    )
+                return {
+                    "schema_version": SCHEMA_VERSION,
+                    "id": job_id,
+                    "status": status,
+                    "result": result,
+                    "events": job.get("events") or [],
+                }
+            if status == "failed":
+                raise DailyPaperUnavailable(
+                    f"Daily Paper job {job_id} failed: {job.get('error') or 'unknown error'}"
+                )
+            if status == "cancelled":
+                raise ConnectJobError(JobErrorCode.JOB_CANCELLED, "任务已取消。")
+            if time.monotonic() >= deadline:
+                acknowledged = self._cancel_async_job(endpoint, job_id)
+                raise ConnectJobError(
+                    JobErrorCode.JOB_TIMEOUT,
+                    "任务超过等待时限，已请求取消。",
+                    retryable=True,
+                    technical_message=(
+                        f"Daily Paper job {job_id} timed out; "
+                        f"cancel_acknowledged={acknowledged}"
+                    ),
+                )
+            time.sleep(self.poll_seconds)
+
+    def _cancel_async_job(self, endpoint: str, job_id: str) -> bool:
+        try:
+            result = self._request("POST", f"{endpoint}/{job_id}/cancel", {})
+        except DailyPaperUnavailable:
+            return False
+        return bool(result.get("ok"))
 
     def _local_workflow_and_wait(
         self,

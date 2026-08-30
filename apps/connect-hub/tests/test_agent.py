@@ -446,7 +446,7 @@ def test_daily_tool_gate_error_is_returned_exactly(tmp_path):
 
     reply = service.handle("s", "确认")
 
-    assert "日报尚未启动" in reply.text
+    assert "没有成功创建新的论文任务" in reply.text
     assert "本轮业务工具调用次数已达到上限" in reply.text
     assert store.recent_agent_runs("s", 1)[0]["business_tool_calls"] == 0
 
