@@ -5,6 +5,21 @@ import pytest
 from src.local_server import build_chat_request_payload
 
 
+def test_connect_hub_secret_env_allowlist_includes_remote_embedding():
+    from src.local_server import build_secret_env
+
+    env = build_secret_env(
+        {
+            "DPR_EMBED_API_URL": "https://zwwen.online/embed",
+            "DPR_EMBED_API_KEY": "embed-token",
+            "UNSAFE_ARBITRARY_ENV": "must-not-pass",
+        }
+    )
+    assert env["DPR_EMBED_API_KEY"] == "embed-token"
+    assert env["DPR_EMBED_API_URL"] == "https://zwwen.online/embed"
+    assert "UNSAFE_ARBITRARY_ENV" not in env
+
+
 @pytest.fixture(autouse=True)
 def _isolated_summarize_cache(tmp_path, monkeypatch):
     """总结缓存按论文身份跨进程落盘（.local-runs/paper_summarize_cache.json）。

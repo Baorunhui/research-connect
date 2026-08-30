@@ -80,6 +80,47 @@ class ReportHubClient:
             raise ReportHubError("REPORT_PUBLISH_FAILED: invalid upload response") from exc
         return str(payload.get("public_url") or "").strip()
 
+    def ensure_site(self, *, site_id: str, module_name: str, title: str) -> tuple[str, bool]:
+        normalized_module = module_name if module_name in {
+            "daily-paper", "citationclaw", "xhs-agent", "other"
+        } else "other"
+        response = self._json_request(
+            "POST",
+            "/api/v1/sites",
+            {
+                "site_id": site_id,
+                "module_name": normalized_module,
+                "title": title[:300] or "Research Connect 站点",
+            },
+        )
+        public_url = str(response.get("public_url") or "").strip()
+        if not public_url:
+            raise ReportHubError("REPORT_PUBLISH_FAILED: site response has no public_url")
+        return public_url, bool(response.get("report_ready"))
+
+    def upload_site(self, site_id: str, project_dir: str | Path) -> str:
+        archive = build_daily_paper_site_archive(Path(project_dir))
+        response = self._request(
+            "PUT",
+            f"/api/v1/sites/{site_id}/report",
+            archive,
+            content_type="application/zip",
+        )
+        try:
+            payload = json.loads(response.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ReportHubError("REPORT_PUBLISH_FAILED: invalid site upload response") from exc
+        return str(payload.get("public_url") or "").strip()
+
+    def update_site_run(
+        self, site_id: str, run_id: str, run: Mapping[str, Any], log_text: str
+    ) -> None:
+        self._json_request(
+            "PUT",
+            f"/api/v1/sites/{site_id}/runs/{run_id}",
+            {"run": dict(run), "log": log_text[-100_000:]},
+        )
+
     def _json_request(
         self, method: str, path: str, payload: Mapping[str, Any]
     ) -> Mapping[str, Any]:
@@ -152,6 +193,38 @@ def build_report_archive(source: Path) -> bytes:
             archive.writestr("index.html", document.encode("utf-8"))
         else:
             raise ReportHubError(f"REPORT_ARTIFACT_INVALID: unsupported report {source.name}")
+    return buffer.getvalue()
+
+
+def build_daily_paper_site_archive(project_dir: Path) -> bytes:
+    """Package Daily Paper's real Docsify site, excluding Python/source/cache files."""
+    project_dir = project_dir.resolve()
+    index = project_dir / "index.html"
+    if not index.is_file() or not (project_dir / "app").is_dir() or not (project_dir / "docs").is_dir():
+        raise ReportHubError(
+            f"REPORT_ARTIFACT_INVALID: {project_dir} is not a Daily Paper site"
+        )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        index_text = index.read_text(encoding="utf-8", errors="replace")
+        marker = """<script>
+    (function () {
+      var match = String(window.location.pathname || '').match(/^(\/s\/[^/]+)/);
+      if (match) window.DPR_LOCAL_API_BASE = match[1];
+      window.DPR_PUBLIC_READ_ONLY = true;
+    })();
+  </script>
+"""
+        index_text = index_text.replace("</head>", marker + "</head>", 1)
+        archive.writestr("index.html", index_text.encode("utf-8"))
+        for directory_name in ("app", "docs"):
+            directory = project_dir / directory_name
+            for path in sorted(directory.rglob("*")):
+                if path.is_file() and not path.is_symlink():
+                    archive.write(path, path.relative_to(project_dir).as_posix())
+        nojekyll = project_dir / ".nojekyll"
+        if nojekyll.is_file():
+            archive.write(nojekyll, ".nojekyll")
     return buffer.getvalue()
 
 

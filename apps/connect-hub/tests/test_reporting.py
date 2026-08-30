@@ -4,7 +4,11 @@ import io
 import zipfile
 
 from connect_hub.contracts import JobEvent
-from connect_hub.reporting import build_report_archive, _public_event_type
+from connect_hub.reporting import (
+    _public_event_type,
+    build_daily_paper_site_archive,
+    build_report_archive,
+)
 
 
 def test_build_report_archive_from_static_directory(tmp_path):
@@ -28,6 +32,22 @@ def test_build_report_archive_renders_markdown_as_mobile_html(tmp_path):
         html = archive.read("index.html").decode()
     assert "viewport" in html
     assert "&lt;日报&gt;" in html
+
+
+def test_daily_site_archive_contains_real_site_and_public_config(tmp_path):
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "index.html").write_text("<html><head></head></html>", encoding="utf-8")
+    (tmp_path / "app" / "main.js").write_text("ok", encoding="utf-8")
+    (tmp_path / "docs" / "README.md").write_text("日报", encoding="utf-8")
+    (tmp_path / "private.py").write_text("secret", encoding="utf-8")
+
+    with zipfile.ZipFile(io.BytesIO(build_daily_paper_site_archive(tmp_path))) as archive:
+        names = archive.namelist()
+        html = archive.read("index.html").decode()
+    assert names == ["index.html", "app/main.js", "docs/README.md"]
+    assert "DPR_PUBLIC_READ_ONLY" in html
+    assert "private.py" not in names
 
 
 def test_public_event_mapping_omits_internal_cost_and_artifact_events():

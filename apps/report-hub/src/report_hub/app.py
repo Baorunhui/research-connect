@@ -38,6 +38,17 @@ class EventCreate(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class SiteCreate(BaseModel):
+    site_id: str
+    module_name: Literal["daily-paper", "citationclaw", "xhs-agent", "other"]
+    title: str = Field(min_length=1, max_length=300)
+
+
+class SiteRunUpdate(BaseModel):
+    run: dict[str, Any]
+    log: str = Field(default="", max_length=100_000)
+
+
 class Broker:
     def __init__(self) -> None:
         self.connections: dict[str, set[WebSocket]] = defaultdict(set)
@@ -88,6 +99,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="job not found")
         return job
 
+    def resolve_site(site_id: str) -> dict[str, Any]:
+        site = storage.get_site(site_id=site_id)
+        if not site:
+            raise HTTPException(status_code=404, detail="site not found")
+        return site
+
     @app.get("/healthz")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "report-hub", "version": "0.1.0"}
@@ -109,6 +126,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             job_id=job_id, public_token=token, module_name=body.module_name, title=body.title
         )
         return _job_response(job, settings)
+
+    @app.post("/api/v1/sites", status_code=201, dependencies=[Depends(require_agent)])
+    def create_site(body: SiteCreate) -> dict[str, Any]:
+        if not JOB_ID_PATTERN.fullmatch(body.site_id):
+            raise HTTPException(status_code=422, detail="invalid site_id")
+        existing = storage.get_site(site_id=body.site_id)
+        site = existing or storage.create_site(
+            site_id=body.site_id,
+            public_token=secrets.token_urlsafe(24),
+            module_name=body.module_name,
+            title=body.title,
+        )
+        return _site_response(site, settings)
+
+    @app.put("/api/v1/sites/{site_id}/report", dependencies=[Depends(require_agent)])
+    async def upload_site(site_id: str, request: Request) -> dict[str, Any]:
+        site = resolve_site(site_id)
+        try:
+            content_length = int(request.headers.get("content-length", "0") or 0)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="invalid content-length") from exc
+        max_upload = settings.max_upload_mb * 1024 * 1024
+        if content_length > max_upload:
+            raise HTTPException(status_code=413, detail="site upload is too large")
+        data = await request.body()
+        if len(data) > max_upload:
+            raise HTTPException(status_code=413, detail="site upload is too large")
+        try:
+            size = install_report_zip(
+                data,
+                storage.site_dir / site_id,
+                settings.max_expanded_mb * 1024 * 1024,
+            )
+        except InvalidReportArchive as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        storage.mark_site_ready(site_id)
+        return {
+            "accepted": True,
+            "size_bytes": size,
+            "public_url": f"{settings.public_base_url}/s/{site['public_token']}/",
+        }
+
+    @app.put(
+        "/api/v1/sites/{site_id}/runs/{run_id}", dependencies=[Depends(require_agent)]
+    )
+    def update_site_run(site_id: str, run_id: str, body: SiteRunUpdate) -> dict[str, Any]:
+        resolve_site(site_id)
+        if not JOB_ID_PATTERN.fullmatch(run_id):
+            raise HTTPException(status_code=422, detail="invalid run_id")
+        actual_id = str(body.run.get("id") or "")
+        if actual_id and actual_id != run_id:
+            raise HTTPException(status_code=422, detail="run id mismatch")
+        storage.upsert_site_run(
+            site_id=site_id, run_id=run_id, run=body.run, log_text=body.log
+        )
+        return {"accepted": True, "run_id": run_id}
 
     @app.post("/api/v1/jobs/{job_id}/events", dependencies=[Depends(require_agent)])
     async def append_event(job_id: str, body: EventCreate) -> dict[str, Any]:
@@ -168,6 +241,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         html = (static_dir / "task.html").read_text(encoding="utf-8")
         return html.replace("__PUBLIC_TOKEN__", public_token)
 
+    @app.get("/s/{public_token}/api/local/runs")
+    def public_site_runs(public_token: str) -> dict[str, Any]:
+        site = storage.get_site(public_token=public_token)
+        if not site:
+            raise HTTPException(status_code=404, detail="site not found")
+        return {"ok": True, "runs": storage.list_site_runs(site["site_id"])}
+
+    @app.get("/s/{public_token}/api/local/runs/{run_id}/log")
+    def public_site_run_log(public_token: str, run_id: str) -> dict[str, Any]:
+        site = storage.get_site(public_token=public_token)
+        if not site:
+            raise HTTPException(status_code=404, detail="site not found")
+        record = storage.get_site_run(site["site_id"], run_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="run not found")
+        return {"ok": True, **record}
+
+    @app.get("/s/{public_token}")
+    def site_without_slash(public_token: str) -> Response:
+        site = storage.get_site(public_token=public_token)
+        if not site or not site["report_ready"]:
+            raise HTTPException(status_code=404, detail="site not ready")
+        return Response(status_code=307, headers={"Location": f"/s/{public_token}/"})
+
+    @app.get("/s/{public_token}/{asset_path:path}")
+    def site_asset(public_token: str, asset_path: str) -> Response:
+        site = storage.get_site(public_token=public_token)
+        if not site or not site["report_ready"]:
+            raise HTTPException(status_code=404, detail="site not ready")
+        root = (storage.site_dir / site["site_id"]).resolve()
+        relative = asset_path or "index.html"
+        path = (root / relative).resolve()
+        if root not in path.parents and path != root:
+            raise HTTPException(status_code=404)
+        if not path.is_file():
+            raise HTTPException(status_code=404)
+        media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        response = FileResponse(path, media_type=media_type)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
     @app.get("/assets/{filename}")
     def asset(filename: str) -> FileResponse:
         if filename not in {"task.css", "task.js"}:
@@ -218,4 +332,12 @@ def _job_response(job: dict[str, Any], settings: Settings) -> dict[str, Any]:
         "job_id": job["job_id"],
         "status": job["status"],
         "public_url": f"{settings.public_base_url}/r/{job['public_token']}",
+    }
+
+
+def _site_response(site: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    return {
+        "site_id": site["site_id"],
+        "report_ready": bool(site["report_ready"]),
+        "public_url": f"{settings.public_base_url}/s/{site['public_token']}/",
     }

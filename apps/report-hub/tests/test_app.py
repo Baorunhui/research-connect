@@ -91,6 +91,46 @@ def test_agent_api_requires_token(tmp_path):
     assert response.status_code == 401
 
 
+def test_stable_site_keeps_url_and_exposes_read_only_runs(tmp_path):
+    api = client(tmp_path)
+    created = api.post(
+        "/api/v1/sites",
+        headers=auth(),
+        json={"site_id": "daily-install-1", "module_name": "daily-paper", "title": "日报"},
+    )
+    assert created.status_code == 201
+    site = created.json()
+    assert site["public_url"].startswith("https://reports.example.test/s/")
+    assert api.post(
+        "/api/v1/sites",
+        headers=auth(),
+        json={"site_id": "daily-install-1", "module_name": "daily-paper", "title": "日报"},
+    ).json()["public_url"] == site["public_url"]
+    token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
+
+    assert api.put(
+        "/api/v1/sites/daily-install-1/report",
+        headers=auth(),
+        content=report_zip(content=b"<h1>Daily Paper Reader</h1>"),
+    ).status_code == 200
+    run = {
+        "id": "run-001",
+        "run_number": 1,
+        "status": "in_progress",
+        "conclusion": None,
+        "created_at": "2026-08-30T00:00:00+00:00",
+        "events": [],
+    }
+    assert api.put(
+        "/api/v1/sites/daily-install-1/runs/run-001",
+        headers=auth(),
+        json={"run": run, "log": "Step 1"},
+    ).status_code == 200
+    assert api.get(f"/s/{token}/").text == "<h1>Daily Paper Reader</h1>"
+    assert api.get(f"/s/{token}/api/local/runs").json()["runs"][0]["id"] == "run-001"
+    assert api.get(f"/s/{token}/api/local/runs/run-001/log").json()["log"] == "Step 1"
+
+
 def test_report_zip_rejects_traversal_and_missing_index(tmp_path):
     api = client(tmp_path)
     api.post(
@@ -122,4 +162,3 @@ def test_websocket_receives_snapshot_and_event(tmp_path):
             json={"event_type": "job.message", "message": "已找到 10 条引用"},
         )
         assert websocket.receive_json()["event"]["message"] == "已找到 10 条引用"
-

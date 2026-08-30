@@ -101,6 +101,36 @@ def build_secret_env(secret: dict[str, Any] | None) -> dict[str, str]:
         if rerank_provider == "siliconflow":
             env["SILICONFLOW_API_KEY"] = rerank_key
             env["SILICONFLOW_RERANK_URL"] = rerank_base
+    # Connect Hub uses an explicit allowlist of process-environment keys so a
+    # CLI/bot invocation can inject credentials per run without modifying this
+    # separately maintained project's .env file. Never pass arbitrary keys.
+    passthrough_keys = {
+        "DPR_EMBED_API_URL",
+        "DPR_EMBED_API_KEY",
+        "DPR_EMBED_ALLOW_LOCAL_FALLBACK",
+        "DPR_EMBED_API_TIMEOUT",
+        "SUMMARY_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "SUMMARY_BASE_URL",
+        "DEEPSEEK_BASE_URL",
+        "LLM_PRIMARY_BASE_URL",
+        "SUMMARY_MODEL",
+        "DEEPSEEK_MODEL",
+        "RERANK_PROFILE",
+        "RERANK_PROVIDER",
+        "RERANK_MODEL",
+        "RERANK_API_KEY",
+        "RERANK_API_BASE_URL",
+        "PUBLIC_RERANK_API_KEY",
+        "PUBLIC_RERANK_API_BASE_URL",
+        "SILICONFLOW_API_KEY",
+        "SILICONFLOW_RERANK_URL",
+        "DPR_PUBLIC_SERVICE_API_KEY",
+    }
+    for key in passthrough_keys:
+        value = norm_text(secret.get(key))
+        if value:
+            env[key] = value
     return env
 
 

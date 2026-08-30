@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import os
 import signal
@@ -66,6 +67,9 @@ def _build_runtime(
             )
         )
     daily_env: dict[str, str] = {
+        "DPR_EMBED_API_URL": settings.daily_paper_embed_api_url,
+        "DPR_EMBED_API_KEY": settings.daily_paper_embed_api_key,
+        "DPR_EMBED_ALLOW_LOCAL_FALLBACK": "0",
         "RERANK_PROFILE": settings.daily_paper_rerank_profile,
         "RERANK_PROVIDER": settings.daily_paper_rerank_provider,
         "RERANK_MODEL": settings.daily_paper_rerank_model,
@@ -104,6 +108,13 @@ def _build_runtime(
             daily_paper,
             output_dir=DataPaths.for_module("daily-paper-reader").artifacts,
             public_url=settings.daily_paper_public_url,
+            report_hub=report_hub,
+            site_id=(
+                "daily-paper-"
+                + hashlib.sha256(
+                    (settings.feishu_app_id or str(settings.daily_paper_dir)).encode("utf-8")
+                ).hexdigest()[:16]
+            ),
         ):
             tools.register(definition)
     citationclaw = CitationClawAdapter(

@@ -13,6 +13,20 @@ REPORT_HUB_AGENT_TOKEN=<由服务器管理员生成并分发>
 
 所有写接口使用 `Authorization: Bearer <token>`。公开任务页只凭不可猜测的 URL token 读取，不提供取消或配置功能。
 
+## 固定模块站点（Daily Paper）
+
+Daily Paper 不使用下面的单任务壳页面。Connect Hub 以稳定的安装实例 ID 调用
+`POST /api/v1/sites`，随后将项目原生的 `index.html`、`app/`、`docs/` 上传到
+`PUT /api/v1/sites/{site_id}/report`。服务返回的 `/s/{public_token}/` 在以后任务中保持不变。
+
+运行期间，Connect Hub 调用 `PUT /api/v1/sites/{site_id}/runs/{run_id}` 镜像无密钥的
+run 快照和日志。原生前端通过下面两个公开只读接口显示进度与历史：
+
+- `GET /s/{public_token}/api/local/runs`
+- `GET /s/{public_token}/api/local/runs/{run_id}/log`
+
+公网接口不提供 dispatch、cancel 或配置写入能力。
+
 ## 调用顺序
 
 1. `POST /api/v1/jobs` 创建任务，取得 `public_url`；重复提交相同 `job_id` 返回原链接。
@@ -70,4 +84,3 @@ Content-Type: application/json
 ## v1 稳定边界
 
 `/api/v1` 路径、上述字段和事件类型是 Connect Hub 与两个领域模块的兼容边界。可以增加可选字段，不直接修改或删除现有字段；破坏性升级使用 `/api/v2`。
-

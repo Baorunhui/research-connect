@@ -57,6 +57,8 @@ class Settings:
     daily_paper_timeout_seconds: int
     daily_paper_poll_seconds: int
     daily_paper_public_url: str
+    daily_paper_embed_api_url: str
+    daily_paper_embed_api_key: str
     daily_paper_skip_llm_refine: bool
     daily_paper_rerank_profile: str
     daily_paper_rerank_provider: str
@@ -162,6 +164,12 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         daily_paper_poll_seconds=_as_int("DAILY_PAPER_POLL_SECONDS", 3, minimum=1),
         daily_paper_public_url=str(
             os.getenv("DAILY_PAPER_PUBLIC_URL") or ""
+        ).strip(),
+        daily_paper_embed_api_url=str(
+            os.getenv("DAILY_PAPER_EMBED_API_URL") or "https://zwwen.online/embed"
+        ).strip(),
+        daily_paper_embed_api_key=str(
+            os.getenv("DAILY_PAPER_EMBED_API_KEY") or ""
         ).strip(),
         daily_paper_skip_llm_refine=_as_bool(
             os.getenv("DAILY_PAPER_SKIP_LLM_REFINE"), default=False

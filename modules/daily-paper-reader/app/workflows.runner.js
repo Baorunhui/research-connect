@@ -199,6 +199,8 @@ window.DPRWorkflowRunner = (function () {
     return false;
   };
 
+  const isPublicReadOnlyPage = () => window.DPR_PUBLIC_READ_ONLY === true;
+
   const getLocalApiUrl = (path) => {
     const base = String(window.DPR_LOCAL_API_BASE || '').trim().replace(/\/$/, '');
     if (!base && isLocalDebugPage()) {
@@ -648,6 +650,40 @@ window.DPRWorkflowRunner = (function () {
   const loadRecentRuns = async () => {
     ensureOverlay();
     if (!recentEl) return;
+    if (isLocalDebugPage()) {
+      try {
+        recentEl.classList.add('is-loading');
+        const data = await localApiFetch('/api/local/runs');
+        const runs = Array.isArray(data.runs) ? data.runs.slice(0, 12) : [];
+        recentEl.classList.remove('is-loading');
+        if (!runs.length) {
+          recentEl.innerHTML = '<div style="color:#999;">暂无运行记录。</div>';
+          return;
+        }
+        recentEl.innerHTML = runs.map((run) => {
+          const status = formatRunBadgeText(run.status || '', run.conclusion || '');
+          return `<button type="button" class="dpr-wf-recent-item" data-run-id="${escapeHtml(run.id || '')}" style="display:block;width:100%;margin:0 0 6px;padding:8px;text-align:left;border:1px solid #eee;border-radius:6px;background:#fff;cursor:pointer;">
+            <strong>本地运行 #${escapeHtml(run.run_number || run.id || '')}</strong>
+            <span style="margin-left:8px;color:#666;">${escapeHtml(status)}</span>
+            <span style="float:right;color:#999;">${escapeHtml(formatRunTime(run.created_at))}</span>
+          </button>`;
+        }).join('');
+        recentEl.querySelectorAll('.dpr-wf-recent-item').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const runId = button.getAttribute('data-run-id') || '';
+            if (!runId) return;
+            stopPolling();
+            selectedRun = { local: true, runId };
+            await refreshLocalRun(runId);
+            refreshTimer = setInterval(() => refreshLocalRun(runId), 5000);
+          });
+        });
+      } catch (e) {
+        recentEl.classList.remove('is-loading');
+        recentEl.innerHTML = `<div style="color:#c00;">${escapeHtml(e.message || String(e))}</div>`;
+      }
+      return;
+    }
     const token = loadGithubToken();
     if (!token) {
       recentEl.classList.remove('is-loading');
@@ -762,6 +798,11 @@ window.DPRWorkflowRunner = (function () {
     }
     const dispatchInputs = combineInputs(dynamicInputs, extraInputs);
     if (isLocalDebugPage()) {
+      if (isPublicReadOnlyPage()) {
+        setStatus('公网日报站点为只读模式，请在飞书中发起新任务。', '#666');
+        runsEl.innerHTML = '<div style="color:#666;">此页面用于查看运行进度和历史日报；新任务请通过飞书机器人发起。</div>';
+        return;
+      }
       try {
         return await dispatchLocalAndMonitor(wf, workflowFile, dispatchInputs);
       } catch (e) {

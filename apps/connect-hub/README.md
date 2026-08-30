@@ -37,7 +37,7 @@ External adapters
 
 - `system_status`：无副作用的服务状态检查。
 - `generate_xhs_package`：通过 `xhs_agent` 独立虚拟环境生成文案和卡片，不自动发布。
-- `generate_daily_paper_report`：调用最新版 Daily Paper workflow，实时转发步骤并发布静态日报网页。
+- `generate_daily_paper_report`：调用最新版 Daily Paper workflow，实时转发步骤，并把原生 Daily Paper 整站发布到该安装实例的固定公网地址。
 - `lookup_citations`：调用 CitationClaw，转发进度、支持取消，并发布最终 Dashboard。
 
 工具只能来自静态注册表。LLM不能执行任意 shell、动态导入代码或调用未注册工具；每次工具调用的参数、状态、结果/错误和时间都会审计到 SQLite `tool_runs` 表。
@@ -166,7 +166,8 @@ connect-hub serve
 - `DAILY_PAPER_TRANSPORT/ENDPOINT`：默认 `local_http` / `http://127.0.0.1:8567`。
 - `DAILY_PAPER_TIMEOUT_SECONDS/POLL_SECONDS`：日报长任务的总等待时间和轮询间隔。
 - `CITATIONCLAW_ENDPOINT`：默认 `http://127.0.0.1:8000`。
-- `REPORT_HUB_API_URL/AGENT_TOKEN`：公网永久任务页；任务创建时立即返回链接，完成后上传静态网页。部署见 [`../../docs/PUBLIC_SERVER_HANDOFF.md`](../../docs/PUBLIC_SERVER_HANDOFF.md)。
+- `REPORT_HUB_API_URL/AGENT_TOKEN`：公网托管；Daily Paper 使用固定整站地址，CitationClaw 使用独立任务页。部署见 [`../../docs/PUBLIC_SERVER_HANDOFF.md`](../../docs/PUBLIC_SERVER_HANDOFF.md)。
+- `DAILY_PAPER_EMBED_API_URL/API_KEY`：远程 embedding 服务，按任务注入 Daily Paper 子进程；默认不启用本地模型回退。
 - `DAILY_PAPER_SKIP_LLM_REFINE=false`：默认保留逐篇 LLM 精筛；后续通过动态分批、并发限流和 429 退避优化耗时。仅诊断时才临时设为 `true`。
 - `DAILY_PAPER_RERANK_*`：每次任务注入的重排服务配置，不改日报仓库自己的 `.env`。默认使用日报项目已有的 `public-zwwen-rerank`；需要私有服务时再填写 API Key。
 - `WEB_SEARCH_PROVIDER=exa_mcp`：启用匿名 Exa Hosted MCP；填 `disabled` 可全局关闭。

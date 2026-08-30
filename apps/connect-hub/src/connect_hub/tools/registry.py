@@ -85,7 +85,7 @@ class ToolRegistry:
                 notifier=context.progress,
                 start_message=definition.progress_message,
                 publish_public=(
-                    definition.module_name in {"daily-paper", "citationclaw"}
+                    definition.module_name == "citationclaw"
                     and bool(arguments.get("publish_web", True))
                 ),
                 public_title=_public_title(definition, arguments),

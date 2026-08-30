@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import re
 import time
+import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from connect_hub.adapters.daily_paper import DailyPaperAdapter, DailyPaperRequest
+from connect_hub.reporting import ReportHubClient, ReportHubError
 from connect_hub.tools.base import ToolContext, ToolDefinition
 
 
@@ -94,6 +96,8 @@ def daily_paper_tools(
     *,
     output_dir: Path,
     public_url: str = "",
+    report_hub: ReportHubClient | None = None,
+    site_id: str = "",
 ) -> tuple[ToolDefinition, ...]:
     output_dir = output_dir.resolve()
 
@@ -107,6 +111,62 @@ def daily_paper_tools(
         ]
         request_arguments["schema_version"] = "connect.job.v1"
         request_arguments["job_id"] = context.job_id
+        stable_public_url = public_url
+        publish_error_reported = False
+        last_snapshot = ""
+        if publish_web and report_hub is not None and report_hub.configured and site_id:
+            try:
+                stable_public_url, ready = report_hub.ensure_site(
+                    site_id=site_id,
+                    module_name="daily-paper",
+                    title="Daily Paper Reader",
+                )
+                if not ready:
+                    stable_public_url = report_hub.upload_site(site_id, adapter.project_dir or "")
+                context.report_progress(
+                    f"论文日报站点已就绪，可实时查看进度和历史结果：\n{stable_public_url}",
+                    stage="publish",
+                )
+            except ReportHubError as exc:
+                publish_error_reported = True
+                context.report_progress(
+                    "日报公网整站发布失败（REPORT_HUB_UNAVAILABLE），本地任务仍会继续。",
+                    stage="publish",
+                    payload={"error_code": "REPORT_HUB_UNAVAILABLE", "detail": str(exc)[:500]},
+                )
+
+        def mirror_snapshot(run: Mapping[str, Any], log_text: str) -> None:
+            nonlocal last_snapshot, publish_error_reported
+            if not (publish_web and report_hub is not None and stable_public_url and site_id):
+                return
+            signature = json.dumps(
+                {
+                    "status": run.get("status"),
+                    "conclusion": run.get("conclusion"),
+                    "updated_at": run.get("updated_at"),
+                    "events": run.get("events"),
+                    "log_tail": log_text[-1000:],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            )
+            if signature == last_snapshot:
+                return
+            last_snapshot = signature
+            run_id = _text(run.get("id"))
+            if not run_id:
+                return
+            try:
+                report_hub.update_site_run(site_id, run_id, run, log_text)
+            except ReportHubError as exc:
+                if not publish_error_reported:
+                    publish_error_reported = True
+                    context.report_progress(
+                        "公网日报的实时进度同步暂时失败，本地任务不受影响。",
+                        stage="publish",
+                        payload={"error_code": "REPORT_HUB_UNAVAILABLE", "detail": str(exc)[:500]},
+                    )
         started_at = time.monotonic()
         try:
             record = adapter.invoke(
@@ -119,6 +179,7 @@ def daily_paper_tools(
                     total=(event.get("total") if isinstance(event.get("total"), int) else None),
                     payload=(event.get("payload") if isinstance(event.get("payload"), Mapping) else None),
                 ),
+                on_snapshot=mirror_snapshot,
                 is_cancelled=lambda: context.cancelled,
             )
         except Exception:
@@ -139,6 +200,15 @@ def daily_paper_tools(
         if not isinstance(result, Mapping):
             raise RuntimeError("Daily Paper completed without structured result")
         run_id = _text(record.get("id")) or "daily-paper"
+        if publish_web and report_hub is not None and stable_public_url and site_id:
+            try:
+                stable_public_url = report_hub.upload_site(site_id, adapter.project_dir or "")
+            except ReportHubError as exc:
+                context.report_progress(
+                    "日报已生成，但公网整站更新失败；本机结果已保留。",
+                    stage="publish",
+                    payload={"error_code": "REPORT_PUBLISH_FAILED", "detail": str(exc)[:500]},
+                )
         safe_id = re.sub(r"[^A-Za-z0-9_.-]+", "-", run_id).strip(".-")
         output_dir.mkdir(parents=True, exist_ok=True)
         report_path = output_dir / f"{safe_id or 'daily-paper'}.md"
@@ -153,7 +223,7 @@ def daily_paper_tools(
                 run_id=run_id,
                 result=result,
                 topics=safe_topics,
-                public_url=(context.public_url if publish_web else ""),
+                public_url=(stable_public_url if publish_web else ""),
             ),
             encoding="utf-8",
         )
@@ -162,7 +232,7 @@ def daily_paper_tools(
             "status": "completed",
             "result": result,
             "report_path": str(report_path),
-            "public_url": (context.public_url if publish_web else ""),
+            "public_url": (stable_public_url if publish_web else ""),
             "report_bundle_path": _text(record.get("report_bundle_path")),
             "enrichment_sources": source_links,
         }
@@ -174,7 +244,7 @@ def daily_paper_tools(
             "LLM 精筛和最终选择，完成后返回排序结果和 Markdown 日报。这是耗时业务工具，"
             "仅在用户明确要求生成论文日报或调研近期论文、且研究主题已能形成有效检索词时调用；"
             "技术缩写含义不清时先搜索或自然询问。用户未指定时使用最近30天、standard、"
-            "发布公网任务页；不要为了补齐非关键偏好而强制确认。"
+            "发布固定的 Daily Paper 公网站点；不要为了补齐非关键偏好而强制确认。"
         ),
         parameters={
             "type": "object",

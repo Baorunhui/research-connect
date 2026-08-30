@@ -72,6 +72,7 @@ class DailyPaperAdapter:
         *,
         on_progress: Callable[[str], None] | None = None,
         on_event: Callable[[Mapping[str, Any]], None] | None = None,
+        on_snapshot: Callable[[Mapping[str, Any], str], None] | None = None,
         is_cancelled: Callable[[], bool] | None = None,
     ) -> Mapping[str, Any]:
         if not self.configured:
@@ -93,6 +94,7 @@ class DailyPaperAdapter:
                     request.arguments,
                     on_progress=on_progress,
                     on_event=on_event,
+                    on_snapshot=on_snapshot,
                     is_cancelled=is_cancelled,
                 )
             return self._recommend_and_wait(
@@ -109,6 +111,7 @@ class DailyPaperAdapter:
         *,
         on_progress: Callable[[str], None] | None,
         on_event: Callable[[Mapping[str, Any]], None] | None,
+        on_snapshot: Callable[[Mapping[str, Any], str], None] | None,
         is_cancelled: Callable[[], bool] | None,
     ) -> Mapping[str, Any]:
         config_response = self._request("GET", "/api/local/config", None)
@@ -161,6 +164,8 @@ class DailyPaperAdapter:
                 raise ConnectJobError(JobErrorCode.JOB_CANCELLED, "论文日报任务已取消。")
             record = self._request("GET", f"/api/local/runs/{run_id}/log", None)
             current = record.get("run") if isinstance(record.get("run"), Mapping) else {}
+            if on_snapshot is not None:
+                on_snapshot(current, str(record.get("log") or ""))
             events = current.get("events") if isinstance(current.get("events"), list) else []
             for event in events:
                 if not isinstance(event, Mapping):

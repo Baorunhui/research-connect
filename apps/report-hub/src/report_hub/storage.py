@@ -16,9 +16,11 @@ class Storage:
         self.data_dir = data_dir
         self.db_path = data_dir / "report-hub.sqlite3"
         self.report_dir = data_dir / "reports"
+        self.site_dir = data_dir / "sites"
 
     def initialize(self) -> None:
         self.report_dir.mkdir(parents=True, exist_ok=True)
+        self.site_dir.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript(
                 """
@@ -56,6 +58,26 @@ class Storage:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_events_job_seq ON job_events(job_id, seq);
+                CREATE TABLE IF NOT EXISTS sites (
+                    site_id TEXT PRIMARY KEY,
+                    public_token TEXT NOT NULL UNIQUE,
+                    module_name TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    report_ready INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS site_runs (
+                    site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+                    run_id TEXT NOT NULL,
+                    run_json TEXT NOT NULL,
+                    log_text TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(site_id, run_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_site_runs_updated
+                    ON site_runs(site_id, updated_at DESC);
                 """
             )
 
@@ -158,6 +180,74 @@ class Storage:
                 "SELECT * FROM job_events WHERE job_id = ? ORDER BY seq", (job["job_id"],)
             ).fetchall()
         return {"job": job, "events": [self._event_dict(row) for row in rows]}
+
+    def create_site(
+        self, *, site_id: str, public_token: str, module_name: str, title: str
+    ) -> dict[str, Any]:
+        now = utc_now()
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO sites(site_id, public_token, module_name, title, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (site_id, public_token, module_name, title, now, now),
+            )
+        return self.get_site(site_id=site_id)
+
+    def get_site(
+        self, *, site_id: str | None = None, public_token: str | None = None
+    ) -> dict[str, Any] | None:
+        field, value = ("site_id", site_id) if site_id else ("public_token", public_token)
+        with self.connect() as db:
+            row = db.execute(f"SELECT * FROM sites WHERE {field} = ?", (value,)).fetchone()
+        return dict(row) if row else None
+
+    def mark_site_ready(self, site_id: str) -> None:
+        with self.connect() as db:
+            db.execute(
+                "UPDATE sites SET report_ready = 1, updated_at = ? WHERE site_id = ?",
+                (utc_now(), site_id),
+            )
+
+    def upsert_site_run(
+        self, *, site_id: str, run_id: str, run: dict[str, Any], log_text: str
+    ) -> None:
+        now = utc_now()
+        created_at = str(run.get("created_at") or now)
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO site_runs(site_id, run_id, run_json, log_text, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(site_id, run_id) DO UPDATE SET "
+                "run_json = excluded.run_json, log_text = excluded.log_text, "
+                "updated_at = excluded.updated_at",
+                (
+                    site_id,
+                    run_id,
+                    json.dumps(run, ensure_ascii=False),
+                    log_text,
+                    created_at,
+                    now,
+                ),
+            )
+
+    def list_site_runs(self, site_id: str) -> list[dict[str, Any]]:
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT run_json FROM site_runs WHERE site_id = ? "
+                "ORDER BY created_at DESC, updated_at DESC",
+                (site_id,),
+            ).fetchall()
+        return [json.loads(row["run_json"]) for row in rows]
+
+    def get_site_run(self, site_id: str, run_id: str) -> dict[str, Any] | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT run_json, log_text FROM site_runs WHERE site_id = ? AND run_id = ?",
+                (site_id, run_id),
+            ).fetchone()
+        if not row:
+            return None
+        return {"run": json.loads(row["run_json"]), "log": row["log_text"]}
 
     @staticmethod
     def _event_dict(row: sqlite3.Row) -> dict[str, Any]:
