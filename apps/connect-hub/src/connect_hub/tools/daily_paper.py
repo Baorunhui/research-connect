@@ -287,6 +287,7 @@ def daily_paper_tools(
                             },
                             "intent_queries": {
                                 "type": "array",
+                                "minItems": 2,
                                 "maxItems": 4,
                                 "description": (
                                     "用户确认或修改后的联网 Intent 候选。必须是完整英文语义查询，"
@@ -303,7 +304,7 @@ def daily_paper_tools(
                                 "items": {"type": "string", "enum": ["arxiv"]},
                             },
                         },
-                        "required": ["tag", "keywords"],
+                        "required": ["tag", "keywords", "intent_queries"],
                         "additionalProperties": False,
                     },
                 },

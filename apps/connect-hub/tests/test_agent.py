@@ -195,7 +195,7 @@ def test_web_tools_report_cache_and_page_read_progress(tmp_path):
     ]
 
 
-def test_business_tool_is_blocked_without_explicit_user_request(tmp_path):
+def test_llm_business_tool_decision_is_not_rejected_by_keyword_gate(tmp_path):
     store = ConversationStore(tmp_path / "gate.sqlite3")
     calls = []
     registry = _registry(
@@ -213,19 +213,17 @@ def test_business_tool_is_blocked_without_explicit_user_request(tmp_path):
                     ),
                 )
             ),
-            FakeResponse("你还没有要求生成日报，我先不启动。"),
         ]
     )
     service = ChatService(gateway, store, tools=registry)
 
-    reply = service.handle("s", "3DVG 是什么？")
+    service.handle("s", "我要论文日报近5天的grpo")
 
-    assert calls == []
-    assert "不启动" in reply.text
+    assert calls == [{"topics": [{"tag": "3DVG"}]}]
     run = store.recent_agent_runs("s", 1)[0]
-    assert run["business_tool_calls"] == 0
+    assert run["business_tool_calls"] == 1
     tool_step = store.agent_steps(run["id"])[1]
-    assert tool_step["status"] == "blocked"
+    assert tool_step["status"] == "completed"
 
 
 def test_explicit_business_request_executes_once_without_extra_model_call(tmp_path):
@@ -293,7 +291,6 @@ def test_explicit_business_request_executes_once_without_extra_model_call(tmp_pa
                     ],
                 }
             ],
-            "publish_web": True,
         }
     ]
     assert "论文日报已生成" in reply.text
@@ -301,47 +298,7 @@ def test_explicit_business_request_executes_once_without_extra_model_call(tmp_pa
     assert (run["model_calls"], run["business_tool_calls"]) == (1, 1)
 
 
-def test_daily_report_requires_web_grounded_intent_proposal(tmp_path):
-    store = ConversationStore(tmp_path / "intent-gate.sqlite3")
-    calls = []
-    registry = _registry(
-        store,
-        _daily_tool(lambda arguments, context: calls.append(arguments) or {"ok": True}),
-    )
-    gateway = ScriptedGateway(
-        [
-            FakeResponse(
-                tool_calls=(
-                    ToolCall(
-                        "daily-too-early",
-                        "generate_daily_paper_report",
-                        json.dumps(
-                            {
-                                "topics": [
-                                    {
-                                        "tag": "RAG",
-                                        "intent_queries": ["Find recent papers on advanced RAG evaluation."],
-                                    }
-                                ]
-                            }
-                        ),
-                    ),
-                )
-            ),
-            FakeResponse("我会先联网查询，再给出 Intent 候选供你确认。"),
-        ]
-    )
-    service = ChatService(gateway, store, tools=registry)
-
-    reply = service.handle("s", "帮我生成 RAG 论文日报")
-
-    assert calls == []
-    assert "Intent 候选" in reply.text
-    run = store.recent_agent_runs("s", 1)[0]
-    assert run["business_tool_calls"] == 0
-
-
-def test_intent_confirmation_forces_real_daily_tool_and_rejects_stale_text(tmp_path):
+def test_intent_confirmation_uses_llm_tool_call_with_auto_choice(tmp_path):
     store = ConversationStore(tmp_path / "confirmed-intent.sqlite3")
     calls = []
 
@@ -379,14 +336,13 @@ def test_intent_confirmation_forces_real_daily_tool_and_rejects_stale_text(tmp_p
                     "Find recent papers on RAG evaluation benchmarks.",
                 ],
             }
-        ]
+        ],
+        "fetch_days": 15,
+        "mode": "skims",
+        "publish_web": True,
     }
     gateway = ScriptedGateway(
         [
-            FakeResponse(
-                "论文日报已生成。任务：old-stale-run，结果：0篇。",
-                tool_calls=(),
-            ),
             FakeResponse(
                 tool_calls=(
                     ToolCall(
@@ -402,26 +358,13 @@ def test_intent_confirmation_forces_real_daily_tool_and_rejects_stale_text(tmp_p
 
     reply = service.handle("s", "确认")
 
-    assert calls == [
-        {
-            **arguments,
-            "fetch_days": 15,
-            "mode": "skims",
-            "publish_web": True,
-        }
-    ]
+    assert calls == [arguments]
     assert "new-rag-run" in reply.text
     assert "New RAG paper" in reply.text
-    assert "old-stale-run" not in reply.text
-    forced = {
-        "type": "function",
-        "function": {"name": "generate_daily_paper_report"},
-    }
-    assert gateway.kwargs_seen[0]["tool_choice"] == forced
-    assert gateway.kwargs_seen[1]["tool_choice"] == forced
+    assert gateway.kwargs_seen[0]["tool_choice"] == "auto"
 
 
-def test_confirmation_preserves_explicit_daily_options_over_model_omission(tmp_path):
+def test_llm_structured_daily_options_are_passed_without_regex_override(tmp_path):
     store = ConversationStore(tmp_path / "confirmed-options.sqlite3")
     calls = []
     registry = _registry(
@@ -454,6 +397,7 @@ def test_confirmation_preserves_explicit_daily_options_over_model_omission(tmp_p
                                 ],
                                 "mode": "standard",
                                 "publish_web": False,
+                                "fetch_days": 5,
                             }
                         ),
                     ),
@@ -465,12 +409,12 @@ def test_confirmation_preserves_explicit_daily_options_over_model_omission(tmp_p
 
     service.handle("s", "确认")
 
-    assert calls[0]["fetch_days"] == 15
-    assert calls[0]["mode"] == "skims"
-    assert calls[0]["publish_web"] is True
+    assert calls[0]["fetch_days"] == 5
+    assert calls[0]["mode"] == "standard"
+    assert calls[0]["publish_web"] is False
 
 
-def test_confirmation_without_tool_can_never_claim_report_generated(tmp_path):
+def test_daily_tool_gate_error_is_returned_exactly(tmp_path):
     store = ConversationStore(tmp_path / "no-fake-result.sqlite3")
     registry = _registry(store, _daily_tool(lambda arguments, context: {"ok": True}))
     store.append("s", "user", "帮我生成 RAG 日报")
@@ -481,17 +425,29 @@ def test_confirmation_without_tool_can_never_claim_report_generated(tmp_path):
     )
     gateway = ScriptedGateway(
         [
-            FakeResponse("论文日报已生成。任务：stale-1"),
-            FakeResponse("论文日报已生成。任务：stale-2"),
-            FakeResponse("论文日报已生成。任务：stale-3"),
+            FakeResponse(
+                tool_calls=(
+                    ToolCall(
+                        "daily-over-budget",
+                        "generate_daily_paper_report",
+                        json.dumps({"topics": [{"tag": "RAG"}]}),
+                    ),
+                )
+            ),
         ]
     )
-    service = ChatService(gateway, store, tools=registry)
+    service = ChatService(
+        gateway,
+        store,
+        tools=registry,
+        max_model_calls=1,
+        max_business_tool_calls=0,
+    )
 
     reply = service.handle("s", "确认")
 
     assert "日报尚未启动" in reply.text
-    assert "stale-" not in reply.text
+    assert "本轮业务工具调用次数已达到上限" in reply.text
     assert store.recent_agent_runs("s", 1)[0]["business_tool_calls"] == 0
 
 

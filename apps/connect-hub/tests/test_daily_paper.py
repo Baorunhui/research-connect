@@ -4,6 +4,18 @@ from connect_hub.adapters.daily_paper import (
     _build_subscriptions,
 )
 from connect_hub.contracts import ConnectJobError
+from connect_hub.tools.daily_paper import daily_paper_tools
+
+
+def test_daily_tool_schema_requires_structured_intent_candidates(tmp_path):
+    definition = daily_paper_tools(
+        DailyPaperAdapter(project_dir=tmp_path),
+        output_dir=tmp_path / "output",
+    )[0]
+    topic_schema = definition.parameters["properties"]["topics"]["items"]
+
+    assert "intent_queries" in topic_schema["required"]
+    assert topic_schema["properties"]["intent_queries"]["minItems"] == 2
 
 
 def test_recommend_wait_polls_until_complete(monkeypatch):

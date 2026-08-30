@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -31,6 +30,7 @@ SYSTEM_PROMPT = """你是 Research Connect Hub 的单 Agent 助手，通过飞�
 
 工具使用：
 - 你可以直接回答、自然追问，或选择系统提供的工具；不需要先输出统一意图或槽位表。
+- 是否构成生成请求、确认、修改或取消，由你结合完整对话语义判断，不依赖用户说出固定措辞。调用业务工具本身表示你已经完成授权与参数判断。
 - 生成论文日报和小红书属于耗时业务动作。只有对话中存在用户明确的生成/调研请求，并且主题已经足够明确时才能调用。
 - 用户先提出生成请求、随后确认你对缩写或主题的理解，也算明确授权。
 - 如果需要联网理解含糊主题，先调用搜索，阅读结果后再决定追问或调用业务工具；不要在同一批调用里同时搜索和启动业务任务。
@@ -65,6 +65,7 @@ class _AgentOutcome:
     response: object
     executions: tuple[object, ...] = ()
     sources: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
 
 
 @dataclass
@@ -227,10 +228,6 @@ class ChatService:
             *history,
             {"role": "user", "content": content},
         ]
-        force_daily_tool = (
-            _is_daily_intent_acceptance(content)
-            and _has_adjacent_intent_proposal(messages)
-        )
         run_id = f"agent-{uuid.uuid4().hex}"
         budget = _AgentBudget()
         self.store.start_agent_run(run_id, session_key, content)
@@ -242,9 +239,6 @@ class ChatService:
                 run_id=run_id,
                 web_mode=web_mode,
                 budget=budget,
-                forced_business_tool=(
-                    "generate_daily_paper_report" if force_daily_tool else ""
-                ),
             )
         except Exception as exc:
             answer = f"处理失败：{type(exc).__name__}。请稍后重试。"
@@ -273,13 +267,14 @@ class ChatService:
         )
         if isinstance(daily_output, Mapping):
             answer, attachments = _format_daily_paper_result(daily_output)
-        elif force_daily_tool:
-            # A model message is never evidence that an expensive business
-            # workflow ran. This prevents stale report text in history from
-            # being repeated as if it were a newly completed task.
+        elif any(
+            error.startswith("generate_daily_paper_report:")
+            for error in outcome.errors
+        ):
+            detail = outcome.errors[-1]
             answer = (
                 "本轮没有成功创建新的论文日报任务，因此日报尚未启动。"
-                "系统已阻止把历史结果冒充为新结果；请查看本轮工具错误后重试。"
+                f"具体原因：{detail}"
             )
         citation_output = _latest_tool_output(outcome.executions, "lookup_citations")
         if isinstance(citation_output, Mapping):
@@ -320,7 +315,6 @@ class ChatService:
         run_id: str,
         web_mode: str,
         budget: _AgentBudget,
-        forced_business_tool: str = "",
     ) -> _AgentOutcome:
         available_names = set(self.tools.names if self.tools is not None else ())
         if web_mode == "off":
@@ -330,25 +324,18 @@ class ChatService:
         )
         executions: list[object] = []
         sources: list[str] = []
+        errors: list[str] = []
         step_index = 0
         last_response: object = _LocalResponse("本轮没有产生回复。")
         for model_index in range(1, self.max_model_calls + 1):
             started = time.monotonic()
             try:
-                forced_choice = (
-                    {
-                        "type": "function",
-                        "function": {"name": forced_business_tool},
-                    }
-                    if forced_business_tool
-                    else None
-                )
                 response = self.gateway.chat(
                     messages,
                     temperature=0.2,
                     max_tokens=2048,
                     tools=tool_specs or None,
-                    tool_choice=(forced_choice or ("auto" if tool_specs else None)),
+                    tool_choice=("auto" if tool_specs else None),
                 )
             except Exception as exc:
                 budget.model_calls += 1
@@ -383,30 +370,9 @@ class ChatService:
                 payload=_model_audit_payload(response, calls),
             )
             if not calls:
-                if forced_business_tool:
-                    messages.extend(
-                        [
-                            {
-                                "role": "assistant",
-                                "content": str(getattr(response, "content", "") or ""),
-                            },
-                            {
-                                "role": "system",
-                                "content": (
-                                    "刚才没有执行任何工具，不能声称任务已创建或日报已生成。"
-                                    f"现在必须调用 {forced_business_tool}，使用用户已确认/修改的 Intent；"
-                                    "不要输出历史任务结果。"
-                                ),
-                            },
-                        ]
-                    )
-                    if model_index < self.max_model_calls:
-                        continue
-                    last_response = _LocalResponse(
-                        "未能构造新的论文日报工具调用，任务没有启动。"
-                    )
-                    break
-                return _AgentOutcome(response, tuple(executions), tuple(sources))
+                return _AgentOutcome(
+                    response, tuple(executions), tuple(sources), tuple(errors)
+                )
 
             messages.append(
                 {
@@ -439,20 +405,15 @@ class ChatService:
                     parsed = json.loads(call.arguments or "{}")
                     if not isinstance(parsed, dict):
                         raise ValueError("tool arguments must decode to an object")
-                    if call.name == "generate_daily_paper_report":
-                        # “确认”轮由模型重新构造工具参数时，必须继承用户在 Intent
-                        # 预检前明确说过的范围、模式与发布偏好。模型工具调用不是这些
-                        # 参数的唯一事实来源，避免 skims 静默退回 standard。
-                        parsed = _normalize_daily_arguments(parsed, messages)
                     gate_error = self._tool_gate_error(
                         call.name,
                         parsed,
-                        messages=messages,
                         web_mode=web_mode,
                         budget=budget,
                         mixed_retrieval_and_business=mixed_retrieval_and_business,
                     )
                     if gate_error:
+                        errors.append(f"{call.name}: {gate_error}")
                         result = {"ok": False, "tool": call.name, "error": gate_error}
                     else:
                         kind = self.tools.kind(call.name)
@@ -475,12 +436,16 @@ class ChatService:
                         )
                         executions.append(execution)
                         result = execution.model_payload()
+                        if not execution.success:
+                            errors.append(f"{call.name}: {execution.error}")
                         _extend_sources(sources, call.name, execution.output)
                 except Exception as exc:
+                    detail = f"{type(exc).__name__}: {exc}"
+                    errors.append(f"{call.name}: {detail}")
                     result = {
                         "ok": False,
                         "tool": call.name,
-                        "error": f"{type(exc).__name__}: {exc}",
+                        "error": detail,
                     }
                 step_index += 1
                 self.store.append_agent_step(
@@ -511,7 +476,9 @@ class ChatService:
                     and bool(getattr(execution, "success", False))
                     and self.tools.kind(call.name) == "business"
                 ):
-                    return _AgentOutcome(response, tuple(executions), tuple(sources))
+                    return _AgentOutcome(
+                        response, tuple(executions), tuple(sources), tuple(errors)
+                    )
 
             if model_index >= self.max_model_calls:
                 last_response = _LocalResponse(
@@ -519,14 +486,15 @@ class ChatService:
                     "请根据我刚才的判断补充一句，或稍后重试。"
                 )
                 break
-        return _AgentOutcome(last_response, tuple(executions), tuple(sources))
+        return _AgentOutcome(
+            last_response, tuple(executions), tuple(sources), tuple(errors)
+        )
 
     def _tool_gate_error(
         self,
         name: str,
         arguments: Mapping[str, Any],
         *,
-        messages: Sequence[Mapping[str, Any]],
         web_mode: str,
         budget: _AgentBudget,
         mixed_retrieval_and_business: bool,
@@ -548,14 +516,6 @@ class ChatService:
                 return "必须先阅读联网结果，下一轮再决定是否启动业务任务。"
             if budget.business_tool_calls >= self.max_business_tool_calls:
                 return "本轮业务工具调用次数已达到上限。"
-            if not _has_explicit_business_request(name, messages):
-                return "对话中没有找到用户对该生成任务的明确请求，先向用户确认。"
-            if name == "generate_daily_paper_report":
-                intent_error = _daily_intent_gate_error(
-                    arguments, messages=messages, web_mode=web_mode
-                )
-                if intent_error:
-                    return intent_error
         return ""
 
 
@@ -610,164 +570,6 @@ def _tool_call_key(name: str, arguments: Mapping[str, Any]) -> str:
     return name + ":" + json.dumps(
         dict(arguments), ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
-
-
-def _has_explicit_business_request(
-    tool_name: str,
-    messages: Sequence[Mapping[str, Any]],
-) -> bool:
-    user_text = "\n".join(
-        str(item.get("content") or "")
-        for item in messages[-14:]
-        if item.get("role") == "user"
-    ).lower()
-    request_action = bool(
-        re.search(
-            r"(?:帮我|请|给我|我要|我想|需要|来(?:一份|一个)|开始|直接)"
-            r"[^\n。！？]{0,30}(?:生成|写|做|制作|跑|调研|整理|检索|查询|查)|"
-            r"(?:生成|写|做|制作|跑|调研|整理|检索|查询|查)"
-            r"[^\n。！？]{0,30}(?:一下|一份|一个|给我)",
-            user_text,
-        )
-    )
-    if tool_name == "generate_daily_paper_report":
-        paper_context = any(
-            marker in user_text
-            for marker in ("论文", "文献", "arxiv", "paper", "日报", "调研")
-        )
-        return paper_context and request_action
-    if tool_name == "generate_xhs_package":
-        return any(marker in user_text for marker in ("小红书", "xhs", "红薯")) and request_action
-    if tool_name == "lookup_citations":
-        return any(marker in user_text for marker in ("查引用", "引用情况", "citation"))
-    return False
-
-
-def _daily_intent_gate_error(
-    arguments: Mapping[str, Any],
-    *,
-    messages: Sequence[Mapping[str, Any]],
-    web_mode: str,
-) -> str:
-    """Require one natural, web-grounded intent proposal turn before a report.
-
-    This is deliberately a small execution guard rather than an autonomous
-    state machine. The proposal itself remains normal conversation history.
-    """
-    if not _has_adjacent_intent_proposal(messages):
-        if web_mode == "off":
-            return "论文日报启动前需要联网生成 Intent 候选；用户已关闭联网，请先邀请用户开启。"
-        return (
-            "尚未向用户展示联网生成的 Intent 候选。请先调用 web_search，"
-            "根据结果提出 2～4 条高质量英文 Intent，并等待用户下一轮确认或补充；本轮不要启动日报。"
-        )
-    topics = arguments.get("topics")
-    if not isinstance(topics, list) or not topics:
-        return "日报主题参数为空，不能启动。"
-    missing = []
-    for index, topic in enumerate(topics, 1):
-        intents = topic.get("intent_queries") if isinstance(topic, Mapping) else None
-        valid = [str(item).strip() for item in intents or [] if str(item).strip()]
-        if len(valid) < 2:
-            missing.append(str(index))
-    if missing:
-        return (
-            "已获得用户对 Intent 候选的回复，但工具参数没有携带候选。"
-            "请把至少 2 条候选或用户修改后的完整英文句子写入各主题的 intent_queries 后再调用。"
-        )
-    return ""
-
-
-def _has_adjacent_intent_proposal(messages: Sequence[Mapping[str, Any]]) -> bool:
-    """Whether the assistant immediately preceding the latest user turn proposed intents."""
-    latest_user = -1
-    for index, item in enumerate(messages):
-        if item.get("role") == "user":
-            latest_user = index
-    if latest_user < 0:
-        return False
-    for item in reversed(messages[:latest_user]):
-        if item.get("role") != "assistant":
-            continue
-        content = str(item.get("content") or "").lower()
-        return "联网生成的 intent 候选" in content or "web-grounded intent candidates" in content
-    return False
-
-
-def _is_daily_intent_acceptance(content: str) -> bool:
-    """Recognize an explicit answer to the immediately preceding Intent proposal."""
-    normalized = " ".join(content.strip().lower().split())
-    if not normalized or any(mark in normalized for mark in ("为什么", "什么意思", "解释", "?", "？")):
-        return False
-    return bool(
-        re.search(
-            r"确认|直接开始|开始生成|开始吧|就这样|不补充|按这些|采用这些|"
-            r"保留第|删除第|去掉第|补充|新增|加入|改写|换成",
-            normalized,
-        )
-    )
-
-
-def _normalize_daily_arguments(
-    arguments: Mapping[str, Any],
-    messages: Sequence[Mapping[str, Any]],
-) -> dict[str, Any]:
-    """Preserve explicit Daily Paper options across the Intent confirmation turn.
-
-    The proposal/confirmation remains natural conversation, but small deterministic
-    parsing protects costly execution parameters from model omission. Only explicit
-    user wording is allowed to override the tool call; otherwise public publishing
-    uses the product default.
-    """
-    normalized = dict(arguments)
-    user_texts = [
-        str(item.get("content") or "")
-        for item in messages[-20:]
-        if item.get("role") == "user"
-    ]
-    conversation = "\n".join(user_texts)
-
-    day_matches = list(
-        re.finditer(r"(?:最近|近|回看)\s*(\d{1,2})\s*天", conversation, re.IGNORECASE)
-    )
-    if day_matches:
-        normalized["fetch_days"] = max(1, min(30, int(day_matches[-1].group(1))))
-
-    mode_hits: list[tuple[int, str]] = []
-    for pattern, mode in (
-        (r"\bskims?\b|速读模式", "skims"),
-        (r"\bstandard\b|标准模式", "standard"),
-    ):
-        mode_hits.extend(
-            (match.start(), mode)
-            for match in re.finditer(pattern, conversation, re.IGNORECASE)
-        )
-    if mode_hits:
-        normalized["mode"] = max(mode_hits, key=lambda item: item[0])[1]
-
-    disable_web = list(
-        re.finditer(
-            r"(?:不要|不用|无需|不需要|关闭)(?:发布|生成|打开|同步)?(?:公网)?网页|"
-            r"(?:不要|不用|关闭)公网发布",
-            conversation,
-            re.IGNORECASE,
-        )
-    )
-    enable_web = list(
-        re.finditer(
-            r"(?:发布|生成|打开|同步)(?:到)?(?:公网)?网页|公网发布|返回网页",
-            conversation,
-            re.IGNORECASE,
-        )
-    )
-    latest_web = [
-        *((match.start(), False) for match in disable_web),
-        *((match.start(), True) for match in enable_web),
-    ]
-    normalized["publish_web"] = (
-        max(latest_web, key=lambda item: item[0])[1] if latest_web else True
-    )
-    return normalized
 
 
 def _extend_sources(sources: list[str], tool_name: str, output: Any) -> None:
