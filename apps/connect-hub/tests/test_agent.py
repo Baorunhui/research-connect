@@ -31,9 +31,11 @@ class ScriptedGateway:
     def __init__(self, responses):
         self.responses = list(responses)
         self.messages_seen = []
+        self.kwargs_seen = []
 
     def chat(self, messages, **kwargs):
         self.messages_seen.append(list(messages))
+        self.kwargs_seen.append(dict(kwargs))
         return self.responses.pop(0)
 
 
@@ -333,6 +335,104 @@ def test_daily_report_requires_web_grounded_intent_proposal(tmp_path):
     assert "Intent 候选" in reply.text
     run = store.recent_agent_runs("s", 1)[0]
     assert run["business_tool_calls"] == 0
+
+
+def test_intent_confirmation_forces_real_daily_tool_and_rejects_stale_text(tmp_path):
+    store = ConversationStore(tmp_path / "confirmed-intent.sqlite3")
+    calls = []
+
+    def generate(arguments, context):
+        calls.append(arguments)
+        return {
+            "run_id": "new-rag-run",
+            "status": "completed",
+            "result": {
+                "mode": "skims",
+                "generated_at": "2026-08-30T11:00:00Z",
+                "deep_dive": [],
+                "quick_skim": [{"id": "new-paper", "title": "New RAG paper"}],
+            },
+            "report_path": "",
+            "public_url": "https://reports.test/rag/",
+        }
+
+    registry = _registry(store, _daily_tool(generate))
+    store.append("s", "user", "帮我生成 RAG 方向最近15天的 skims 日报")
+    store.append(
+        "s",
+        "assistant",
+        "联网生成的 Intent 候选：\n"
+        "1. Find recent papers on robust RAG readers.\n"
+        "2. Find recent papers on RAG evaluation benchmarks.\n"
+        "回复确认或补充。",
+    )
+    arguments = {
+        "topics": [
+            {
+                "tag": "RAG",
+                "intent_queries": [
+                    "Find recent papers on robust RAG readers.",
+                    "Find recent papers on RAG evaluation benchmarks.",
+                ],
+            }
+        ]
+    }
+    gateway = ScriptedGateway(
+        [
+            FakeResponse(
+                "论文日报已生成。任务：old-stale-run，结果：0篇。",
+                tool_calls=(),
+            ),
+            FakeResponse(
+                tool_calls=(
+                    ToolCall(
+                        "daily-confirmed",
+                        "generate_daily_paper_report",
+                        json.dumps(arguments),
+                    ),
+                )
+            ),
+        ]
+    )
+    service = ChatService(gateway, store, tools=registry)
+
+    reply = service.handle("s", "确认")
+
+    assert calls == [arguments]
+    assert "new-rag-run" in reply.text
+    assert "New RAG paper" in reply.text
+    assert "old-stale-run" not in reply.text
+    forced = {
+        "type": "function",
+        "function": {"name": "generate_daily_paper_report"},
+    }
+    assert gateway.kwargs_seen[0]["tool_choice"] == forced
+    assert gateway.kwargs_seen[1]["tool_choice"] == forced
+
+
+def test_confirmation_without_tool_can_never_claim_report_generated(tmp_path):
+    store = ConversationStore(tmp_path / "no-fake-result.sqlite3")
+    registry = _registry(store, _daily_tool(lambda arguments, context: {"ok": True}))
+    store.append("s", "user", "帮我生成 RAG 日报")
+    store.append(
+        "s",
+        "assistant",
+        "联网生成的 Intent 候选：\n1. Find papers on A.\n2. Find papers on B.",
+    )
+    gateway = ScriptedGateway(
+        [
+            FakeResponse("论文日报已生成。任务：stale-1"),
+            FakeResponse("论文日报已生成。任务：stale-2"),
+            FakeResponse("论文日报已生成。任务：stale-3"),
+        ]
+    )
+    service = ChatService(gateway, store, tools=registry)
+
+    reply = service.handle("s", "确认")
+
+    assert "日报尚未启动" in reply.text
+    assert "stale-" not in reply.text
+    assert store.recent_agent_runs("s", 1)[0]["business_tool_calls"] == 0
 
 
 def test_mcp_sse_and_exa_result_parsing():

@@ -211,6 +211,10 @@ class ChatService:
             *history,
             {"role": "user", "content": content},
         ]
+        force_daily_tool = (
+            _is_daily_intent_acceptance(content)
+            and _has_adjacent_intent_proposal(messages)
+        )
         run_id = f"agent-{uuid.uuid4().hex}"
         budget = _AgentBudget()
         self.store.start_agent_run(run_id, session_key, content)
@@ -222,6 +226,9 @@ class ChatService:
                 run_id=run_id,
                 web_mode=web_mode,
                 budget=budget,
+                forced_business_tool=(
+                    "generate_daily_paper_report" if force_daily_tool else ""
+                ),
             )
         except Exception as exc:
             answer = f"处理失败：{type(exc).__name__}。请稍后重试。"
@@ -250,6 +257,14 @@ class ChatService:
         )
         if isinstance(daily_output, Mapping):
             answer, attachments = _format_daily_paper_result(daily_output)
+        elif force_daily_tool:
+            # A model message is never evidence that an expensive business
+            # workflow ran. This prevents stale report text in history from
+            # being repeated as if it were a newly completed task.
+            answer = (
+                "本轮没有成功创建新的论文日报任务，因此日报尚未启动。"
+                "系统已阻止把历史结果冒充为新结果；请查看本轮工具错误后重试。"
+            )
         citation_output = _latest_tool_output(outcome.executions, "lookup_citations")
         if isinstance(citation_output, Mapping):
             answer, attachments = _format_citation_result(citation_output)
@@ -289,6 +304,7 @@ class ChatService:
         run_id: str,
         web_mode: str,
         budget: _AgentBudget,
+        forced_business_tool: str = "",
     ) -> _AgentOutcome:
         available_names = set(self.tools.names if self.tools is not None else ())
         if web_mode == "off":
@@ -303,12 +319,20 @@ class ChatService:
         for model_index in range(1, self.max_model_calls + 1):
             started = time.monotonic()
             try:
+                forced_choice = (
+                    {
+                        "type": "function",
+                        "function": {"name": forced_business_tool},
+                    }
+                    if forced_business_tool
+                    else None
+                )
                 response = self.gateway.chat(
                     messages,
                     temperature=0.2,
                     max_tokens=2048,
                     tools=tool_specs or None,
-                    tool_choice="auto" if tool_specs else None,
+                    tool_choice=(forced_choice or ("auto" if tool_specs else None)),
                 )
             except Exception as exc:
                 budget.model_calls += 1
@@ -343,6 +367,29 @@ class ChatService:
                 payload=_model_audit_payload(response, calls),
             )
             if not calls:
+                if forced_business_tool:
+                    messages.extend(
+                        [
+                            {
+                                "role": "assistant",
+                                "content": str(getattr(response, "content", "") or ""),
+                            },
+                            {
+                                "role": "system",
+                                "content": (
+                                    "刚才没有执行任何工具，不能声称任务已创建或日报已生成。"
+                                    f"现在必须调用 {forced_business_tool}，使用用户已确认/修改的 Intent；"
+                                    "不要输出历史任务结果。"
+                                ),
+                            },
+                        ]
+                    )
+                    if model_index < self.max_model_calls:
+                        continue
+                    last_response = _LocalResponse(
+                        "未能构造新的论文日报工具调用，任务没有启动。"
+                    )
+                    break
                 return _AgentOutcome(response, tuple(executions), tuple(sources))
 
             messages.append(
@@ -624,6 +671,20 @@ def _has_adjacent_intent_proposal(messages: Sequence[Mapping[str, Any]]) -> bool
         content = str(item.get("content") or "").lower()
         return "联网生成的 intent 候选" in content or "web-grounded intent candidates" in content
     return False
+
+
+def _is_daily_intent_acceptance(content: str) -> bool:
+    """Recognize an explicit answer to the immediately preceding Intent proposal."""
+    normalized = " ".join(content.strip().lower().split())
+    if not normalized or any(mark in normalized for mark in ("为什么", "什么意思", "解释", "?", "？")):
+        return False
+    return bool(
+        re.search(
+            r"确认|直接开始|开始生成|开始吧|就这样|不补充|按这些|采用这些|"
+            r"保留第|删除第|去掉第|补充|新增|加入|改写|换成",
+            normalized,
+        )
+    )
 
 
 def _extend_sources(sources: list[str], tool_name: str, output: Any) -> None:
