@@ -163,7 +163,7 @@ def test_reports_pipeline_diagnostics_once(tmp_path):
     assert any("向量语义召回完成" in message and "1890" in message for message in messages)
     assert any("Reranker 完成" in message and "star_rating≥4" in message for message in messages)
     assert any("LLM 精炼打分 完成" in message and "llm_score≥8" in message for message in messages)
-    assert any("完成 0 篇精读、2 篇速读" in message for message in messages)
+    assert any("选定 0 篇待精读、2 篇待速读" in message for message in messages)
     assert any("缺少 pypdfium2" in message for message in messages)
 
 

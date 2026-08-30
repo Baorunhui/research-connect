@@ -741,15 +741,17 @@ class DailyPaperAdapter:
                 emit(
                     "selection_funnel",
                     "选择论文（精读/速读） 完成："
-                    f"完成 {stats.get('deep_selected', 0)} 篇精读、"
-                    f"{stats.get('quick_selected', 0)} 篇速读。",
+                    f"选定 {stats.get('deep_selected', 0)} 篇待精读、"
+                    f"{stats.get('quick_selected', 0)} 篇待速读；"
+                    "逐篇阅读与内容生成将在下一步执行。",
                 )
 
         empty_selection = match(r"没有候选论文（新论文=0 且 carryover=0）")
         if empty_selection:
             emit(
                 "selection_complete",
-                "选择论文（精读/速读） 完成：完成 0 篇精读、0 篇速读。",
+                "选择论文（精读/速读） 完成：选定 0 篇待精读、0 篇待速读；"
+                "逐篇阅读与内容生成将在下一步执行。",
             )
 
         docling_failure = match(r"\[WARN\] Docling 提取降级：([^\n]+)")
