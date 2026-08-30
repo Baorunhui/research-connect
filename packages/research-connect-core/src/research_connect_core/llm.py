@@ -13,7 +13,7 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Mapping, Sequence
 
 import httpx
-from openai import AsyncOpenAI, OpenAI
+from openai import APIConnectionError, AsyncOpenAI, OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +128,7 @@ def _is_retryable(exc: BaseException) -> bool:
             ConnectionError,
             httpx.TimeoutException,
             httpx.NetworkError,
+            APIConnectionError,
         ),
     )
 

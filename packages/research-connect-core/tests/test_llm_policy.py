@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
+import httpx
+from openai import APITimeoutError
 
 from research_connect_core import JsonLineEventSink, RetryPolicy, runtime_from_env
 from research_connect_core.llm import run_with_llm_policy
@@ -37,6 +39,27 @@ def test_429_is_retried_and_provider_exception_is_preserved():
     )
     assert result == "ok"
     assert calls == 3
+
+
+def test_openai_sdk_timeout_is_retried():
+    calls = 0
+
+    def operation():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise APITimeoutError(httpx.Request("POST", "https://example.invalid/v1/chat"))
+        return "ok"
+
+    result = run_with_llm_policy(
+        operation,
+        api_key="timeout-test",
+        base_url="https://timeout.invalid/v1",
+        retry_policy=RetryPolicy(max_attempts=2, jitter_ratio=0),
+    )
+
+    assert result == "ok"
+    assert calls == 2
 
 
 def test_non_retryable_error_is_not_wrapped():

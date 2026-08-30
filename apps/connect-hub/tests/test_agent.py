@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 
 from connect_hub.llm import ToolCall
+from connect_hub.llm import LLMGatewayError
 from connect_hub.service import ChatService
 from connect_hub.storage import ConversationStore
 from connect_hub.tools import ToolContext, ToolDefinition, ToolRegistry
@@ -37,6 +38,28 @@ class ScriptedGateway:
         self.messages_seen.append(list(messages))
         self.kwargs_seen.append(dict(kwargs))
         return self.responses.pop(0)
+
+
+class FailingGateway:
+    provider_names = ("fake",)
+
+    def chat(self, messages, **kwargs):
+        raise LLMGatewayError(
+            "all LLM providers failed; primary: APITimeoutError: Request timed out."
+        )
+
+
+def test_llm_timeout_reply_says_business_tool_was_not_started(tmp_path):
+    store = ConversationStore(tmp_path / "timeout.sqlite3")
+    service = ChatService(FailingGateway(), store)
+
+    reply = service.handle("s", "帮我总结这篇论文：https://arxiv.org/abs/2605.21788")
+
+    assert "主 LLM 服务请求超时" in reply.text
+    assert "论文总结没有启动" in reply.text
+    run = store.recent_agent_runs("s", 1)[0]
+    assert run["status"] == "failed"
+    assert run["business_tool_calls"] == 0
 
 
 class FakeSearch:

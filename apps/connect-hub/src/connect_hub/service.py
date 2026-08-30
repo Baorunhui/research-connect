@@ -10,6 +10,7 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 from connect_hub.storage import ConversationStore
 from connect_hub.tools import ToolContext, ToolRegistry
 from connect_hub.jobs import short_job_id
+from connect_hub.llm import LLMGatewayError
 
 
 class ChatGateway(Protocol):
@@ -243,7 +244,20 @@ class ChatService:
                 budget=budget,
             )
         except Exception as exc:
-            answer = f"处理失败：{type(exc).__name__}。请稍后重试。"
+            if isinstance(exc, LLMGatewayError):
+                detail = str(exc)
+                if "Timeout" in detail or "timed out" in detail.lower():
+                    answer = (
+                        "主 LLM 服务请求超时，系统已按配置重试，但仍未取得响应。"
+                        "本轮尚未调用任何业务工具，因此论文总结没有启动；请直接发送“重试刚才的论文总结”。"
+                    )
+                else:
+                    answer = (
+                        "主 LLM 服务暂时不可用，本轮尚未调用任何业务工具。"
+                        "请稍后直接重试刚才的请求。"
+                    )
+            else:
+                answer = f"处理失败：{type(exc).__name__}。请稍后重试。"
             self.store.append(session_key, "user", content)
             self.store.append(session_key, "assistant", answer)
             self.store.finish_agent_run(
