@@ -7,6 +7,7 @@
 服务器当前 `/healthz` 正常，但 `POST /api/v1/sites` 返回 `404`，说明容器运行的是旧版 Report Hub。新版至少需要包含以下提交：
 
 ```text
+60a43eb fix: make Report Hub Docker image standalone
 16671c9 fix: proxy Daily Paper setup checks and update Docling extraction
 87bc3c0 feat: configure modules from stable public sites
 ```
@@ -38,7 +39,7 @@ docker compose ps
 docker compose logs --tail=100 report-hub
 ```
 
-`git rev-parse --short HEAD` 应为 `16671c9` 或更新提交。
+`git rev-parse --short HEAD` 必须包含 `60a43eb`，并应为该提交或更新提交。`60a43eb` 移除了 Report Hub 未使用、会让独立 Docker 构建失败的本地包依赖。
 
 不要执行 `docker compose down -v`，否则会删除保存 SQLite、配置和网页的 `report-hub-data` 命名卷。
 
