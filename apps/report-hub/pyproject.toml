@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Lightweight public progress and report host for Research Connect"
 requires-python = ">=3.11,<3.14"
 dependencies = [
-  "research-connect-core==0.2.0",
   "fastapi>=0.141,<1",
   "python-dotenv>=1.2,<2",
   "uvicorn[standard]>=0.52,<1",
