@@ -84,6 +84,9 @@ def _daily_tool(handler):
             "type": "object",
             "properties": {
                 "topics": {"type": "array", "items": {"type": "object"}},
+                "mode": {"type": "string", "enum": ["standard", "skims"]},
+                "fetch_days": {"type": "integer", "minimum": 1, "maximum": 30},
+                "publish_web": {"type": "boolean"},
             },
             "required": ["topics"],
             "additionalProperties": False,
@@ -289,7 +292,8 @@ def test_explicit_business_request_executes_once_without_extra_model_call(tmp_pa
                         "Find recent work on language-guided 3D scene reasoning benchmarks.",
                     ],
                 }
-            ]
+            ],
+            "publish_web": True,
         }
     ]
     assert "论文日报已生成" in reply.text
@@ -398,7 +402,14 @@ def test_intent_confirmation_forces_real_daily_tool_and_rejects_stale_text(tmp_p
 
     reply = service.handle("s", "确认")
 
-    assert calls == [arguments]
+    assert calls == [
+        {
+            **arguments,
+            "fetch_days": 15,
+            "mode": "skims",
+            "publish_web": True,
+        }
+    ]
     assert "new-rag-run" in reply.text
     assert "New RAG paper" in reply.text
     assert "old-stale-run" not in reply.text
@@ -408,6 +419,55 @@ def test_intent_confirmation_forces_real_daily_tool_and_rejects_stale_text(tmp_p
     }
     assert gateway.kwargs_seen[0]["tool_choice"] == forced
     assert gateway.kwargs_seen[1]["tool_choice"] == forced
+
+
+def test_confirmation_preserves_explicit_daily_options_over_model_omission(tmp_path):
+    store = ConversationStore(tmp_path / "confirmed-options.sqlite3")
+    calls = []
+    registry = _registry(
+        store,
+        _daily_tool(lambda arguments, context: calls.append(arguments) or {"ok": True}),
+    )
+    store.append("s", "user", "帮我生成 RAG 最近15天的 skims 日报，并发布网页")
+    store.append(
+        "s",
+        "assistant",
+        "联网生成的 Intent 候选：\n1. Find papers on A.\n2. Find papers on B.",
+    )
+    gateway = ScriptedGateway(
+        [
+            FakeResponse(
+                tool_calls=(
+                    ToolCall(
+                        "daily-options",
+                        "generate_daily_paper_report",
+                        json.dumps(
+                            {
+                                "topics": [
+                                    {
+                                        "tag": "RAG",
+                                        "intent_queries": [
+                                            "Find recent papers on advanced RAG planning.",
+                                            "Find recent papers on robust RAG evaluation.",
+                                        ],
+                                    }
+                                ],
+                                "mode": "standard",
+                                "publish_web": False,
+                            }
+                        ),
+                    ),
+                )
+            )
+        ]
+    )
+    service = ChatService(gateway, store, tools=registry)
+
+    service.handle("s", "确认")
+
+    assert calls[0]["fetch_days"] == 15
+    assert calls[0]["mode"] == "skims"
+    assert calls[0]["publish_web"] is True
 
 
 def test_confirmation_without_tool_can_never_claim_report_generated(tmp_path):

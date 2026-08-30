@@ -4,7 +4,8 @@
 # 做什么：
 #   1. 在项目根建独立 venv（默认 .venv-docling，避免污染 dpr 主环境——
 #      docling 依赖链会强制 torch==2.13.0 CPU 版，与 dpr 的 CUDA torch 冲突）
-#   2. 装 CPU 版 PyTorch + Docling + pypdfium2 + Pillow
+#   2. 装 PyTorch + Docling + pypdfium2 + Pillow；有 NVIDIA GPU 时默认装可用
+#      的 CUDA wheel，无 GPU 时安装 CPU wheel
 #   3. 把 DOCLING_PYTHON 写进 .env（setdefault 语义，不覆盖已有值）
 #   4. 之后项目启动（load_local_env 加载 .env）即默认启用 Docling 整图提取；
 #      日报 ensure_paper_media 会先走 Docling，空/失败只回落 PyMuPDF。
@@ -15,8 +16,10 @@
 # 可覆盖的环境变量：
 #   DPR_DOCLING_VENV     venv 目录（默认 <root>/.venv-docling）
 #   DPR_PYTHON           用于建 venv 的基础解释器（默认依次尝试 python3 / python）
-#   DPR_TORCH_INDEX_URL  torch 下载源（默认 https://download.pytorch.org/whl/cpu
-#                        国内网络不稳时可设 https://mirrors.aliyun.com/pytorch-wheels/cpu）
+#   DPR_DOCLING_DEVICE   auto（默认）/cuda/cpu；auto 按 nvidia-smi 选择安装路线，
+#                        运行时仍由 Docling 检测，CUDA 失败会自动重试 CPU
+#   DPR_TORCH_INDEX_URL  显式指定 torch wheel 源；未指定时 CPU 使用官方 CPU 源，
+#                        CUDA 使用 PyPI 的 CUDA wheel
 #   DPR_PIP_INDEX_URL    其余依赖 PyPI 源（默认 https://pypi.org/simple
 #                        国内可设 https://mirrors.aliyun.com/pypi/simple/）
 #   DPR_SKIP_INSTALL=1   只建 venv + 写 .env，不装依赖（复用已装好的环境）
@@ -26,7 +29,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 VENV_DIR="${DPR_DOCLING_VENV:-$ROOT_DIR/.venv-docling}"
-TORCH_INDEX_URL="${DPR_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
+DOCLING_DEVICE="${DPR_DOCLING_DEVICE:-auto}"
+TORCH_INDEX_URL="${DPR_TORCH_INDEX_URL:-}"
 PIP_INDEX_URL="${DPR_PIP_INDEX_URL:-}"
 SKIP_INSTALL="${DPR_SKIP_INSTALL:-0}"
 
@@ -89,8 +93,26 @@ else
   log "升级 pip"
   "$VENV_PY" -m pip install --upgrade pip
 
-  log "安装 CPU 版 PyTorch（$TORCH_INDEX_URL）"
-  "$VENV_PY" -m pip install --index-url "$TORCH_INDEX_URL" "torch" "torchvision"
+  INSTALL_DEVICE="$DOCLING_DEVICE"
+  if [ "$INSTALL_DEVICE" = "auto" ]; then
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+      INSTALL_DEVICE="cuda"
+    else
+      INSTALL_DEVICE="cpu"
+    fi
+  fi
+  if [ "$INSTALL_DEVICE" = "cpu" ]; then
+    TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
+    log "安装 CPU 版 PyTorch（$TORCH_INDEX_URL）"
+    "$VENV_PY" -m pip install --index-url "$TORCH_INDEX_URL" "torch" "torchvision"
+  else
+    log "检测到 GPU 路线（device=$INSTALL_DEVICE），安装 CUDA 版 PyTorch"
+    if [ -n "$TORCH_INDEX_URL" ]; then
+      "$VENV_PY" -m pip install --index-url "$TORCH_INDEX_URL" "torch" "torchvision"
+    else
+      "$VENV_PY" -m pip install "torch" "torchvision"
+    fi
+  fi
 
   log "安装 Docling 及提图依赖"
   PIP_ARGS=()
@@ -125,6 +147,13 @@ else
   } >> "$ENV_FILE"
   log "已写入 .env: DOCLING_PYTHON=$PY_VALUE"
 fi
+if grep -qE "^DPR_DOCLING_DEVICE=" "$ENV_FILE"; then
+  existing_device="$(grep -E '^DPR_DOCLING_DEVICE=' "$ENV_FILE" | head -1 | cut -d= -f2-)"
+  log "检测到已有 DPR_DOCLING_DEVICE=$existing_device，不覆盖"
+else
+  echo "DPR_DOCLING_DEVICE=$DOCLING_DEVICE" >> "$ENV_FILE"
+  log "已写入 .env: DPR_DOCLING_DEVICE=$DOCLING_DEVICE"
+fi
 
 # 5) 确认 figure_pipeline 脚本存在
 FPP="figure_pipeline/extract_paper_figures.py"
@@ -141,6 +170,7 @@ cat <<EOF
   空/失败只回落 PyMuPDF，不安装或调用 PaperCropper/DocLayout-YOLO/OpenCV。
 - 关闭：在 .env 设 DPR_DISABLE_DOCLING=1。
 - 换解释器：改 .env 的 DOCLING_PYTHON。
-- 模型首次运行会从 HuggingFace 下载（适配层已自动走 hf-mirror、关闭 Xet）。
+- 设备：DPR_DOCLING_DEVICE=auto（默认，有 CUDA 则 GPU，否则 CPU）；也可强制 cuda/cpu。
+- 模型首次运行会从 Hugging Face 下载；需要镜像时设置 DPR_DOCLING_HF_ENDPOINT。
 验证：python -m pytest tests/test_docling_figures.py tests/test_paper_figures.py
 EOF

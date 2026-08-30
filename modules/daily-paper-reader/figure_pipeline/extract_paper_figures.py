@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
+import os
 import re
 import sys
 import unicodedata
@@ -224,9 +226,46 @@ def _associate(
     return hits
 
 
-def extract(pdf_path: Path, out_root: Path, scale: float) -> int:
+def _new_converter(device: str, num_threads: int):
+    from docling.datamodel.accelerator_options import AcceleratorOptions
+    from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.document_converter import DocumentConverter, PdfFormatOption
+
+    options = PdfPipelineOptions()
+    # arXiv 论文通常是原生文本 PDF；关闭 OCR，避免把 OpenCV/RapidOCR 变成
+    # 图表提取的运行时必需项。扫描版可显式 DPR_DOCLING_OCR=1 开启。
+    options.do_ocr = str(os.getenv("DPR_DOCLING_OCR") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    # 首篇 torch.compile 预热很慢，Windows 还依赖本机编译工具；直接推理更符合
+    # 按需运行场景，GPU 加速本身不受影响。
+    engine_options = getattr(options.layout_options, "engine_options", None)
+    if engine_options is not None and hasattr(engine_options, "compile_model"):
+        engine_options.compile_model = False
+    options.accelerator_options = AcceleratorOptions(
+        num_threads=max(1, int(num_threads)),
+        device=device,
+    )
+    return DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=options),
+        }
+    )
+
+
+def extract(
+    pdf_path: Path,
+    out_root: Path,
+    scale: float,
+    *,
+    device: str = "auto",
+    num_threads: int = 4,
+) -> int:
     import pypdfium2 as pdfium
-    from docling.document_converter import DocumentConverter
 
     slug = _sanitize_slug(pdf_path.stem)
     slug_dir = out_root / slug
@@ -235,9 +274,29 @@ def extract(pdf_path: Path, out_root: Path, scale: float) -> int:
     fig_dir.mkdir(parents=True, exist_ok=True)
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[figure_pipeline] converting {pdf_path.name} with Docling ...", flush=True)
-    converter = DocumentConverter()
-    result = converter.convert(str(pdf_path))
+    requested_device = str(device or "auto").strip().lower()
+    if requested_device not in {"auto", "cuda", "cpu", "mps"}:
+        raise ValueError(f"unsupported Docling device: {requested_device}")
+    print(
+        f"[figure_pipeline] converting {pdf_path.name} with Docling "
+        f"(device={requested_device}, threads={num_threads}) ...",
+        flush=True,
+    )
+    converter = _new_converter(requested_device, num_threads)
+    try:
+        result = converter.convert(str(pdf_path))
+    except Exception as exc:
+        # AUTO/CUDA 在驱动、显存或 CUDA wheel 不匹配时退回 CPU；CPU 自身失败则
+        # 保留原异常，交给上层报告并使用 PyMuPDF 备用提取器。
+        if requested_device not in {"auto", "cuda"}:
+            raise
+        print(
+            f"[figure_pipeline] GPU/AUTO conversion failed: {type(exc).__name__}: {exc}; "
+            "retrying with CPU",
+            flush=True,
+        )
+        converter = _new_converter("cpu", num_threads)
+        result = converter.convert(str(pdf_path))
     doc = result.document
 
     pdf = pdfium.PdfDocument(str(pdf_path))
@@ -366,6 +425,16 @@ def main() -> int:
     parser.add_argument("pdf")
     parser.add_argument("--output", required=True)
     parser.add_argument("--scale", type=float, default=2.0)
+    parser.add_argument(
+        "--device",
+        default=os.getenv("DPR_DOCLING_DEVICE", "auto"),
+        choices=("auto", "cuda", "cpu", "mps"),
+    )
+    parser.add_argument(
+        "--num-threads",
+        type=int,
+        default=int(os.getenv("DPR_DOCLING_NUM_THREADS", min(8, multiprocessing.cpu_count()))),
+    )
     args = parser.parse_args()
     pdf_path = Path(args.pdf)
     if not pdf_path.exists():
@@ -373,7 +442,13 @@ def main() -> int:
         return 2
     out_root = Path(args.output)
     out_root.mkdir(parents=True, exist_ok=True)
-    return extract(pdf_path, out_root, float(args.scale))
+    return extract(
+        pdf_path,
+        out_root,
+        float(args.scale),
+        device=args.device,
+        num_threads=max(1, int(args.num_threads)),
+    )
 
 
 if __name__ == "__main__":

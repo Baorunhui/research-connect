@@ -72,9 +72,10 @@ DOCLING_TIMEOUT_ENV = "DOCLING_TIMEOUT_SECONDS"
 DOCLING_PIPELINE_FILENAME = "extract_paper_figures.py"
 DOCLING_LOG_LIMIT = 1200
 
-# 本地复现验证过的子进程环境：模型走 hf-mirror、关 Xet(否则 401)、关 torch.compile(否则找不到 MSVC cl)。
+# 子进程只设置跨平台稳定性选项。模型源默认使用 Hugging Face 官方站；如部署
+# 环境确实需要镜像，使用 DPR_DOCLING_HF_ENDPOINT 单独配置，避免继承到一个
+# 与 huggingface_hub 不兼容的全局 HF_ENDPOINT。
 _DOCLING_SUBPROCESS_ENV = {
-    "HF_ENDPOINT": "https://hf-mirror.com",
     "HF_HUB_DISABLE_XET": "1",
     "HF_HUB_DISABLE_SYMLINKS": "1",
     "TORCH_COMPILE_DISABLE": "1",
@@ -106,11 +107,19 @@ def resolve_docling() -> Tuple[str, str]:
     """定位 figure_pipeline 的脚本与解释器，返回 (python, script)，任一缺失返回 ("","")。"""
     if not docling_enabled():
         return "", ""
-    python_path = str(os.getenv(DOCLING_PYTHON_ENV) or "").strip() or sys.executable
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    configured_python = str(os.getenv(DOCLING_PYTHON_ENV) or "").strip()
+    python_candidates = [
+        configured_python,
+        os.path.join(project_root, ".venv-docling", "bin", "python"),
+        os.path.join(project_root, ".venv-docling", "Scripts", "python.exe"),
+        sys.executable,
+    ]
+    python_path = _first_existing(python_candidates)
     script_candidates = [
         str(os.getenv(DOCLING_PIPELINE_SCRIPT_ENV) or "").strip(),
         os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            project_root,
             "figure_pipeline",
             DOCLING_PIPELINE_FILENAME,
         ),
@@ -337,6 +346,9 @@ def extract_media_with_docling(
         launch = [python_path] + _stub_main(cmd)
         env = dict(os.environ)
         env.update(_DOCLING_SUBPROCESS_ENV)
+        env["HF_ENDPOINT"] = str(
+            os.getenv("DPR_DOCLING_HF_ENDPOINT") or "https://huggingface.co"
+        ).strip()
         try:
             proc = subprocess.run(
                 launch,
