@@ -303,6 +303,29 @@ def daily_public_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
         "api_key": llm.get("api_key", ""),
         "api_key_configured": bool(str(llm.get("api_key") or "").strip()),
     }
+    # The unified provider is the source of truth. Project it into Daily
+    # Paper's native source_backends schema so the original UI and pipeline
+    # see the same Supabase configuration.
+    supabase = ((full.get("providers") or {}).get("supabase.arxiv") or {})
+    source_backends = result.setdefault("source_backends", {})
+    existing_arxiv = (
+        source_backends.get("arxiv")
+        if isinstance(source_backends.get("arxiv"), dict)
+        else {}
+    )
+    source_backends["arxiv"] = {
+        **existing_arxiv,
+        "enabled": supabase.get("enabled", True) is not False,
+        "url": supabase.get("base_url", ""),
+        "anon_key": supabase.get("anon_key", ""),
+        "anon_key_configured": bool(str(supabase.get("anon_key") or "").strip()),
+        "papers_table": supabase.get("papers_table", "arxiv_papers"),
+        "use_bm25_rpc": True,
+        "bm25_rpc": supabase.get("bm25_rpc", "match_arxiv_papers_bm25"),
+        "use_vector_rpc": True,
+        "vector_rpc": supabase.get("vector_rpc", "match_arxiv_papers_exact"),
+        "vector_rpc_exact": supabase.get("vector_rpc", "match_arxiv_papers_exact"),
+    }
     return result
 
 
@@ -316,6 +339,21 @@ def merge_daily_update(config: Mapping[str, Any] | None, update: Mapping[str, An
             "base_url": chat.get("base_url", ""), "model": chat.get("model", ""),
             "api_key": chat.get("api_key", ""), "enabled": True,
         }}})
+    source_backends = patch.get("source_backends") if isinstance(patch.get("source_backends"), dict) else {}
+    arxiv = source_backends.get("arxiv") if isinstance(source_backends.get("arxiv"), dict) else None
+    if isinstance(arxiv, dict):
+        full = merge_public_update(full, {"providers": {"supabase.arxiv": {
+            "enabled": arxiv.get("enabled", True),
+            "base_url": arxiv.get("url", ""),
+            "anon_key": arxiv.get("anon_key", ""),
+            "papers_table": arxiv.get("papers_table", "arxiv_papers"),
+            "bm25_rpc": arxiv.get("bm25_rpc", "match_arxiv_papers_bm25"),
+            "vector_rpc": arxiv.get("vector_rpc") or arxiv.get("vector_rpc_exact", "match_arxiv_papers_exact"),
+        }}})
+        # Do not retain a second authoritative copy under modules.daily-paper.
+        source_backends = dict(source_backends)
+        source_backends.pop("arxiv", None)
+        patch["source_backends"] = source_backends
     if isinstance(patch.get("local"), dict):
         patch["local"] = local
     return merge_public_update(full, {"modules": {"daily-paper": patch}})

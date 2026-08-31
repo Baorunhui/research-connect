@@ -544,6 +544,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         chat = local.get("chat") if isinstance(local.get("chat"), dict) else {}
         chat["api_key"] = ""
         local["chat"] = chat
+        source_backends = local.get("source_backends") if isinstance(local.get("source_backends"), dict) else {}
+        arxiv = source_backends.get("arxiv") if isinstance(source_backends.get("arxiv"), dict) else None
+        if isinstance(arxiv, dict):
+            arxiv["anon_key_configured"] = bool(
+                arxiv.get("anon_key_configured") or str(arxiv.get("anon_key") or "").strip()
+            )
+            arxiv["anon_key"] = ""
         return {
             "ok": True,
             "configured": configured,

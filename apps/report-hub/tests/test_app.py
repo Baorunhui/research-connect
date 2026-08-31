@@ -302,13 +302,29 @@ def test_module_pages_share_one_installation_config(tmp_path):
         ).json()["public_url"].rstrip("/").rsplit("/", 1)[-1]
     api.put(
         "/api/v1/sites/connect-config-abc/config", headers=auth(),
-        json={"config": {"providers": {"llm.primary": {
-            "enabled": True, "base_url": "https://llm.example/v1", "model": "shared", "api_key": "shared-secret"
-        }}}},
+        json={"config": {"providers": {
+            "llm.primary": {
+                "enabled": True, "base_url": "https://llm.example/v1", "model": "shared", "api_key": "shared-secret"
+            },
+            "supabase.arxiv": {
+                "enabled": True,
+                "base_url": "https://papers.supabase.co",
+                "anon_key": "supabase-secret",
+                "papers_table": "arxiv_papers",
+                "bm25_rpc": "match_bm25",
+                "vector_rpc": "match_vector",
+            },
+        }}},
     )
     daily = api.get(f"/s/{sites['daily-paper']}/api/local/config/structured").json()
     assert daily["local"]["chat"]["model"] == "shared"
     assert daily["local"]["chat"]["api_key_configured"] is True
+    arxiv = daily["local"]["source_backends"]["arxiv"]
+    assert arxiv["url"] == "https://papers.supabase.co"
+    assert arxiv["anon_key"] == ""
+    assert arxiv["anon_key_configured"] is True
+    assert arxiv["bm25_rpc"] == "match_bm25"
+    assert arxiv["vector_rpc"] == "match_vector"
     citation = api.get(f"/s/{sites['citationclaw']}/api/config").json()
     assert citation["dashboard_model"] == "shared"
     assert citation["_configured_secrets"]["light_api_key"] is True
@@ -323,6 +339,22 @@ def test_module_pages_share_one_installation_config(tmp_path):
     assert private["providers"]["citation.search_llm"]["model"] == "search-model"
     daily2 = api.get(f"/s/{sites['daily-paper']}/api/local/config/structured").json()
     assert daily2["local"]["chat"]["base_url"] == "https://new.example/v1"
+
+    api.post(f"/s/{sites['daily-paper']}/api/local/config/partial", json={
+        "source_backends": {"arxiv": {
+            "enabled": True,
+            "url": "https://new-papers.supabase.co",
+            "anon_key": "",
+            "papers_table": "papers_v2",
+            "bm25_rpc": "bm25_v2",
+            "vector_rpc": "vector_v2",
+        }}
+    })
+    private2 = api.get("/api/v1/sites/connect-config-abc/config", headers=auth()).json()["config"]
+    provider = private2["providers"]["supabase.arxiv"]
+    assert provider["base_url"] == "https://new-papers.supabase.co"
+    assert provider["anon_key"] == "supabase-secret"
+    assert provider["papers_table"] == "papers_v2"
 
 
 def test_public_module_command_round_trip(tmp_path):
