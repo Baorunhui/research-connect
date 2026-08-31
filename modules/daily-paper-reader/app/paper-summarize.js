@@ -237,6 +237,19 @@ window.PaperSummarizer = (function () {
   function renderProgress(events, status, seenIds) {
     var box = document.querySelector('#paper-summarize-progress');
     if (!box) return;
+    if (window.DPRTaskProgress && typeof window.DPRTaskProgress.render === 'function') {
+      (events || []).forEach(function (ev) {
+        if (ev && ev.event_id) seenIds[ev.event_id] = true;
+      });
+      window.DPRTaskProgress.render(box, {
+        events: events,
+        status: status,
+        title: '⏳ 正在生成总结，请稍候…',
+        doneTitle: '✅ 总结完成',
+        failedTitle: '❌ 总结失败',
+      });
+      return;
+    }
     var fresh = (events || []).filter(function (ev) {
       return ev && ev.event_id && !seenIds[ev.event_id];
     });

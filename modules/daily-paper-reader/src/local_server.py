@@ -203,6 +203,10 @@ PIPELINE_STEPS: list[tuple[str, str, str]] = [
 _STEP_INDEX: dict[str, tuple[str, str]] = {num: (key, label) for num, key, label in PIPELINE_STEPS}
 _STEP_START_RE = re.compile(r"^\[INFO\] Step (\d+(?:\.\d+)?) - ([^:]+):")
 _STEP_SKIP_RE = re.compile(r"^\[INFO\] 跳过 Step (\d+)")
+_EMBED_PROGRESS_RE = re.compile(
+    r"Embedding\s*进度[:：]\s*(\d+)\s*/\s*(\d+)\s*\(~?([\d.]+)\s*paper/s\)",
+    re.IGNORECASE,
+)
 _STEP_STATE_VERB = {"started": "开始", "completed": "完成", "skipped": "已跳过", "failed": "失败"}
 
 
@@ -240,10 +244,44 @@ class _StepTracker:
     def __init__(self, run_id: str) -> None:
         self._run_id = run_id
         self._current: tuple[str, str] | None = None  # (step_key, 中文名)
+        self._embedding_progress_bucket = -1
 
     def observe(self, line: str) -> list[dict[str, Any]]:
         text = line.rstrip("\n")
         events: list[dict[str, Any]] = []
+        embedding_match = _EMBED_PROGRESS_RE.search(text)
+        if embedding_match:
+            current = int(embedding_match.group(1))
+            total = int(embedding_match.group(2))
+            rate = float(embedding_match.group(3))
+            percent = (current / total * 100.0) if total > 0 else 0.0
+            bucket = int(percent // 5)
+            if bucket > self._embedding_progress_bucket or current >= total:
+                self._embedding_progress_bucket = bucket
+                eta_seconds = ((total - current) / rate) if rate > 0 and total >= current else None
+                payload: dict[str, Any] = {
+                    "step": "step_2_2_embedding",
+                    "step_label": "向量语义召回",
+                    "state": "running",
+                    "current": current,
+                    "total": total,
+                    "rate": rate,
+                    "percent": round(percent, 2),
+                }
+                if eta_seconds is not None:
+                    payload["eta_seconds"] = round(eta_seconds)
+                events.append(
+                    _run_event(
+                        "run.progress",
+                        self._run_id,
+                        stage="step_2_2_embedding",
+                        message="正在编码候选论文向量",
+                        current=current,
+                        total=total,
+                        payload=payload,
+                    )
+                )
+            return events
         m = _STEP_START_RE.match(text)
         if m:
             num = m.group(1)

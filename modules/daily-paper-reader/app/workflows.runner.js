@@ -83,6 +83,10 @@ window.DPRWorkflowRunner = (function () {
   let selectedRun = null;
   const lastRunStateById = {};
   let repoContextCache = null;
+  let liveProgressEl = null;
+  let liveProgressTimer = null;
+  let liveProgressRunId = '';
+  let dismissedLiveRunId = '';
 
   const escapeHtml = (str) => {
     if (!str) return '';
@@ -297,10 +301,11 @@ window.DPRWorkflowRunner = (function () {
       let st = stateMap[s.key] || '';
       // 运行结束后仍未开始过的步骤视为「未执行」；仍在 running 的按结果收尾。
       if (finished && !st) st = 'skipped';
-      if (finished && st === 'started') st = isSuccess ? 'completed' : 'failed';
-      const icon = st === 'completed' ? '✓' : st === 'started' ? '▶' : st === 'failed' ? '✗' : st === 'skipped' ? '–' : '·';
-      const color = st === 'completed' ? '#2e7d32' : st === 'started' ? '#1565c0' : st === 'failed' ? '#c00' : st === 'skipped' ? '#bbb' : '#999';
-      const rowBg = st === 'started' ? 'rgba(21,101,192,0.08)' : 'transparent';
+      if (finished && (st === 'started' || st === 'running')) st = isSuccess ? 'completed' : 'failed';
+      const active = st === 'started' || st === 'running';
+      const icon = st === 'completed' ? '✓' : active ? '▶' : st === 'failed' ? '✗' : st === 'skipped' ? '–' : '·';
+      const color = st === 'completed' ? '#2e7d32' : active ? '#1565c0' : st === 'failed' ? '#c00' : st === 'skipped' ? '#bbb' : '#999';
+      const rowBg = active ? 'rgba(21,101,192,0.08)' : 'transparent';
       const text = st === 'skipped' ? '#bbb' : '#333';
       return (
         '<div style="display:flex;align-items:center;gap:6px;padding:2px 6px;border-radius:4px;background:' + rowBg + ';">' +
@@ -314,6 +319,81 @@ window.DPRWorkflowRunner = (function () {
       rows.join('') +
       '</div>'
     );
+  };
+
+  const ensureLiveProgressCard = () => {
+    if (liveProgressEl) return liveProgressEl;
+    liveProgressEl = document.createElement('aside');
+    liveProgressEl.id = 'dpr-live-progress-card';
+    liveProgressEl.hidden = true;
+    liveProgressEl.innerHTML = `
+      <div class="dpr-live-progress-toolbar">
+        <strong>论文日报实时进度</strong>
+        <span>
+          <button type="button" class="dpr-live-progress-detail">查看详情</button>
+          <button type="button" class="dpr-live-progress-close" aria-label="关闭">×</button>
+        </span>
+      </div>
+      <div class="paper-summarize-progress dpr-live-progress-body"></div>
+    `;
+    document.body.appendChild(liveProgressEl);
+    liveProgressEl.querySelector('.dpr-live-progress-close').addEventListener('click', () => {
+      dismissedLiveRunId = liveProgressRunId;
+      liveProgressEl.hidden = true;
+    });
+    liveProgressEl.querySelector('.dpr-live-progress-detail').addEventListener('click', async () => {
+      if (!liveProgressRunId) return;
+      open();
+      selectedRun = { local: true, runId: liveProgressRunId };
+      await refreshLocalRun(liveProgressRunId);
+      stopPolling();
+      refreshTimer = setInterval(() => refreshLocalRun(liveProgressRunId), 5000);
+    });
+    return liveProgressEl;
+  };
+
+  const refreshLiveProgress = async () => {
+    if (!isLocalDebugPage() || !window.DPRTaskProgress) return;
+    try {
+      const data = await localApiFetch('/api/local/runs');
+      const runs = Array.isArray(data.runs) ? data.runs : [];
+      const active = runs.find((run) => {
+        const status = String(run && run.status || '').toLowerCase();
+        return run && run.workflow_key === 'daily-now' && ['queued', 'running', 'in_progress', 'cancelling'].indexOf(status) >= 0;
+      });
+      const previous = !active && liveProgressRunId
+        ? runs.find((run) => String(run && run.id || '') === liveProgressRunId)
+        : null;
+      const run = active || previous;
+      if (!run) return;
+      const runId = String(run.id || '');
+      if (active && runId !== liveProgressRunId) dismissedLiveRunId = '';
+      liveProgressRunId = runId;
+      if (dismissedLiveRunId === runId) return;
+      const card = ensureLiveProgressCard();
+      card.hidden = false;
+      const body = card.querySelector('.dpr-live-progress-body');
+      window.DPRTaskProgress.render(body, {
+        events: Array.isArray(run.events) ? run.events : [],
+        status: run.conclusion || run.status || 'running',
+        steps: PIPELINE_STEPS,
+        title: '⏳ 日报流水线正在执行 · #' + (run.run_number || run.id || ''),
+        doneTitle: '✅ 论文日报生成完成',
+        failedTitle: '❌ 论文日报生成失败',
+      });
+    } catch (e) {
+      // 公网快照可能恰好处于上传切换瞬间；下一轮继续，不用打断页面。
+      console.debug('[DPR] 实时进度刷新暂时失败：', e);
+    }
+  };
+
+  const startLiveProgressWatcher = () => {
+    if (!isLocalDebugPage() || liveProgressTimer) return;
+    refreshLiveProgress();
+    liveProgressTimer = setInterval(refreshLiveProgress, 2000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshLiveProgress();
+    });
   };
 
   // 原始日志默认折叠；跨重渲染保留用户展开状态。
@@ -1207,6 +1287,8 @@ window.DPRWorkflowRunner = (function () {
 
   const runConferenceMaintain = async (conference, years) =>
     runConferenceRetrieval(conference, years);
+
+  startLiveProgressWatcher();
 
   return {
     open,

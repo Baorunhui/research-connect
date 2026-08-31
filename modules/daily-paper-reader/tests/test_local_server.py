@@ -832,6 +832,24 @@ def test_step_tracker_ignores_non_step_lines():
     assert t.observe("[INFO] DPR_RUN_DATE=20260827\n") == []
 
 
+def test_step_tracker_emits_throttled_embedding_progress():
+    from src.local_server import _StepTracker
+
+    t = _StepTracker("run-1")
+    first = t.observe("[2026-09-01][INFO] Embedding 进度: 300/5816 (~4.53 paper/s)\n")
+    assert len(first) == 1
+    assert first[0]["current"] == 300
+    assert first[0]["total"] == 5816
+    assert first[0]["payload"]["state"] == "running"
+    assert first[0]["payload"]["rate"] == 4.53
+    assert first[0]["payload"]["eta_seconds"] > 0
+
+    # 同一 5% 桶内不重复发事件，避免公网快照与前端列表被刷屏。
+    assert t.observe("[INFO] Embedding 进度: 320/5816 (~4.50 paper/s)\n") == []
+    next_bucket = t.observe("[INFO] Embedding 进度: 600/5816 (~4.50 paper/s)\n")
+    assert len(next_bucket) == 1
+
+
 def test_run_store_streams_step_events():
     """回归：本地运行子进程 stdout 逐行解析成 run.progress 事件，前端可渲染步骤清单。"""
     import sys
