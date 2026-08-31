@@ -29,7 +29,10 @@ if (-not $env:PLAYWRIGHT_BROWSERS_PATH) {
     $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:RESEARCH_CONNECT_DATA_DIR "browsers"
 }
 
-Invoke-BasePython -Arguments @('-c', 'import sys; raise SystemExit(0 if (3, 11) <= sys.version_info < (3, 14) else "Research Connect requires Python 3.11-3.13")')
+& $Python @PythonPrefix '-c' 'import sys; raise SystemExit(not ((3, 11) <= sys.version_info < (3, 14)))'
+if ($LASTEXITCODE -ne 0) {
+    throw "Research Connect requires Python 3.11-3.13. Run py -0p to list installed Python versions."
+}
 if (-not (Test-Path $Venv)) { Invoke-BasePython -Arguments @('-m', 'venv', $Venv) }
 
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
