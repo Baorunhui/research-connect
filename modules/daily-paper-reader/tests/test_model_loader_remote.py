@@ -144,6 +144,16 @@ class RemoteSentenceTransformerTest(unittest.TestCase):
         self.assertEqual(model.timeout, 45)
         self.assertEqual(model.api_key, "")
 
+    def test_explicit_remote_credentials_override_process_defaults(self):
+        model = load_sentence_transformer(
+            "BAAI/bge-small-en-v1.5",
+            device="cpu",
+            remote_endpoint="https://embed.example/api",
+            remote_api_key="job-secret",
+        )
+        self.assertEqual(model.endpoint, "https://embed.example/api/embed")
+        self.assertEqual(model.api_key, "job-secret")
+
     @patch("src.model_loader._load_local_sentence_transformer")
     def test_load_sentence_transformer_can_force_local(self, mock_load_local):
         local_model = MagicMock()

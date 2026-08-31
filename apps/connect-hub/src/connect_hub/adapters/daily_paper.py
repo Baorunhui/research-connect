@@ -160,7 +160,18 @@ class DailyPaperAdapter:
     ) -> Mapping[str, Any]:
         """Run one of Daily Paper's native connect.job.v1 HTTP jobs."""
 
-        started = self._request("POST", endpoint, dict(arguments))
+        payload = dict(arguments)
+        if endpoint == "/api/survey":
+            embedding = {
+                "endpoint": str(self.extra_env.get("DPR_EMBED_API_URL") or "").strip(),
+                "api_key": str(self.extra_env.get("DPR_EMBED_API_KEY") or "").strip(),
+            }
+            if embedding["endpoint"] or embedding["api_key"]:
+                # The Daily Paper service removes this envelope before creating
+                # the public job record.  Credentials must never enter job input,
+                # events, logs, or artifacts.
+                payload["_runtime_credentials"] = {"embedding": embedding}
+        started = self._request("POST", endpoint, payload)
         self._validate_schema(started)
         job_id = str(started.get("job_id") or "").strip()
         if not job_id or not job_id.replace("-", "").isalnum():

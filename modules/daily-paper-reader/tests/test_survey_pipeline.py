@@ -413,7 +413,7 @@ class RunSurveyWiringTest(unittest.TestCase):
 
         mod.recall_papers = (
             lambda ctx, *, fetch_days, queries=None, seed_citations=None, use_deepxiv=True,
-            use_kaggle=True, coarse_top_k=None: (
+            use_kaggle=True, coarse_top_k=None, embedding_endpoint=None, embedding_api_key=None: (
                 calls.append("recall")
                 or (self.assertEqual(queries, ["test topic research"]) if queries is not None else None)
                 or papers
@@ -991,7 +991,7 @@ class LexicalCoverageGuardTest(unittest.TestCase):
         mod.plan_recall_queries = lambda ctx, factory: calls.append("plan") or ["6D pose estimation methods"]
         mod.recall_papers = (
             lambda ctx, *, fetch_days, queries=None, seed_citations=None, use_deepxiv=False,
-            use_kaggle=False, coarse_top_k=None: papers
+            use_kaggle=False, coarse_top_k=None, embedding_endpoint=None, embedding_api_key=None: papers
         )
         original_rerank = mod.rerank_papers
         mod.rerank_papers = lambda *a, **k: (_ for _ in ()).throw(AssertionError("熔断前不得进入 rerank"))
@@ -1011,7 +1011,7 @@ class LexicalCoverageGuardTest(unittest.TestCase):
         mod.plan_recall_queries = lambda ctx, factory: ["topic method"]
         mod.recall_papers = (
             lambda ctx, *, fetch_days, queries=None, seed_citations=None, use_deepxiv=False,
-            use_kaggle=False, coarse_top_k=None: papers
+            use_kaggle=False, coarse_top_k=None, embedding_endpoint=None, embedding_api_key=None: papers
         )
         mod.rerank_papers = lambda ctx, ps, *, max_papers: ps
         mod.define_task_paradigm = lambda ctx, factory, *, seed_analysis=None: "paradigm"

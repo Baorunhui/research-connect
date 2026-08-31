@@ -585,24 +585,30 @@ def _first_query_scores(result: Dict[str, Any]) -> Any:
     return queries[0].get("sim_scores") if queries else {}
 
 
-_EMBED_MODEL_CACHE: Any = None
+_EMBED_MODEL_CACHE: Dict[Tuple[str, str], Any] = {}
 _COARSE_EMBED_MODEL_CACHE: Any = None
 _EMBED_MODEL_LOCK = threading.Lock()
 
 
-def _load_embedding_model() -> Any:
-    global _EMBED_MODEL_CACHE
+def _load_embedding_model(
+    *,
+    remote_endpoint: str | None = None,
+    remote_api_key: str | None = None,
+) -> Any:
+    cache_key = (str(remote_endpoint or ""), str(remote_api_key or ""))
     with _EMBED_MODEL_LOCK:
-        if _EMBED_MODEL_CACHE is not None:
-            return _EMBED_MODEL_CACHE
+        if cache_key in _EMBED_MODEL_CACHE:
+            return _EMBED_MODEL_CACHE[cache_key]
         from model_loader import load_sentence_transformer  # noqa: E402
 
         model = load_sentence_transformer(
             EMBED_MODEL_NAME,
             device=os.getenv("DPR_SURVEY_EMBED_DEVICE", "cpu"),
+            remote_endpoint=remote_endpoint,
+            remote_api_key=remote_api_key,
             log=_log,
         )
-        _EMBED_MODEL_CACHE = model
+        _EMBED_MODEL_CACHE[cache_key] = model
         return model
 
 
@@ -685,6 +691,8 @@ def _local_recall_lane(
     fetch_days: int,
     pool_cap: int,
     supabase_conf: Dict[str, Any],
+    embedding_endpoint: str | None = None,
+    embedding_api_key: str | None = None,
 ) -> List[Dict[str, Any]]:
     """本地 Supabase 召回（BM25+向量双路，多条查询逐条跑再 RRF 合分）。
 
@@ -699,7 +707,10 @@ def _local_recall_lane(
     end_dt = datetime.now(timezone.utc)
     start_dt = end_dt - timedelta(days=local_days)
 
-    model = _load_embedding_model()
+    model = _load_embedding_model(
+        remote_endpoint=embedding_endpoint,
+        remote_api_key=embedding_api_key,
+    )
     from filter import encode_queries  # noqa: E402
 
     ctx.progress("recall", f"编码查询向量（{EMBED_MODEL_NAME}，{len(queries)} 条查询）")
@@ -983,8 +994,10 @@ def recall_papers(
     queries: Optional[List[str]] = None,
     seed_citations: Optional[List[Dict[str, Any]]] = None,
     use_deepxiv: bool = False,
-    use_kaggle: bool = True,
+    use_kaggle: bool = False,
     coarse_top_k: Optional[int] = None,
+    embedding_endpoint: str | None = None,
+    embedding_api_key: str | None = None,
 ) -> List[Dict[str, Any]]:
     """多源召回融合：本地库 + DeepXiv 外部检索 + 种子引文直取 + Kaggle 快照粗筛。
 
@@ -1015,7 +1028,15 @@ def recall_papers(
     elif supabase_conf.get("url") and supabase_conf.get("anon_key"):
         try:
             t0 = time.time()
-            local_lane = _local_recall_lane(ctx, query_list[:3], fetch_days=fetch_days, pool_cap=pool_cap, supabase_conf=supabase_conf)
+            local_lane = _local_recall_lane(
+                ctx,
+                query_list[:3],
+                fetch_days=fetch_days,
+                pool_cap=pool_cap,
+                supabase_conf=supabase_conf,
+                embedding_endpoint=embedding_endpoint,
+                embedding_api_key=embedding_api_key,
+            )
             lanes.append(local_lane)
             lane_tags.append(f"本地库 {len(local_lane)}")
             ctx.lane_stats["local"] = {"latency_s": round(time.time() - t0, 1), "hits": len(local_lane)}
@@ -2062,8 +2083,10 @@ def run_survey(
     deep_read: bool = True,
     seed_paper: Optional[Dict[str, Any]] = None,
     use_deepxiv: bool = False,
-    use_kaggle: bool = True,
+    use_kaggle: bool = False,
     coarse_top_k: Optional[int] = None,
+    embedding_endpoint: str | None = None,
+    embedding_api_key: str | None = None,
     on_progress: Optional[Callable[..., None]] = None,
     cancel_check: Optional[Callable[[], None]] = None,
     client_factory: Optional[Callable[[], DeepSeekClient]] = None,
@@ -2128,6 +2151,8 @@ def run_survey(
         use_deepxiv=use_deepxiv,
         use_kaggle=use_kaggle,
         coarse_top_k=coarse_top_k,
+        embedding_endpoint=embedding_endpoint,
+        embedding_api_key=embedding_api_key,
     )
     ctx.check_cancel()
 

@@ -51,6 +51,39 @@ def test_native_summary_job_polls_events_and_returns_result(monkeypatch):
     assert events[0]["stage"] == "parse_pdf"
 
 
+def test_native_survey_passes_embedding_credentials_outside_business_input(monkeypatch):
+    adapter = DailyPaperAdapter(
+        "local_http",
+        "http://127.0.0.1:8567",
+        poll_seconds=1,
+        extra_env={
+            "DPR_EMBED_API_URL": "https://embed.example/api",
+            "DPR_EMBED_API_KEY": "embed-secret",
+        },
+    )
+    responses = iter([
+        {"ok": True, "schema_version": "connect.job.v1", "job_id": "sv-test", "status": "queued"},
+        {"ok": True, "job": {"job_id": "sv-test", "status": "completed", "events": [], "result": {"report": {}}}},
+    ])
+    calls = []
+
+    def fake_request(method, path, payload):
+        calls.append((method, path, payload))
+        return next(responses)
+
+    monkeypatch.setattr(adapter, "_request", fake_request)
+    monkeypatch.setattr("connect_hub.adapters.daily_paper.time.sleep", lambda _: None)
+
+    adapter.invoke(DailyPaperRequest("survey_wait", {"query": "3D visual grounding"}))
+
+    sent = calls[0][2]
+    assert sent["query"] == "3D visual grounding"
+    assert sent["_runtime_credentials"]["embedding"] == {
+        "endpoint": "https://embed.example/api",
+        "api_key": "embed-secret",
+    }
+
+
 def test_summary_and_survey_tools_encode_uploaded_pdf(tmp_path):
     inbound = tmp_path / "inbound"
     inbound.mkdir()

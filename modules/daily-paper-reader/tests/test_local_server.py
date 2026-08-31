@@ -1118,6 +1118,36 @@ def test_survey_job_seed_payload_passthrough(monkeypatch):
     assert kwargs["use_deepxiv"] is False
 
 
+def test_survey_runtime_embedding_credentials_are_private_and_forwarded(monkeypatch):
+    import time
+
+    import src.local_server as ls
+
+    captured = _patch_survey_modules(monkeypatch)
+    store = ls.SurveyJobStore()
+    job = store.create(
+        {"query": "q"},
+        runtime_credentials={
+            "embedding": {
+                "endpoint": "https://embed.example/api",
+                "api_key": "embed-secret",
+            }
+        },
+    )
+    deadline = time.time() + 10
+    got = None
+    while time.time() < deadline:
+        got = store.get(job["job_id"])
+        if got and got["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.05)
+
+    assert got["status"] == "completed", got.get("error")
+    assert got["input"] == {"query": "q"}
+    assert captured["kwargs"]["embedding_endpoint"] == "https://embed.example/api"
+    assert captured["kwargs"]["embedding_api_key"] == "embed-secret"
+
+
 def test_survey_job_kaggle_payload_passthrough(monkeypatch):
     """use_kaggle / coarse_top_k 透传 + clamp（超界钳到 500-30000）。"""
     import time
@@ -1143,7 +1173,7 @@ def test_survey_job_kaggle_payload_passthrough(monkeypatch):
     assert kwargs["use_kaggle"] is False
     assert kwargs["coarse_top_k"] == 30000, "粗筛量级应钳到上限 30000"
 
-    # 默认值：不传 use_kaggle/coarse_top_k 时开启 Kaggle 路 + 1 万粗筛
+    # 轻量部署默认不启用 Kaggle；用户显式配置本地快照后才能打开。
     captured2 = _patch_survey_modules(monkeypatch)
     store2 = ls.SurveyJobStore()
     job2 = store2.create({"query": "q"})
@@ -1155,8 +1185,8 @@ def test_survey_job_kaggle_payload_passthrough(monkeypatch):
             break
         time.sleep(0.05)
     assert got2["status"] == "completed", got2.get("error")
-    assert captured2["kwargs"]["use_kaggle"] is True
-    assert captured2["kwargs"]["use_deepxiv"] is False, "DeepXiv 默认关（外部服务限额/波动），Kaggle 快照为默认主路"
+    assert captured2["kwargs"]["use_kaggle"] is False
+    assert captured2["kwargs"]["use_deepxiv"] is False
     assert captured2["kwargs"]["coarse_top_k"] == 10000
 
 

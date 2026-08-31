@@ -399,7 +399,7 @@ window.SurveyGenerator = (function () {
       use_rerank: rerankEl ? !!rerankEl.checked : true,
       deep_read: deepEl ? !!deepEl.checked : true,
       use_deepxiv: deepxivEl ? !!deepxivEl.checked : false,
-      use_kaggle: kaggleEl ? !!kaggleEl.checked : true,
+      use_kaggle: kaggleEl ? !!kaggleEl.checked : false,
       coarse_top_k: coarseTopFromUI(),
     };
     // 种子论文：PDF 文件优先，否则读 arXiv 链接

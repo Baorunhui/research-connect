@@ -341,6 +341,8 @@ def load_sentence_transformer(
   *,
   device: str,
   allow_remote: bool = True,
+  remote_endpoint: str | None = None,
+  remote_api_key: str | None = None,
   retries: int | None = None,
   log: Callable[[str], None] = _log_default,
   providers: tuple[tuple[str, str], ...] = (
@@ -348,9 +350,17 @@ def load_sentence_transformer(
     ("modelscope", MODELSCOPE_ENDPOINT),
   ),
 ):
-  remote_endpoint = _DEFAULT_REMOTE_EMBED_ENDPOINT
-  remote_api_key = _DEFAULT_REMOTE_EMBED_API_KEY
-  if allow_remote and remote_endpoint:
+  effective_remote_endpoint = str(
+    remote_endpoint
+    if remote_endpoint is not None
+    else (os.getenv("DPR_EMBED_API_URL") or _DEFAULT_REMOTE_EMBED_ENDPOINT)
+  ).strip()
+  effective_remote_api_key = str(
+    remote_api_key
+    if remote_api_key is not None
+    else (os.getenv("DPR_EMBED_API_KEY") or _DEFAULT_REMOTE_EMBED_API_KEY)
+  ).strip()
+  if allow_remote and effective_remote_endpoint:
     remote_timeout_text = os.getenv("DPR_EMBED_API_TIMEOUT", str(_DEFAULT_REMOTE_TIMEOUT_SECONDS))
     try:
       remote_timeout = int(remote_timeout_text)
@@ -362,12 +372,12 @@ def load_sentence_transformer(
       remote_timeout = _DEFAULT_REMOTE_TIMEOUT_SECONDS
     log(
       f"[INFO] 使用远程 embedding 服务：model={model_name} "
-      f"endpoint={str(remote_endpoint).strip()} timeout={remote_timeout}s device={device}"
+      f"endpoint={effective_remote_endpoint} timeout={remote_timeout}s device={device}"
     )
     return RemoteSentenceTransformer(
       model_name=model_name,
-      endpoint=str(remote_endpoint).strip(),
-      api_key=remote_api_key,
+      endpoint=effective_remote_endpoint,
+      api_key=effective_remote_api_key,
       timeout=remote_timeout,
       local_device=device,
       local_retries=retries,
@@ -376,7 +386,7 @@ def load_sentence_transformer(
       log=log,
     )
 
-  if remote_endpoint and not allow_remote:
+  if effective_remote_endpoint and not allow_remote:
     log(f"[INFO] 已禁用远程 embedding，强制使用本地模型：{model_name} (device={device})")
 
   return _load_local_sentence_transformer(

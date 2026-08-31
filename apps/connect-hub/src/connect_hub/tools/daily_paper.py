@@ -571,7 +571,7 @@ def daily_paper_tools(
                 "use_rerank": {"type": "boolean", "description": "是否使用 reranker，默认true。"},
                 "deep_read": {"type": "boolean", "description": "是否深读核心论文，默认true。"},
                 "use_deepxiv": {"type": "boolean", "description": "是否启用 DeepXiv 补充，默认false。"},
-                "use_kaggle": {"type": "boolean", "description": "是否使用本地 Kaggle 快照，默认true；未安装时原模块自行降级。"},
+                "use_kaggle": {"type": "boolean", "description": "是否使用本地 Kaggle 快照，默认false；轻量部署不安装。"},
                 "coarse_top_k": {"type": "integer", "minimum": 500, "maximum": 30000, "description": "粗筛候选量，默认10000。"},
                 "seed": {
                     "type": "object",

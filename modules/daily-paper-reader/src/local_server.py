@@ -860,7 +860,11 @@ class SurveyJobStore:
         for stale_id, _ in finished[:overflow]:
             del self._jobs[stale_id]
 
-    def create(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def create(
+        self,
+        payload: dict[str, Any],
+        runtime_credentials: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         job_id = "sv-" + uuid.uuid4().hex[:12]
         now = utc_now()
         job: dict[str, Any] = {
@@ -878,7 +882,11 @@ class SurveyJobStore:
         with self._lock:
             self._jobs[job_id] = job
             self._prune_finished_locked()
-        thread = threading.Thread(target=self._worker, args=(job_id, payload), daemon=True)
+        thread = threading.Thread(
+            target=self._worker,
+            args=(job_id, payload, runtime_credentials or {}),
+            daemon=True,
+        )
         thread.start()
         return self.public(job_id)  # type: ignore[arg-type]
 
@@ -946,11 +954,21 @@ class SurveyJobStore:
         jobs.sort(key=lambda job: str(job.get("created_at") or ""), reverse=True)
         return jobs  # type: ignore[return-value]
 
-    def _worker(self, job_id: str, payload: dict[str, Any]) -> None:
+    def _worker(
+        self,
+        job_id: str,
+        payload: dict[str, Any],
+        runtime_credentials: dict[str, Any],
+    ) -> None:
         self._emit(job_id, _job_event("job.started", job_id, message="综述流水线启动"))
         self._set_status(job_id, "running")
         try:
-            result = _run_survey_job(job_id, payload, self)
+            result = _run_survey_job(
+                job_id,
+                payload,
+                self,
+                runtime_credentials=runtime_credentials,
+            )
             self._set_status(job_id, "completed", result=result)
             self._emit(job_id, _job_event("job.completed", job_id, message="综述完成",
                                           payload={"report": result.get("report")}))
@@ -977,7 +995,13 @@ def _survey_job_log(job_id: str, tail: int = 20000) -> str:
     return path.read_text(encoding="utf-8", errors="replace")[-tail:]
 
 
-def _run_survey_job(job_id: str, payload: dict[str, Any], store: SurveyJobStore) -> dict[str, Any]:
+def _run_survey_job(
+    job_id: str,
+    payload: dict[str, Any],
+    store: SurveyJobStore,
+    *,
+    runtime_credentials: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """执行综述流水线并落盘报告，分阶段发进度事件。失败抛异常。"""
     log_lines: list[str] = [f"[survey] job_id={job_id}"]
 
@@ -1001,6 +1025,14 @@ def _run_survey_job(job_id: str, payload: dict[str, Any], store: SurveyJobStore)
     query = str(payload.get("query") or "").strip()
     if not query:
         raise ValueError("缺少综述主题 query")
+    credential_envelope = runtime_credentials if isinstance(runtime_credentials, dict) else {}
+    embedding_credentials = (
+        credential_envelope.get("embedding")
+        if isinstance(credential_envelope.get("embedding"), dict)
+        else {}
+    )
+    embedding_endpoint = str(embedding_credentials.get("endpoint") or "").strip() or None
+    embedding_api_key = str(embedding_credentials.get("api_key") or "").strip() or None
 
     def _clamp(value: Any, lo: int, hi: int, default: int) -> int:
         try:
@@ -1017,7 +1049,7 @@ def _run_survey_job(job_id: str, payload: dict[str, Any], store: SurveyJobStore)
     # 默认 Kaggle 快照粗筛为主路（零网络零限流）；DeepXiv 语义检索默认关——
     # 外部服务有 token 限额/波动，需要被引数与最新论文时前端勾选开启
     use_deepxiv = as_bool(payload.get("use_deepxiv"), False)
-    use_kaggle = as_bool(payload.get("use_kaggle"), True)
+    use_kaggle = as_bool(payload.get("use_kaggle"), False)
     # Kaggle 词法粗筛量级：500-30000（默认 1 万，前端三档 3千/1万/3万）
     coarse_top_k = _clamp(payload.get("coarse_top_k"), 500, 30000, 10000)
 
@@ -1080,6 +1112,8 @@ def _run_survey_job(job_id: str, payload: dict[str, Any], store: SurveyJobStore)
             use_deepxiv=use_deepxiv,
             use_kaggle=use_kaggle,
             coarse_top_k=coarse_top_k,
+            embedding_endpoint=embedding_endpoint,
+            embedding_api_key=embedding_api_key,
             on_progress=lambda stage, message, current=None, total=None: emit(
                 stage, message, current=current, total=total
             ),
@@ -2324,10 +2358,13 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length") or "0")
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            runtime_credentials = payload.pop("_runtime_credentials", None)
+            if not isinstance(runtime_credentials, dict):
+                runtime_credentials = {}
             query = str(payload.get("query") or "").strip()
             if not query:
                 return self._json({"ok": False, "error": "缺少综述主题 query"}, status=400)
-            job = SURVEY_JOB_STORE.create(payload)
+            job = SURVEY_JOB_STORE.create(payload, runtime_credentials=runtime_credentials)
             return self._json({
                 "ok": True,
                 "schema_version": "connect.job.v1",
