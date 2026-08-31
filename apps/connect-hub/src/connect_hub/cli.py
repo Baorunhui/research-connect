@@ -178,6 +178,7 @@ def _build_runtime(
         gateway,
         store,
         history_messages=settings.history_messages,
+        history_chars=settings.history_chars,
         tools=tools,
         shortcut_urls=shortcut_urls,
     )

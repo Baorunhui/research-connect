@@ -50,6 +50,7 @@ class Settings:
     providers: tuple[ProviderSettings, ...]
     db_path: Path
     history_messages: int
+    history_chars: int
     workers: int
     log_level: str
     daily_paper_transport: str
@@ -154,6 +155,7 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         providers=tuple(p for p in (primary, fallback) if p.configured),
         db_path=db_path.resolve(),
         history_messages=_as_int("CONNECT_HUB_HISTORY_MESSAGES", 20, minimum=0),
+        history_chars=_as_int("CONNECT_HUB_HISTORY_CHARS", 5500, minimum=1000),
         workers=_as_int("CONNECT_HUB_WORKERS", 4, minimum=1),
         log_level=str(os.getenv("CONNECT_HUB_LOG_LEVEL") or "INFO").strip().upper(),
         daily_paper_transport=str(os.getenv("DAILY_PAPER_TRANSPORT") or "local_http").strip().lower(),

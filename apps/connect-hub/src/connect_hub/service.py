@@ -97,6 +97,7 @@ class ChatService:
         gateway: ChatGateway,
         store: ConversationStore,
         history_messages: int = 20,
+        history_chars: int = 5500,
         tools: ToolRegistry | None = None,
         max_model_calls: int = 3,
         max_search_calls: int = 1,
@@ -107,6 +108,7 @@ class ChatService:
         self.gateway = gateway
         self.store = store
         self.history_messages = history_messages
+        self.history_chars = max(1000, history_chars)
         self.tools = tools
         self.max_model_calls = max(1, max_model_calls)
         self.max_search_calls = max(0, max_search_calls)
@@ -223,7 +225,10 @@ class ChatService:
             deleted = self.store.clear(session_key)
             return ServiceReply(f"已清空当前会话，共删除 {deleted} 条历史消息。")
 
-        history = self.store.history(session_key, self.history_messages)
+        history = _bounded_history(
+            self.store.history(session_key, self.history_messages),
+            total_chars=self.history_chars,
+        )
         web_mode = self.store.get_web_mode(session_key)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -572,6 +577,45 @@ def _parse_web_command(content: str) -> str | None:
         "关闭联网": "off",
     }
     return mapping.get(normalized)
+
+
+def _bounded_history(
+    history: Sequence[Mapping[str, Any]],
+    *,
+    total_chars: int,
+    per_message_chars: int = 1500,
+) -> list[dict[str, Any]]:
+    """Keep recent conversational meaning without sending old report dumps.
+
+    SQLite remains the complete history. This budget applies only to one model
+    request, preventing long generated reports from crowding out the current
+    request or exceeding fragile provider context limits.
+    """
+
+    limit = max(1000, int(total_chars))
+    per_message = max(500, min(int(per_message_chars), limit))
+    selected: list[dict[str, Any]] = []
+    used = 0
+    for item in reversed(history):
+        role = str(item.get("role") or "").strip()
+        if role not in {"user", "assistant"}:
+            continue
+        content = str(item.get("content") or "")
+        if len(content) > per_message:
+            head = max(300, per_message - 350)
+            content = (
+                content[:head]
+                + "\n…[历史长消息已截断，完整记录仍保存在 SQLite]…\n"
+                + content[-250:]
+            )
+        if selected and used + len(content) > limit:
+            break
+        selected.append({"role": role, "content": content})
+        used += len(content)
+    selected.reverse()
+    while selected and selected[0]["role"] == "assistant":
+        selected.pop(0)
+    return selected
 
 
 def _web_mode_prompt(mode: str) -> str:

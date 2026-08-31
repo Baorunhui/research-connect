@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from connect_hub.llm import ToolCall
 from connect_hub.llm import LLMGatewayError
-from connect_hub.service import ChatService
+from connect_hub.service import ChatService, _bounded_history
 from connect_hub.storage import ConversationStore
 from connect_hub.tools import ToolContext, ToolDefinition, ToolRegistry
 from connect_hub.tools.web import web_tools
@@ -60,6 +60,24 @@ def test_llm_timeout_reply_says_business_tool_was_not_started(tmp_path):
     run = store.recent_agent_runs("s", 1)[0]
     assert run["status"] == "failed"
     assert run["business_tool_calls"] == 0
+
+
+def test_bounded_history_keeps_recent_request_and_truncates_old_reports():
+    history = [
+        {"role": "user", "content": "生成旧日报"},
+        {"role": "assistant", "content": "旧日报结果" * 1200},
+        {"role": "user", "content": "帮我总结：https://arxiv.org/abs/2605.21788"},
+        {"role": "assistant", "content": "主服务刚才超时"},
+    ]
+
+    bounded = _bounded_history(history, total_chars=2200, per_message_chars=1200)
+
+    assert bounded[0]["role"] == "user"
+    assert "arxiv.org/abs/2605.21788" in "\n".join(
+        str(item["content"]) for item in bounded
+    )
+    assert sum(len(str(item["content"])) for item in bounded) <= 2200
+    assert "完整记录仍保存在 SQLite" in bounded[1]["content"]
 
 
 class FakeSearch:
