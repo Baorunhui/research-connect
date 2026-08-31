@@ -13,6 +13,7 @@ import urllib.error
 import urllib.request
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -78,6 +79,12 @@ class SiteCommandComplete(BaseModel):
     error_message: str = ""
 
 
+@dataclass(frozen=True)
+class AgentIdentity:
+    install_id: str | None
+    is_admin: bool = False
+
+
 class Broker:
     def __init__(self) -> None:
         self.connections: dict[str, set[WebSocket]] = defaultdict(set)
@@ -117,21 +124,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.storage = storage
     app.state.broker = broker
 
-    def require_agent(authorization: str | None = Header(default=None)) -> None:
-        expected = f"Bearer {settings.agent_token}"
-        if not authorization or not secrets.compare_digest(authorization, expected):
+    def require_agent(authorization: str | None = Header(default=None)) -> AgentIdentity:
+        prefix = "Bearer "
+        if not authorization or not authorization.startswith(prefix):
             raise HTTPException(status_code=401, detail="invalid agent token")
+        token = authorization[len(prefix):].strip()
+        if secrets.compare_digest(token, settings.agent_token):
+            return AgentIdentity(install_id=None, is_admin=True)
+        installation = storage.authenticate_installation(token)
+        if not installation:
+            raise HTTPException(status_code=401, detail="invalid agent token")
+        return AgentIdentity(install_id=str(installation["install_id"]))
 
-    def resolve_job(job_id: str) -> dict[str, Any]:
+    def assert_owner(record: dict[str, Any], identity: AgentIdentity) -> None:
+        if identity.is_admin:
+            return
+        if not identity.install_id or record.get("owner_install_id") != identity.install_id:
+            raise HTTPException(status_code=403, detail="resource belongs to another installation")
+
+    def resolve_job(job_id: str, identity: AgentIdentity) -> dict[str, Any]:
         job = storage.get_job(job_id=job_id)
         if not job:
             raise HTTPException(status_code=404, detail="job not found")
+        assert_owner(job, identity)
         return job
 
-    def resolve_site(site_id: str) -> dict[str, Any]:
+    def resolve_site(site_id: str, identity: AgentIdentity) -> dict[str, Any]:
         site = storage.get_site(site_id=site_id)
         if not site:
             raise HTTPException(status_code=404, detail="site not found")
+        assert_owner(site, identity)
         return site
 
     def canonical_record(site: dict[str, Any]) -> tuple[str, dict[str, Any], bool]:
@@ -166,6 +188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 public_token=secrets.token_urlsafe(24),
                 module_name="other",
                 title="Research Connect 配置中心",
+                owner_install_id=site.get("owner_install_id"),
             )
         storage.save_site_config(canonical_id, config)
 
@@ -177,36 +200,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def root() -> str:
         return "<h1>Research Connect Report Hub</h1><p>Service is running.</p>"
 
-    @app.post("/api/v1/jobs", status_code=201, dependencies=[Depends(require_agent)])
-    def create_job(body: JobCreate) -> dict[str, Any]:
+    @app.post("/api/v1/jobs", status_code=201)
+    def create_job(body: JobCreate, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
         job_id = body.job_id or f"job-{uuid.uuid4().hex[:16]}"
         if not JOB_ID_PATTERN.fullmatch(job_id):
             raise HTTPException(status_code=422, detail="invalid job_id")
         existing = storage.get_job(job_id=job_id)
         if existing:
+            assert_owner(existing, identity)
             return _job_response(existing, settings)
         token = secrets.token_urlsafe(24)
         job = storage.create_job(
-            job_id=job_id, public_token=token, module_name=body.module_name, title=body.title
+            job_id=job_id, public_token=token, module_name=body.module_name, title=body.title,
+            owner_install_id=identity.install_id,
         )
         return _job_response(job, settings)
 
-    @app.post("/api/v1/sites", status_code=201, dependencies=[Depends(require_agent)])
-    def create_site(body: SiteCreate) -> dict[str, Any]:
+    @app.post("/api/v1/sites", status_code=201)
+    def create_site(body: SiteCreate, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
         if not JOB_ID_PATTERN.fullmatch(body.site_id):
             raise HTTPException(status_code=422, detail="invalid site_id")
         existing = storage.get_site(site_id=body.site_id)
+        if existing and existing.get("owner_install_id") is None and identity.install_id:
+            storage.claim_unowned_site(body.site_id, identity.install_id)
+            existing = storage.get_site(site_id=body.site_id)
+        if existing:
+            assert_owner(existing, identity)
         site = existing or storage.create_site(
             site_id=body.site_id,
             public_token=secrets.token_urlsafe(24),
             module_name=body.module_name,
             title=body.title,
+            owner_install_id=identity.install_id,
         )
         return _site_response(site, settings)
 
-    @app.put("/api/v1/sites/{site_id}/report", dependencies=[Depends(require_agent)])
-    async def upload_site(site_id: str, request: Request) -> dict[str, Any]:
-        site = resolve_site(site_id)
+    @app.put("/api/v1/sites/{site_id}/report")
+    async def upload_site(site_id: str, request: Request, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
+        site = resolve_site(site_id, identity)
         try:
             content_length = int(request.headers.get("content-length", "0") or 0)
         except ValueError as exc:
@@ -234,7 +265,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.put(
         "/api/v1/sites/{site_id}/uploads/{upload_id}/parts/{part_number}",
-        dependencies=[Depends(require_agent)],
     )
     async def upload_site_part(
         site_id: str,
@@ -243,8 +273,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         total_parts: int,
         request: Request,
         x_chunk_sha256: str = Header(default=""),
+        identity: AgentIdentity = Depends(require_agent),
     ) -> dict[str, Any]:
-        site = resolve_site(site_id)
+        site = resolve_site(site_id, identity)
         if not JOB_ID_PATTERN.fullmatch(upload_id):
             raise HTTPException(status_code=422, detail="invalid upload_id")
         if total_parts < 1 or total_parts > 4096 or part_number < 0 or part_number >= total_parts:
@@ -307,10 +338,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.put(
-        "/api/v1/sites/{site_id}/runs/{run_id}", dependencies=[Depends(require_agent)]
+        "/api/v1/sites/{site_id}/runs/{run_id}"
     )
-    def update_site_run(site_id: str, run_id: str, body: SiteRunUpdate) -> dict[str, Any]:
-        resolve_site(site_id)
+    def update_site_run(site_id: str, run_id: str, body: SiteRunUpdate, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
+        resolve_site(site_id, identity)
         if not JOB_ID_PATTERN.fullmatch(run_id):
             raise HTTPException(status_code=422, detail="invalid run_id")
         actual_id = str(body.run.get("id") or "")
@@ -321,9 +352,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return {"accepted": True, "run_id": run_id}
 
-    @app.get("/api/v1/sites/{site_id}/config", dependencies=[Depends(require_agent)])
-    def agent_site_config(site_id: str) -> dict[str, Any]:
-        site = resolve_site(site_id)
+    @app.get("/api/v1/sites/{site_id}/config")
+    def agent_site_config(site_id: str, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
+        site = resolve_site(site_id, identity)
         canonical_id, config, configured = canonical_record(site)
         if site["module_name"] == "daily-paper":
             config = daily_public_config(config)
@@ -336,9 +367,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "updated_at": (record or {}).get("updated_at"),
         }
 
-    @app.put("/api/v1/sites/{site_id}/config", dependencies=[Depends(require_agent)])
-    def save_agent_site_config(site_id: str, body: SiteConfigUpdate) -> dict[str, Any]:
-        site = resolve_site(site_id)
+    @app.put("/api/v1/sites/{site_id}/config")
+    def save_agent_site_config(site_id: str, body: SiteConfigUpdate, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
+        site = resolve_site(site_id, identity)
         _canonical_id, current, _configured = canonical_record(site)
         if site["module_name"] == "daily-paper":
             merged = merge_daily_update(current, body.config)
@@ -349,9 +380,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         save_canonical(site, merged)
         return {"accepted": True, "configured": True}
 
-    @app.get("/api/v1/sites/{site_id}/commands/next", dependencies=[Depends(require_agent)])
-    def next_site_command(site_id: str) -> dict[str, Any]:
-        resolve_site(site_id)
+    @app.get("/api/v1/sites/{site_id}/commands/next")
+    def next_site_command(site_id: str, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
+        resolve_site(site_id, identity)
         item = storage.claim_site_command(site_id)
         if not item:
             return {"command": None}
@@ -363,10 +394,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post(
         "/api/v1/sites/{site_id}/commands/{command_id}/complete",
-        dependencies=[Depends(require_agent)],
     )
-    def finish_site_command(site_id: str, command_id: str, body: SiteCommandComplete) -> dict[str, Any]:
-        resolve_site(site_id)
+    def finish_site_command(site_id: str, command_id: str, body: SiteCommandComplete, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
+        resolve_site(site_id, identity)
         item = storage.get_site_command(command_id)
         if not item or item["site_id"] != site_id:
             raise HTTPException(status_code=404, detail="command not found")
@@ -376,9 +406,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return {"accepted": True}
 
-    @app.post("/api/v1/jobs/{job_id}/events", dependencies=[Depends(require_agent)])
-    async def append_event(job_id: str, body: EventCreate) -> dict[str, Any]:
-        job = resolve_job(job_id)
+    @app.post("/api/v1/jobs/{job_id}/events")
+    async def append_event(job_id: str, body: EventCreate, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
+        job = resolve_job(job_id, identity)
         item, created = storage.append_event(
             job_id,
             {
@@ -390,9 +420,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await broker.publish(job["public_token"], {"type": "event", "event": item})
         return {"accepted": True, "duplicate": not created, "event": item}
 
-    @app.put("/api/v1/jobs/{job_id}/report", dependencies=[Depends(require_agent)])
-    async def upload_report(job_id: str, request: Request) -> dict[str, Any]:
-        job = resolve_job(job_id)
+    @app.put("/api/v1/jobs/{job_id}/report")
+    async def upload_report(job_id: str, request: Request, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:
+        job = resolve_job(job_id, identity)
         try:
             content_length = int(request.headers.get("content-length", "0") or 0)
         except ValueError as exc:
@@ -670,18 +700,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             item = storage.get_site_command(command_id)
             if item and item["status"] in {"completed", "failed"}:
                 if item["status"] == "failed":
+                    storage.delete_site_command(command_id)
                     return JSONResponse(
                         {"status": "error", "message": item["error_message"] or "本机服务请求失败"},
                         status_code=item["response_status"] or 502,
                     )
                 response_headers = json.loads(item["response_headers_json"] or "{}")
                 content_type = response_headers.get("content-type", "application/json")
+                response_body = base64.b64decode(item["response_body_b64"] or "")
+                response_status = item["response_status"] or 200
+                storage.delete_site_command(command_id)
                 return Response(
-                    content=base64.b64decode(item["response_body_b64"] or ""),
-                    status_code=item["response_status"] or 200,
+                    content=response_body,
+                    status_code=response_status,
                     media_type=content_type.split(";", 1)[0],
                 )
             await asyncio.sleep(0.25)
+        storage.delete_queued_site_command(command_id)
         return JSONResponse(
             {"status": "error", "message": "本机服务暂未响应，请确认 Connect Hub 正在运行"},
             status_code=504,

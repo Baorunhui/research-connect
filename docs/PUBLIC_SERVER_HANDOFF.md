@@ -2,7 +2,7 @@
 
 ## 2026-08-31：统一配置与本机命令中继更新
 
-本次更新需要重新构建并滚动重启 Report Hub Docker 容器。无需新增端口、数据库或环境变量；仍使用现有 HTTPS 域名、SQLite 数据卷和 `REPORT_HUB_AGENT_TOKEN`。
+本次更新需要重新构建并滚动重启 Report Hub Docker 容器。无需新增端口、数据库或环境变量；仍使用现有 HTTPS 域名、SQLite 数据卷和服务器管理员 `REPORT_HUB_AGENT_TOKEN`。管理员 token 不再分发给普通用户；每个用户使用单独签发的安装 token，详见 [REPORT_HUB_MULTI_INSTALL.md](REPORT_HUB_MULTI_INSTALL.md)。
 
 - `PUT /api/v1/sites/{site_id}/config` 供 Connect Hub 使用 Agent Token 初始化安装级配置；
 - `/configure/{public_token}/` 是带随机 bearer token 的手机兼容配置页；
@@ -83,7 +83,7 @@ docker compose up -d --build
 ## 安全与运维边界
 
 - 公开链接是“持有链接即可查看”，token 足够长但不是账号权限系统；日报按当前需求可公开，敏感材料以后再加登录层。
-- 写接口必须带上传 token；应使用 HTTPS，避免 token 明文传输。
+- 写接口必须带 token；普通安装 token 只能操作自己的资源，服务器管理员 token 可操作全部资源。应使用 HTTPS，避免 token 明文传输。
 - ZIP 上传会限制大小，并拒绝路径穿越和符号链接。
 - 服务首版单进程、SQLite，无 PostgreSQL/Redis/本地模型，部署和迁移成本较低。
 - 备份的最小集合只有 `.env` 与 `data/`；其中 `.env` 应加密保存。

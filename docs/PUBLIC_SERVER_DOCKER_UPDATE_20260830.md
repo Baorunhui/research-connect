@@ -22,6 +22,7 @@
 - 安装级唯一配置：统一配置页、Daily Paper、CitationClaw 共享一条 SQLite 配置记录；
 - CitationClaw `site_commands` 受限命令队列，本机 Connect Hub 主动拉取并执行；
 - CitationClaw 公网页的状态、取消、结果浏览和下载中继，以及上次输入参数预填。
+- 每个 Connect Hub 安装独立的哈希 token 与资源归属校验；管理员 token 不再分发给普通用户。
 
 Docling 抽图代码属于用户电脑上的 Daily Paper，不在公网 Report Hub 容器内运行。
 
@@ -99,6 +100,14 @@ curl -fsS "$BASE/api/v1/sites/deploy-check/config" \
 
 服务器验收通过后，用户电脑只需重启一次 `connect-hub serve`。Connect Hub 会在启动阶段自动创建并上传 Daily Paper 与 CitationClaw 的原版网页；这不是公网容器的第二次更新，也不需要服务器管理员手工复制网页文件。
 
+给新用户签发凭证时使用：
+
+```bash
+docker compose exec report-hub report-hub --issue-install "用户姓名或设备备注"
+```
+
+把输出的 `REPORT_HUB_API_URL` 和安装级 `REPORT_HUB_AGENT_TOKEN` 私下发给对应用户。不要把服务器 `.env` 中的管理员 token 发给用户。查看、轮换和停用命令见 [`REPORT_HUB_MULTI_INSTALL.md`](REPORT_HUB_MULTI_INSTALL.md)。
+
 如果日报已经生成、但曾收到 `413 Request Entity Too Large`，不需要重新运行日报。先完成上述两层上传限制更新，再重启用户电脑上的 Connect Hub；启动阶段会把本机现有整站补同步到公网。
 
 ## 它是不是“动态网络”或内网穿透？
@@ -130,5 +139,5 @@ curl -fsS "$BASE/api/v1/sites/deploy-check/config" \
 - 正式环境必须使用 HTTPS；
 - 模块 API Key 会保存在 Report Hub 的 SQLite 中，公开读取接口会把密钥字段清空，只有携带 Agent Token 的本机 Connect Hub 能取回完整配置；
 - 固定站点链接当前采用“持有随机链接即可访问/修改配置”的单用户设计，不适合公开传播；
-- Agent Token 权限较高，只给可信的 Connect Hub 安装，不写入 Git、群聊或普通日志；
+- 服务器管理员 token 权限较高，只留给服务器管理员；普通用户使用各自的安装 token。两者都不写入 Git、群聊或普通日志；
 - 需要备份的是 `.env` 和 `report-hub-data` 卷。

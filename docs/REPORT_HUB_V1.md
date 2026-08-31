@@ -8,7 +8,7 @@
 
 ```env
 REPORT_HUB_API_URL=https://reports.example.com
-REPORT_HUB_AGENT_TOKEN=<由服务器管理员生成并分发>
+REPORT_HUB_AGENT_TOKEN=<由服务器管理员为这个安装单独签发>
 ```
 
 所有写接口使用 `Authorization: Bearer <token>`。公开任务页只凭不可猜测的 URL token 读取，不提供取消或配置功能。
@@ -18,6 +18,8 @@ REPORT_HUB_AGENT_TOKEN=<由服务器管理员生成并分发>
 Daily Paper 不使用下面的单任务壳页面。Connect Hub 以稳定的安装实例 ID 调用
 `POST /api/v1/sites`，随后将项目原生的 `index.html`、`app/`、`docs/` 上传到
 `PUT /api/v1/sites/{site_id}/report`。服务返回的 `/s/{public_token}/` 在以后任务中保持不变。
+
+多人共用公网服务器时不得共享服务器管理员 token。管理员使用 `report-hub --issue-install LABEL` 为每个安装签发独立 token，服务端按安装隔离站点、任务、配置和命令队列。详见 [Report Hub 多安装接入](REPORT_HUB_MULTI_INSTALL.md)。
 
 运行期间，Connect Hub 调用 `PUT /api/v1/sites/{site_id}/runs/{run_id}` 镜像无密钥的
 run 快照和日志。原生前端通过下面两个公开只读接口显示进度与历史：

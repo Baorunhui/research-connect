@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import secrets
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,7 +36,8 @@ class Storage:
                     updated_at TEXT NOT NULL,
                     report_ready INTEGER NOT NULL DEFAULT 0,
                     error_code TEXT,
-                    error_message TEXT
+                    error_message TEXT,
+                    owner_install_id TEXT
                 );
                 CREATE TABLE IF NOT EXISTS job_events (
                     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +68,8 @@ class Storage:
                     title TEXT NOT NULL,
                     report_ready INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    owner_install_id TEXT
                 );
                 CREATE TABLE IF NOT EXISTS site_configs (
                     site_id TEXT PRIMARY KEY REFERENCES sites(site_id) ON DELETE CASCADE,
@@ -102,8 +106,18 @@ class Storage:
                 );
                 CREATE INDEX IF NOT EXISTS idx_site_commands_queue
                     ON site_commands(site_id, status, created_at);
+                CREATE TABLE IF NOT EXISTS installations (
+                    install_id TEXT PRIMARY KEY,
+                    label TEXT NOT NULL,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    revoked_at TEXT
+                );
                 """
             )
+            self._ensure_column(db, "jobs", "owner_install_id", "TEXT")
+            self._ensure_column(db, "sites", "owner_install_id", "TEXT")
 
     def connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.db_path, timeout=15)
@@ -112,15 +126,76 @@ class Storage:
         db.execute("PRAGMA journal_mode=WAL")
         return db
 
+    @staticmethod
+    def _ensure_column(db: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
+        columns = {str(row["name"]) for row in db.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
+    def issue_installation(self, label: str) -> tuple[dict[str, Any], str]:
+        install_id = secrets.token_hex(8)
+        token = f"rhi_{install_id}_{secrets.token_urlsafe(36)}"
+        now = utc_now()
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO installations(install_id, label, token_hash, created_at) VALUES (?, ?, ?, ?)",
+                (install_id, label.strip()[:120] or install_id, hashlib.sha256(token.encode()).hexdigest(), now),
+            )
+        return self.get_installation(install_id) or {}, token
+
+    def authenticate_installation(self, token: str) -> dict[str, Any] | None:
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT install_id, label, enabled, created_at, revoked_at FROM installations "
+                "WHERE token_hash = ? AND enabled = 1", (digest,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_installation(self, install_id: str) -> dict[str, Any] | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT install_id, label, enabled, created_at, revoked_at FROM installations WHERE install_id = ?",
+                (install_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_installations(self) -> list[dict[str, Any]]:
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT install_id, label, enabled, created_at, revoked_at FROM installations ORDER BY created_at"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def revoke_installation(self, install_id: str) -> bool:
+        with self.connect() as db:
+            cursor = db.execute(
+                "UPDATE installations SET enabled = 0, revoked_at = ? WHERE install_id = ? AND enabled = 1",
+                (utc_now(), install_id),
+            )
+        return cursor.rowcount > 0
+
+    def rotate_installation(self, install_id: str) -> str | None:
+        if not self.get_installation(install_id):
+            return None
+        token = f"rhi_{install_id}_{secrets.token_urlsafe(36)}"
+        with self.connect() as db:
+            db.execute(
+                "UPDATE installations SET token_hash = ?, enabled = 1, revoked_at = NULL WHERE install_id = ?",
+                (hashlib.sha256(token.encode()).hexdigest(), install_id),
+            )
+        return token
+
     def create_job(
-        self, *, job_id: str, public_token: str, module_name: str, title: str
+        self, *, job_id: str, public_token: str, module_name: str, title: str,
+        owner_install_id: str | None = None,
     ) -> dict[str, Any]:
         now = utc_now()
         with self.connect() as db:
             db.execute(
-                "INSERT INTO jobs(job_id, public_token, module_name, title, status, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, 'queued', ?, ?)",
-                (job_id, public_token, module_name, title, now, now),
+                "INSERT INTO jobs(job_id, public_token, module_name, title, status, created_at, updated_at, owner_install_id) "
+                "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)",
+                (job_id, public_token, module_name, title, now, now, owner_install_id),
             )
         return self.get_job(job_id=job_id)
 
@@ -206,14 +281,15 @@ class Storage:
         return {"job": job, "events": [self._event_dict(row) for row in rows]}
 
     def create_site(
-        self, *, site_id: str, public_token: str, module_name: str, title: str
+        self, *, site_id: str, public_token: str, module_name: str, title: str,
+        owner_install_id: str | None = None,
     ) -> dict[str, Any]:
         now = utc_now()
         with self.connect() as db:
             db.execute(
-                "INSERT INTO sites(site_id, public_token, module_name, title, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (site_id, public_token, module_name, title, now, now),
+                "INSERT INTO sites(site_id, public_token, module_name, title, created_at, updated_at, owner_install_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (site_id, public_token, module_name, title, now, now, owner_install_id),
             )
         return self.get_site(site_id=site_id)
 
@@ -231,6 +307,15 @@ class Storage:
                 "UPDATE sites SET report_ready = 1, updated_at = ? WHERE site_id = ?",
                 (utc_now(), site_id),
             )
+
+    def claim_unowned_site(self, site_id: str, install_id: str) -> bool:
+        with self.connect() as db:
+            cursor = db.execute(
+                "UPDATE sites SET owner_install_id = ?, updated_at = ? "
+                "WHERE site_id = ? AND owner_install_id IS NULL",
+                (install_id, utc_now(), site_id),
+            )
+        return cursor.rowcount > 0
 
     def get_site_config(self, site_id: str) -> dict[str, Any] | None:
         with self.connect() as db:
@@ -263,6 +348,11 @@ class Storage:
     ) -> dict[str, Any]:
         now = utc_now()
         with self.connect() as db:
+            db.execute(
+                "DELETE FROM site_commands WHERE "
+                "(status IN ('completed', 'failed') AND julianday(completed_at) < julianday('now', '-1 hour')) "
+                "OR (status = 'queued' AND julianday(created_at) < julianday('now', '-1 day'))"
+            )
             db.execute(
                 "INSERT INTO site_commands(command_id, site_id, method, path, "
                 "request_headers_json, request_body_b64, status, created_at) "
@@ -305,6 +395,17 @@ class Storage:
                 "completed_at = ? WHERE command_id = ?",
                 ("failed" if error_message else "completed", status_code,
                  json.dumps(headers), body_b64, error_message, utc_now(), command_id),
+            )
+
+    def delete_site_command(self, command_id: str) -> None:
+        with self.connect() as db:
+            db.execute("DELETE FROM site_commands WHERE command_id = ?", (command_id,))
+
+    def delete_queued_site_command(self, command_id: str) -> None:
+        with self.connect() as db:
+            db.execute(
+                "DELETE FROM site_commands WHERE command_id = ? AND status = 'queued'",
+                (command_id,),
             )
 
     def upsert_site_run(

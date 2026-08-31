@@ -30,6 +30,10 @@ def auth() -> dict[str, str]:
     return {"Authorization": f"Bearer {TOKEN}"}
 
 
+def install_auth(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
 def report_zip(filename: str = "index.html", content: bytes = b"<h1>done</h1>") -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
@@ -346,6 +350,56 @@ def test_public_module_command_round_trip(tmp_path):
         )
         response = future.result(timeout=5)
     assert response.json()["status"] == "idle"
+
+
+def test_install_tokens_are_isolated_and_revocable(tmp_path):
+    api = client(tmp_path)
+    first, first_token = api.app.state.storage.issue_installation("Alice")
+    second, second_token = api.app.state.storage.issue_installation("Bob")
+    created = api.post(
+        "/api/v1/sites", headers=install_auth(first_token),
+        json={"site_id": "daily-paper-alice", "module_name": "daily-paper", "title": "Alice"},
+    )
+    assert created.status_code == 201
+    assert api.get(
+        "/api/v1/sites/daily-paper-alice/config", headers=install_auth(first_token)
+    ).status_code == 200
+    assert api.get(
+        "/api/v1/sites/daily-paper-alice/config", headers=install_auth(second_token)
+    ).status_code == 403
+    assert api.get(
+        "/api/v1/sites/daily-paper-alice/config", headers=auth()
+    ).status_code == 200
+    collision = api.post(
+        "/api/v1/sites", headers=install_auth(second_token),
+        json={"site_id": "daily-paper-alice", "module_name": "daily-paper", "title": "Bob"},
+    )
+    assert collision.status_code == 403
+    assert api.app.state.storage.revoke_installation(first["install_id"]) is True
+    assert api.get(
+        "/api/v1/sites/daily-paper-alice/config", headers=install_auth(first_token)
+    ).status_code == 401
+    rotated = api.app.state.storage.rotate_installation(first["install_id"])
+    assert rotated and rotated != first_token
+    assert api.get(
+        "/api/v1/sites/daily-paper-alice/config", headers=install_auth(rotated)
+    ).status_code == 200
+    assert second["install_id"] != first["install_id"]
+
+
+def test_first_install_token_adopts_legacy_unowned_site(tmp_path):
+    api = client(tmp_path)
+    api.post(
+        "/api/v1/sites", headers=auth(),
+        json={"site_id": "daily-paper-legacy", "module_name": "daily-paper", "title": "legacy"},
+    )
+    installation, token = api.app.state.storage.issue_installation("legacy owner")
+    adopted = api.post(
+        "/api/v1/sites", headers=install_auth(token),
+        json={"site_id": "daily-paper-legacy", "module_name": "daily-paper", "title": "legacy"},
+    )
+    assert adopted.status_code == 201
+    assert api.app.state.storage.get_site(site_id="daily-paper-legacy")["owner_install_id"] == installation["install_id"]
 
 
 def test_websocket_receives_snapshot_and_event(tmp_path):

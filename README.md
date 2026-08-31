@@ -48,7 +48,7 @@ Windows PowerShell：
 - 实时网页：Connect Hub 创建任务后立即返回链接，浏览器通过 WebSocket 接收进度。
 - 公网报告：用户电脑仅通过出站 HTTPS 向公共或自托管 Report Hub 上报进度、上传静态结果，不需要内网穿透。
 
-具体边界见 [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)、[自托管架构](docs/SELF_HOSTING_ARCHITECTURE.md)、[Report Hub 协议](docs/REPORT_HUB_V1.md)、[公网服务器交付说明](docs/PUBLIC_SERVER_HANDOFF.md)、[开发路线](docs/ROADMAP.md) 和 [下一阶段待办](docs/NEXT_SCOPE_TODO.md)。
+具体边界见 [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)、[自托管架构](docs/SELF_HOSTING_ARCHITECTURE.md)、[Report Hub 协议](docs/REPORT_HUB_V1.md)、[公网服务器交付说明](docs/PUBLIC_SERVER_HANDOFF.md)、[多安装接入](docs/REPORT_HUB_MULTI_INSTALL.md)、[开发路线](docs/ROADMAP.md) 和 [下一阶段待办](docs/NEXT_SCOPE_TODO.md)。
 
 ## 安全基线
 
