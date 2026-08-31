@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import mimetypes
+import re
 import urllib.error
 import urllib.request
 import uuid
@@ -298,6 +299,19 @@ def build_daily_paper_site_archive(project_dir: Path) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         index_text = index.read_text(encoding="utf-8", errors="replace")
+        declared_assets = {
+            value.split("?", 1)[0]
+            for value in re.findall(r"\bpath\s*:\s*['\"]([^'\"]+)['\"]", index_text)
+            if "://" not in value
+        }
+        missing_assets = sorted(
+            asset for asset in declared_assets if not (project_dir / asset).is_file()
+        )
+        if missing_assets:
+            raise ReportHubError(
+                "REPORT_ARTIFACT_INVALID: Daily Paper is missing declared assets: "
+                + ", ".join(missing_assets[:8])
+            )
         marker = r"""<script>
     (function () {
       var match = String(window.location.pathname || '').match(/^(\/s\/[^/]+)/);

@@ -3,9 +3,12 @@ from __future__ import annotations
 import io
 import zipfile
 
+import pytest
+
 from connect_hub.contracts import JobEvent
 from connect_hub.reporting import (
     ReportHubClient,
+    ReportHubError,
     _public_event_type,
     build_daily_paper_site_archive,
     build_report_archive,
@@ -73,6 +76,18 @@ def test_daily_site_archive_contains_real_site_and_public_config(tmp_path):
     assert "base.href = match[1] + '/'" in html
     assert "DPR_PUBLIC_READ_ONLY" not in html
     assert "private.py" not in names
+
+
+def test_daily_site_archive_rejects_missing_declared_asset(tmp_path):
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "index.html").write_text(
+        "<html><head></head><script>load([{path: 'app/missing.js'}])</script></html>",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReportHubError, match="app/missing.js"):
+        build_daily_paper_site_archive(tmp_path)
 
 
 def test_public_event_mapping_omits_internal_cost_and_artifact_events():

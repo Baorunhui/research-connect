@@ -17,6 +17,10 @@ config.local.*
 **/*.egg-info/
 **/build/
 **/dist/
+# Daily Paper intentionally vendors browser-only libraries under versioned
+# dist/ directories. They are runtime assets, not Python build products.
+!modules/daily-paper-reader/app/vendor/**/dist/
+!modules/daily-paper-reader/app/vendor/**/dist/**
 *.py[cod]
 
 # Runtime state and generated artifacts
