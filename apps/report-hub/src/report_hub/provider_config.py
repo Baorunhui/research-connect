@@ -67,6 +67,13 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "fields": ["enabled", "api_key"],
         "secret_fields": ["api_key"],
     },
+    "citation.search_llm": {
+        "label": "CitationClaw Search LLM",
+        "kind": "llm",
+        "description": "带联网搜索能力的模型，用于查找作者、机构和学术头衔；与统一轻量 LLM 分开配置。",
+        "fields": ["enabled", "base_url", "model", "api_key"],
+        "secret_fields": ["api_key"],
+    },
     "citation.semantic_scholar": {
         "label": "Semantic Scholar",
         "kind": "semantic_scholar",
@@ -147,6 +154,7 @@ PIPELINES = [
         "title": "查引用 CitationClaw",
         "steps": [
             ["citation.scraperapi", "抓取 Google Scholar 被引列表"],
+            ["citation.search_llm", "联网搜索作者、机构与学术头衔"],
             ["citation.semantic_scholar", "补充引用、作者和 PDF 元数据"],
             ["citation.openalex", "补充作者及机构信息"],
             ["citation.wos", "可选结构化权威元数据"],
@@ -197,6 +205,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "api_key": "",
         },
         "citation.scraperapi": {"enabled": False, "api_key": ""},
+        "citation.search_llm": {
+            "enabled": False,
+            "base_url": "https://api.gpt.ge/v1/",
+            "model": "gemini-3-flash-preview-search",
+            "api_key": "",
+        },
         "citation.semantic_scholar": {"enabled": False, "api_key": ""},
         "citation.openalex": {"enabled": True, "email": ""},
         "citation.wos": {"enabled": False, "api_key": ""},
@@ -211,6 +225,25 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "deepxiv": {"enabled": False},
         "kaggle": {"enabled": False},
     },
+    "modules": {
+        "daily-paper": {
+            "local": {
+                "schedule": {"enabled": False, "time": "03:00"},
+                "rerank": {"profile": "public-zwwen-rerank"},
+                "recall": {"mode": "hybrid"},
+            },
+            "subscriptions": {"intent_profiles": []},
+            "recommend_setting": {
+                "deep_dive_base": 5,
+                "quick_skim_base": 10,
+                "deep_dive_unlimited": False,
+            },
+            "source_backends": {},
+            "supabase": {},
+        },
+        "citationclaw": {},
+    },
+    "runtime_defaults": {"daily-paper": {}, "citationclaw": {}},
 }
 
 
@@ -244,6 +277,107 @@ def public_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
 
 def merge_public_update(current: Mapping[str, Any] | None, update: Mapping[str, Any]) -> dict[str, Any]:
     return _deep_merge(merged_defaults(current), dict(update), preserve_blank_secrets=True)
+
+
+def installation_suffix(site_id: str) -> str:
+    for prefix in ("connect-config-", "daily-paper-", "citationclaw-", "xhs-agent-"):
+        if site_id.startswith(prefix):
+            return site_id[len(prefix):]
+    return site_id
+
+
+def canonical_site_id(site_id: str) -> str:
+    return f"connect-config-{installation_suffix(site_id)}"
+
+
+def daily_public_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Project the installation config into Daily Paper's native schema."""
+    full = merged_defaults(config)
+    module = ((full.get("modules") or {}).get("daily-paper") or {})
+    result = json.loads(json.dumps(module, ensure_ascii=False))
+    local = result.setdefault("local", {})
+    llm = ((full.get("providers") or {}).get("llm.primary") or {})
+    local["chat"] = {
+        "base_url": llm.get("base_url", ""),
+        "model": llm.get("model", ""),
+        "api_key": llm.get("api_key", ""),
+        "api_key_configured": bool(str(llm.get("api_key") or "").strip()),
+    }
+    return result
+
+
+def merge_daily_update(config: Mapping[str, Any] | None, update: Mapping[str, Any]) -> dict[str, Any]:
+    full = merged_defaults(config)
+    patch = json.loads(json.dumps(dict(update), ensure_ascii=False))
+    local = patch.get("local") if isinstance(patch.get("local"), dict) else {}
+    chat = local.pop("chat", None) if isinstance(local, dict) else None
+    if isinstance(chat, dict):
+        full = merge_public_update(full, {"providers": {"llm.primary": {
+            "base_url": chat.get("base_url", ""), "model": chat.get("model", ""),
+            "api_key": chat.get("api_key", ""), "enabled": True,
+        }}})
+    if isinstance(patch.get("local"), dict):
+        patch["local"] = local
+    return merge_public_update(full, {"modules": {"daily-paper": patch}})
+
+
+def citation_public_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Project shared LLM into CitationClaw's light model fields."""
+    full = merged_defaults(config)
+    result = json.loads(json.dumps(((full.get("modules") or {}).get("citationclaw") or {}), ensure_ascii=False))
+    llm = ((full.get("providers") or {}).get("llm.primary") or {})
+    providers = full.get("providers") or {}
+    scraper = providers.get("citation.scraperapi") or {}
+    search_llm = providers.get("citation.search_llm") or {}
+    result.update({
+        "light_api_key": llm.get("api_key", ""),
+        "light_base_url": llm.get("base_url", ""),
+        "dashboard_model": llm.get("model", ""),
+        "scraper_api_keys": [scraper.get("api_key")] if scraper.get("api_key") else [],
+        "openai_api_key": search_llm.get("api_key", ""),
+        "openai_base_url": search_llm.get("base_url", ""),
+        "openai_model": search_llm.get("model", ""),
+        "s2_api_key": (providers.get("citation.semantic_scholar") or {}).get("api_key", ""),
+        "openalex_email": (providers.get("citation.openalex") or {}).get("email", ""),
+        "wos_api_key": (providers.get("citation.wos") or {}).get("api_key", ""),
+        "mineru_api_token": (providers.get("document.mineru") or {}).get("api_key", ""),
+    })
+    result["_configured_secrets"] = {
+        "light_api_key": bool(str(llm.get("api_key") or "").strip()),
+        "openai_api_key": bool(str(result.get("openai_api_key") or "").strip()),
+        "scraper_api_keys": bool(result.get("scraper_api_keys")),
+    }
+    result["_runtime_defaults"] = ((full.get("runtime_defaults") or {}).get("citationclaw") or {})
+    return result
+
+
+def merge_citation_update(config: Mapping[str, Any] | None, update: Mapping[str, Any]) -> dict[str, Any]:
+    full = merged_defaults(config)
+    patch = {k: v for k, v in dict(update).items() if not str(k).startswith("_")}
+    light = {"api_key": patch.pop("light_api_key", ""),
+             "base_url": patch.pop("light_base_url", ""),
+             "model": patch.pop("dashboard_model", "")}
+    full = merge_public_update(full, {"providers": {"llm.primary": {**light, "enabled": True}}})
+    scraper_keys = patch.pop("scraper_api_keys", [])
+    search_key = patch.pop("openai_api_key", "")
+    search_base = patch.pop("openai_base_url", "")
+    search_model = patch.pop("openai_model", "")
+    provider_patch = {
+        "citation.scraperapi": {
+            "api_key": scraper_keys[0] if scraper_keys else "",
+            **({"enabled": True} if scraper_keys else {}),
+        },
+        "citation.search_llm": {
+            "api_key": search_key, "base_url": search_base, "model": search_model,
+            **({"enabled": True} if search_key else {}),
+        },
+        "citation.semantic_scholar": {"api_key": patch.pop("s2_api_key", "")},
+        "citation.openalex": {"email": patch.pop("openalex_email", ""), "enabled": True},
+        "citation.wos": {"api_key": patch.pop("wos_api_key", "")},
+        "document.mineru": {"api_key": patch.pop("mineru_api_token", "")},
+    }
+    full = merge_public_update(full, {"providers": provider_patch})
+    return merge_public_update(full, {"modules": {"citationclaw": patch}})
 
 
 def _deep_merge(base: dict[str, Any], update: dict[str, Any], *, preserve_blank_secrets: bool) -> dict[str, Any]:

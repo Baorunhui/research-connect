@@ -1,6 +1,6 @@
 # 公网 Report Hub：技术路线与服务器交付说明
 
-## 2026-08-31：统一配置中心更新
+## 2026-08-31：统一配置与本机命令中继更新
 
 本次更新需要重新构建并滚动重启 Report Hub Docker 容器。无需新增端口、数据库或环境变量；仍使用现有 HTTPS 域名、SQLite 数据卷和 `REPORT_HUB_AGENT_TOKEN`。
 
@@ -8,6 +8,10 @@
 - `/configure/{public_token}/` 是带随机 bearer token 的手机兼容配置页；
 - 页面可保存、查看脱敏状态，并主动测试 LLM、Embedding、Reranker、Supabase、Exa、Jina 和 Citation Provider；
 - 配置仍保存在 Report Hub 数据卷内的 SQLite，不进入 Git 或模块静态网页。
+- `connect-config-*`、`daily-paper-*`、`citationclaw-*` 使用相同安装 ID 后缀，映射到同一条安装级配置；三个页面不再各存一份配置，也没有覆盖优先级；
+- Daily Paper 的聊天模型与 CitationClaw 的轻量模型都映射到 `llm.primary`；CitationClaw Search LLM 单独映射到 `citation.search_llm`；
+- 新增 `site_commands` 出站命令队列。公网 CitationClaw 页面把运行、状态、取消、结果读取请求写入队列，本机 Connect Hub 主动拉取后调用 `127.0.0.1` 模块接口，再回传响应；
+- 用户电脑不需要公网 IP、端口映射或额外穿透软件。旧版每模块配置会在首次访问时一次性导入安装级配置。
 
 部署后先检查 `/healthz`。本机 Connect Hub 重启时会自动创建 `connect-config-*` 稳定站点；配置页链接本身具有管理权限，不应转发或公开。
 
@@ -24,7 +28,9 @@
 手机/电脑浏览器 ← Daily Paper / CitationClaw 固定原版网页链接
 ```
 
-这不是反向代理用户电脑，也不把本机 FastAPI 暴露到公网。因此用户不需要公网 IP、内网穿透账号或路由器配置。Daily Paper 与 CitationClaw 的固定原版网页负责保存模块配置，本机 Connect Hub 在任务启动前通过 Agent API 拉取；飞书 Secret 仍只留在本机。由于模块配置包含 LLM/API Key，正式服务必须启用 HTTPS，并妥善保护 Report Hub 数据目录和 Agent Token。公网网页不直接调用用户电脑上的任务接口。
+这不是让公网服务器主动反向代理用户电脑，也不把本机 FastAPI 暴露到公网。因此用户不需要公网 IP、内网穿透账号或路由器配置。三个配置界面读写同一份安装级配置，本机 Connect Hub 主动拉取配置和待执行命令；飞书 Secret 仍只留在本机。由于配置包含 LLM/API Key，正式服务必须启用 HTTPS，并妥善保护 Report Hub 数据目录、页面 bearer 链接和 Agent Token。
+
+公网 CitationClaw 的任务操作是一条动态“邮箱”链路：浏览器投递请求，用户电脑上的 Connect Hub 取件并执行，再把响应放回公网。它不是通用 HTTP 隧道，只允许代码内列出的 CitationClaw API 路径；单次请求等待 45 秒，长任务本身仍是异步启动，之后通过状态轮询取得进度。Report Hub 容器无需连接用户内网。
 
 ## 需要服务器管理员提供
 
@@ -71,6 +77,8 @@ docker compose up -d --build
 3. 从非校园 Wi-Fi 的手机打开脚本输出链接；
 4. 重启本地客户端，确认旧报告仍能访问；
 5. 重启 Report Hub，确认 SQLite 与报告目录仍在。
+6. 在统一配置页修改统一 LLM 模型，刷新 Daily Paper 设置页和 CitationClaw 首页，确认两边同时显示新模型且密钥显示“已配置”；
+7. 在 CitationClaw 公网页提交一个测试任务，确认本机 Connect Hub 日志出现命令中继请求，公网状态与结果列表可以刷新。
 
 ## 安全与运维边界
 

@@ -652,7 +652,12 @@
       const timeEl = document.getElementById('dpr-settings-sched-time');
       if (modelEl) modelEl.value = chat.model || '';
       if (baseEl) baseEl.value = chat.base_url || '';
-      if (keyEl) keyEl.value = ''; // 不预填密钥，留空表示沿用 .env
+      if (keyEl) {
+        keyEl.value = '';
+        keyEl.placeholder = chat.api_key_configured
+          ? '已由统一配置中心配置，留空保持不变'
+          : 'API Key';
+      }
       if (enabledEl) enabledEl.checked = Boolean(sched.enabled);
       if (timeEl) timeEl.value = sched.time || '';
       const rerankEl = document.getElementById('dpr-settings-rerank-profile');

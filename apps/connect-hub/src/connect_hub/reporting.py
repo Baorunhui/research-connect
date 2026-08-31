@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import base64
 import hashlib
 import io
 import json
@@ -180,6 +181,22 @@ class ReportHubClient:
 
     def put_site_config(self, site_id: str, config: Mapping[str, Any]) -> None:
         self._json_request("PUT", f"/api/v1/sites/{site_id}/config", {"config": dict(config)})
+
+    def next_site_command(self, site_id: str) -> Mapping[str, Any] | None:
+        response = self._json_request("GET", f"/api/v1/sites/{site_id}/commands/next", None)
+        command = response.get("command")
+        return command if isinstance(command, Mapping) else None
+
+    def complete_site_command(
+        self, site_id: str, command_id: str, *, status_code: int,
+        headers: Mapping[str, str], body: bytes, error_message: str = "",
+    ) -> None:
+        self._json_request(
+            "POST", f"/api/v1/sites/{site_id}/commands/{command_id}/complete",
+            {"status_code": status_code, "headers": dict(headers),
+             "body_b64": base64.b64encode(body).decode("ascii"),
+             "error_message": error_message},
+        )
 
     def configuration_url(self, site_public_url: str) -> str:
         """Turn a stable-site bearer URL into its unified configuration URL."""

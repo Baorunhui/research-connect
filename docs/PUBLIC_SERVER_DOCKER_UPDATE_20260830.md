@@ -4,7 +4,7 @@
 
 ## 本次更新目标
 
-服务器当前 `/healthz` 正常，但 `POST /api/v1/sites` 返回 `404`，说明容器运行的是旧版 Report Hub。新版至少需要包含以下提交：
+服务器当前 `/healthz` 正常，但 `POST /api/v1/sites` 返回 `404`，说明容器运行的是旧版 Report Hub。新版至少需要包含以下历史提交，并更新到 `main` 最新提交：
 
 ```text
 60a43eb fix: make Report Hub Docker image standalone
@@ -19,6 +19,9 @@
 - 公网设置页面的配置读取与保存；
 - Daily Paper 设置页手动“获取模型列表”和“测试连接”的受限代理接口；
 - Agent API：Connect Hub 在任务开始前读取配置并上传网页/进度。
+- 安装级唯一配置：统一配置页、Daily Paper、CitationClaw 共享一条 SQLite 配置记录；
+- CitationClaw `site_commands` 受限命令队列，本机 Connect Hub 主动拉取并执行；
+- CitationClaw 公网页的状态、取消、结果浏览和下载中继，以及上次输入参数预填。
 
 Docling 抽图代码属于用户电脑上的 Daily Paper，不在公网 Report Hub 容器内运行。
 
@@ -100,7 +103,7 @@ curl -fsS "$BASE/api/v1/sites/deploy-check/config" \
 
 ## 它是不是“动态网络”或内网穿透？
 
-不是。它是一个轻量的公网中转、配置与静态网页托管服务：
+不是通用内网穿透。它是一个轻量的公网中转、配置与静态网页托管服务：
 
 ```text
 飞书 → 用户电脑 Connect Hub → 本机运行 Daily Paper/CitationClaw
@@ -108,7 +111,8 @@ curl -fsS "$BASE/api/v1/sites/deploy-check/config" \
                          └─ 主动发起 HTTPS 请求
                               ├─ 上传原版网页和结果
                               ├─ 上报实时进度
-                              └─ 读取用户已保存的模块配置
+                              ├─ 读取用户已保存的统一配置
+                              └─ 拉取 CitationClaw 待执行命令并回传响应
 
 手机/电脑浏览器 ──HTTPS──> 公网 Report Hub
 ```
@@ -116,10 +120,10 @@ curl -fsS "$BASE/api/v1/sites/deploy-check/config" \
 - 公网服务器不会主动连接用户电脑；
 - 不需要用户有公网 IP，不需要路由器端口映射、VPN、FRP 或 Cloudflare Tunnel；
 - 用户电脑只需能主动访问公网 HTTPS；
-- Report Hub 不运行论文流水线、Docling 或其他模型；
+- Report Hub 不运行论文流水线、Docling 或其他模型；CitationClaw 网页请求只进入受限队列，由用户电脑执行；
 - 网页和配置保存在公网服务器的 SQLite/磁盘卷中，因此关掉用户电脑后历史页面仍可访问。
 
-唯一类似“代理”的地方，是用户在 Daily Paper 设置页主动点击“获取模型列表”或“测试连接”时，Report Hub 会代表浏览器向用户填写的 OpenAI 兼容端点发出一次请求。这只是两个受限接口，不是通用 HTTP 代理，也不用于任务启动时的自动连通性检查。
+类似“代理”的地方有两处：Daily Paper 设置页的模型列表/连接测试由 Report Hub 发起；CitationClaw 的白名单接口通过命令队列交给本机 Connect Hub。后者只有代码列出的固定路径，不能访问任意本机地址，也不是通用 HTTP 隧道。
 
 ## 安全边界
 

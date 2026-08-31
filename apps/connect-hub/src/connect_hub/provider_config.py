@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import base64
+import logging
 import os
 import threading
 import time
+import urllib.error
+import urllib.request
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -101,21 +105,27 @@ def apply_to_settings(settings: Settings, config: Mapping[str, Any]) -> Settings
 def daily_configuration(config: Mapping[str, Any]) -> dict[str, Any]:
     providers = config.get("providers") if isinstance(config.get("providers"), Mapping) else {}
     llm, rerank, supabase = (_provider(providers, name) for name in ("llm.primary", "rerank.paper", "supabase.arxiv"))
-    return {
-        "local": {
-            "chat": {"base_url": llm.get("base_url", ""), "api_key": llm.get("api_key", ""), "model": llm.get("model", "")},
-            "rerank": {"profile": "public-zwwen-rerank"},
-        },
-        "source_backends": {
-            "arxiv": {
-                "enabled": _enabled(supabase), "url": supabase.get("base_url", ""), "anon_key": supabase.get("anon_key", ""),
-                "papers_table": supabase.get("papers_table", "arxiv_papers"), "use_bm25_rpc": True,
-                "bm25_rpc": supabase.get("bm25_rpc", "match_arxiv_papers_bm25"), "use_vector_rpc": True,
-                "vector_rpc": supabase.get("vector_rpc", "match_arxiv_papers_exact"),
-                "vector_rpc_exact": supabase.get("vector_rpc", "match_arxiv_papers_exact"),
-            }
+    modules = config.get("modules") if isinstance(config.get("modules"), Mapping) else {}
+    saved = modules.get("daily-paper") if isinstance(modules.get("daily-paper"), Mapping) else {}
+    result = json.loads(json.dumps(saved, ensure_ascii=False))
+    local = result.setdefault("local", {})
+    local["chat"] = {
+        "base_url": llm.get("base_url", ""), "api_key": llm.get("api_key", ""),
+        "model": llm.get("model", ""),
+    }
+    local.setdefault("rerank", {"profile": "public-zwwen-rerank"})
+    result["source_backends"] = {
+        **(result.get("source_backends") or {}),
+        "arxiv": {
+            **((result.get("source_backends") or {}).get("arxiv") or {}),
+            "enabled": _enabled(supabase), "url": supabase.get("base_url", ""), "anon_key": supabase.get("anon_key", ""),
+            "papers_table": supabase.get("papers_table", "arxiv_papers"), "use_bm25_rpc": True,
+            "bm25_rpc": supabase.get("bm25_rpc", "match_arxiv_papers_bm25"), "use_vector_rpc": True,
+            "vector_rpc": supabase.get("vector_rpc", "match_arxiv_papers_exact"),
+            "vector_rpc_exact": supabase.get("vector_rpc", "match_arxiv_papers_exact"),
         },
     }
+    return result
 
 
 def daily_environment(config: Mapping[str, Any]) -> dict[str, str]:
@@ -134,14 +144,22 @@ def citation_configuration(config: Mapping[str, Any]) -> dict[str, Any]:
     providers = config.get("providers") if isinstance(config.get("providers"), Mapping) else {}
     llm = _provider(providers, "llm.primary")
     scraper = _provider(providers, "citation.scraperapi")
-    return {
-        "openai_api_key": str(llm.get("api_key") or ""), "openai_base_url": str(llm.get("base_url") or ""), "openai_model": str(llm.get("model") or ""),
+    search_llm = _provider(providers, "citation.search_llm")
+    modules = config.get("modules") if isinstance(config.get("modules"), Mapping) else {}
+    saved = modules.get("citationclaw") if isinstance(modules.get("citationclaw"), Mapping) else {}
+    result = json.loads(json.dumps(saved, ensure_ascii=False))
+    result.update({
+        "openai_api_key": str(search_llm.get("api_key") or ""),
+        "openai_base_url": str(search_llm.get("base_url") or ""),
+        "openai_model": str(search_llm.get("model") or ""),
+        "light_api_key": str(llm.get("api_key") or ""), "light_base_url": str(llm.get("base_url") or ""), "dashboard_model": str(llm.get("model") or ""),
         "scraper_api_keys": [str(scraper.get("api_key"))] if _enabled(scraper) and scraper.get("api_key") else [],
         "s2_api_key": str(_provider(providers, "citation.semantic_scholar").get("api_key") or ""),
         "openalex_email": str(_provider(providers, "citation.openalex").get("email") or ""),
         "wos_api_key": str(_provider(providers, "citation.wos").get("api_key") or ""),
         "mineru_api_token": str(_provider(providers, "document.mineru").get("api_key") or ""),
-    }
+    })
+    return result
 
 
 class RuntimeConfigManager:
@@ -163,6 +181,78 @@ class RuntimeConfigManager:
             self.apply(config)
             self._serialized = serialized
             return True
+
+
+class ModuleCommandRelay:
+    """Outbound bridge from Report Hub public pages to a user's local module API."""
+
+    def __init__(
+        self, client: ReportHubClient, site_id: str, local_endpoint: str,
+        *, config_sync: Callable[[], object] | None = None, poll_seconds: float = 0.75,
+    ) -> None:
+        self.client = client
+        self.site_id = site_id
+        self.local_endpoint = local_endpoint.rstrip("/")
+        self.config_sync = config_sync
+        self.poll_seconds = max(0.25, poll_seconds)
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._thread = threading.Thread(target=self._run, name=f"module-relay-{self.site_id}", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=3)
+
+    def _run(self) -> None:
+        log = logging.getLogger(__name__)
+        while not self._stop.is_set():
+            try:
+                command = self.client.next_site_command(self.site_id)
+                if not command:
+                    self._stop.wait(self.poll_seconds)
+                    continue
+                if self.config_sync:
+                    self.config_sync()
+                self._execute(command)
+            except Exception as exc:
+                log.warning("module command relay poll failed: %s", exc)
+                self._stop.wait(3)
+
+    def _execute(self, command: Mapping[str, Any]) -> None:
+        command_id = str(command.get("command_id") or "")
+        try:
+            body = base64.b64decode(str(command.get("body_b64") or ""))
+            headers = {str(k): str(v) for k, v in dict(command.get("headers") or {}).items()}
+            request = urllib.request.Request(
+                self.local_endpoint + str(command.get("path") or ""),
+                data=body if body else None,
+                method=str(command.get("method") or "GET"),
+                headers=headers,
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=40) as response:
+                    response_body = response.read(8 * 1024 * 1024)
+                    status = response.status
+                    response_headers = {"content-type": response.headers.get("content-type", "application/json")}
+            except urllib.error.HTTPError as exc:
+                response_body = exc.read(8 * 1024 * 1024)
+                status = exc.code
+                response_headers = {"content-type": exc.headers.get("content-type", "application/json")}
+            self.client.complete_site_command(
+                self.site_id, command_id, status_code=status,
+                headers=response_headers, body=response_body,
+            )
+        except Exception as exc:
+            self.client.complete_site_command(
+                self.site_id, command_id, status_code=502, headers={"content-type": "application/json"},
+                body=b"", error_message=str(exc)[:500],
+            )
 
 
 def _provider(providers: Mapping[str, Any], name: str) -> Mapping[str, Any]:

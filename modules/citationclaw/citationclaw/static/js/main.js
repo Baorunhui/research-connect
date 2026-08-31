@@ -268,6 +268,11 @@ async function safeFetch(url, opts = {}) {
     return resp;
 }
 
+function publicApiHref(url) {
+    const base = String(window.CCR_PUBLIC_API_BASE || '').replace(/\/$/, '');
+    return base && String(url).startsWith('/') ? base + url : url;
+}
+
 // ==================== API Key Check (moved from index.html) ====================
 window.checkApiKeysAndAlert = function(needScraper, needLLM) {
     const scraperKeys = (document.getElementById('idx-scraper-keys')?.value || '')
@@ -275,8 +280,9 @@ window.checkApiKeysAndAlert = function(needScraper, needLLM) {
     const openaiKey = (document.getElementById('idx-openai-key')?.value || '').trim();
     const blocking = [];
     var scraperWarn = false;
-    if (needLLM && !openaiKey) blocking.push('LLM API Key（用于学者信息搜索与报告生成）');
-    if (needScraper && scraperKeys.length === 0) scraperWarn = true;
+    const configured = window._ccConfiguredSecrets || {};
+    if (needLLM && !openaiKey && !configured.openai_api_key) blocking.push('Search LLM API Key（用于联网搜索作者信息）');
+    if (needScraper && scraperKeys.length === 0 && !configured.scraper_api_keys) scraperWarn = true;
     if (blocking.length === 0 && !scraperWarn) return true;
     if (blocking.length > 0) {
         var modalMissing = document.getElementById('api-key-modal-missing');
@@ -306,12 +312,19 @@ async function loadConfig() {
     try {
         const response = await safeFetch('/api/config');
         const config = await response.json();
+        window._ccConfiguredSecrets = config._configured_secrets || {};
 
         const el = id => document.getElementById(id);
 
         // Config panel fields
-        if (el('scraper-api-keys')) el('scraper-api-keys').value = (config.scraper_api_keys || []).join(',');
-        if (el('openai-api-key')) el('openai-api-key').value = config.openai_api_key || '';
+        if (el('scraper-api-keys')) {
+            el('scraper-api-keys').value = (config.scraper_api_keys || []).join(',');
+            if (window._ccConfiguredSecrets.scraper_api_keys) el('scraper-api-keys').placeholder = '已配置，留空保持不变';
+        }
+        if (el('openai-api-key')) {
+            el('openai-api-key').value = config.openai_api_key || '';
+            if (window._ccConfiguredSecrets.openai_api_key) el('openai-api-key').placeholder = '已配置，留空保持不变';
+        }
         if (el('openai-base-url')) el('openai-base-url').value = config.openai_base_url || '';
         if (el('openai-model')) el('openai-model').value = config.openai_model || '';
         if (el('output-prefix')) el('output-prefix').value = config.default_output_prefix || 'paper';
@@ -488,10 +501,10 @@ async function resultsOpenFolder(folderName, displayName) {
             const safePath = encodeResultPath(file.path);
             const safeName = escapeHtml(file.name);
             const actionBtn = file.type === '.html'
-                ? `<a href="/api/results/view/${safePath}" target="_blank" class="btn btn-sm btn-primary">
+                ? `<a href="${publicApiHref('/api/results/view/' + safePath)}" target="_blank" class="btn btn-sm btn-primary">
                        <i class="bi bi-eye"></i> 查看报告
                    </a>`
-                : `<a href="/api/results/download/${safePath}" class="btn btn-sm btn-outline-primary" download>
+                : `<a href="${publicApiHref('/api/results/download/' + safePath)}" class="btn btn-sm btn-outline-primary" download>
                        <i class="bi bi-download"></i> 下载
                    </a>`;
             const row = document.createElement('tr');
@@ -659,16 +672,22 @@ function initIndexPage() {
         try {
             const resp = await safeFetch('/api/config');
             const cfg = await resp.json();
+            window._ccConfiguredSecrets = cfg._configured_secrets || {};
             const el = id => document.getElementById(id);
-            if (el('idx-scraper-keys')) el('idx-scraper-keys').value = (cfg.scraper_api_keys || []).join(',');
+            if (el('idx-scraper-keys')) {
+                el('idx-scraper-keys').value = (cfg.scraper_api_keys || []).join(',');
+                if (window._ccConfiguredSecrets.scraper_api_keys) el('idx-scraper-keys').placeholder = '已配置，留空保持不变';
+            }
             if (el('idx-openai-key')) {
                 el('idx-openai-key').value = cfg.openai_api_key || '';
+                if (window._ccConfiguredSecrets.openai_api_key) el('idx-openai-key').placeholder = '已配置，留空保持不变';
                 _syncApiKeyType(el('idx-openai-key'));
             }
             _searchBaseUrl = cfg.openai_base_url || _searchBaseUrl;
             if (el('idx-openai-url')) el('idx-openai-url').value = cfg.light_base_url || cfg.openai_base_url || '';
             if (el('idx-light-api-key')) {
                 el('idx-light-api-key').value = cfg.light_api_key || '';
+                if (window._ccConfiguredSecrets.light_api_key) el('idx-light-api-key').placeholder = '已由统一配置中心配置，留空保持不变';
                 _syncApiKeyType(el('idx-light-api-key'));
             }
             if (el('idx-openai-model')) {
@@ -698,6 +717,13 @@ function initIndexPage() {
             if (el('profile-top-n')) el('profile-top-n').value = cfg.profile_top_n ?? 30;
             if (el('profile-min-cit')) el('profile-min-cit').value = cfg.profile_min_citations ?? 0;
             if (el('profile-llm-fallback')) el('profile-llm-fallback').checked = cfg.profile_use_llm_fallback !== false;
+            const runtime = cfg._runtime_defaults || {};
+            const paperList = document.getElementById('paper-list');
+            if (paperList && paperList.children.length === 0 && Array.isArray(runtime.papers)) {
+                runtime.papers.forEach(group => {
+                    if (group && group.title) window.addPaper(group.title, group.aliases || []);
+                });
+            }
         } catch (e) {
             console.error('加载配置失败:', e);
         }
@@ -995,7 +1021,7 @@ function initIndexPage() {
             const ytToggle = document.getElementById('enable-year-traverse');
             if (ytToggle) ytToggle.checked = true;
             try {
-                await fetch('/api/task/year-traverse-respond', {
+                await safeFetch('/api/task/year-traverse-respond', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ enable: true })
@@ -1007,7 +1033,7 @@ function initIndexPage() {
         if (ytBtnSkip) ytBtnSkip.onclick = async () => {
             ytModal.hide();
             try {
-                await fetch('/api/task/year-traverse-respond', {
+                await safeFetch('/api/task/year-traverse-respond', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ enable: false })
@@ -1050,7 +1076,7 @@ function initIndexPage() {
 
         // 预检查 LLM 余额
         try {
-            var quotaResp = await fetch('/api/quota/check');
+            var quotaResp = await safeFetch('/api/quota/check');
             var quotaData = await quotaResp.json();
             if (quotaData.configured && quotaData.remaining !== undefined) {
                 appendIndexLog({
@@ -1419,7 +1445,7 @@ function initIndexPage() {
             html += `<div class="result-file-row">
                 <span class="result-file-icon">📊</span>
                 <span class="result-file-name">${name}</span>
-                <a href="/api/results/download/${hrefPath}" class="btn-download btn-dl-excel" download>
+                <a href="${publicApiHref('/api/results/download/' + hrefPath)}" class="btn-download btn-dl-excel" download>
                     <i class="bi bi-download"></i> Excel
                 </a>
             </div>`;
@@ -1431,7 +1457,7 @@ function initIndexPage() {
             html += `<div class="result-file-row">
                 <span class="result-file-icon">📋</span>
                 <span class="result-file-name">${name}</span>
-                <a href="/api/results/download/${hrefPath}" class="btn-download btn-dl-json" download>
+                <a href="${publicApiHref('/api/results/download/' + hrefPath)}" class="btn-download btn-dl-json" download>
                     <i class="bi bi-download"></i> JSON
                 </a>
             </div>`;
@@ -1446,7 +1472,7 @@ function initIndexPage() {
                     <strong style="color:#bc8cff">多维画像分析报告已生成</strong><br>
                     <span style="font-size:11.5px">${name}</span>
                 </div>
-                <a href="/api/results/view/${hrefPath}" target="_blank" class="btn-download btn-dl-report">
+                <a href="${publicApiHref('/api/results/view/' + hrefPath)}" target="_blank" class="btn-download btn-dl-report">
                     <i class="bi bi-eye"></i> 查看报告
                 </a>
             </div>`;
@@ -1484,7 +1510,7 @@ function initIndexPage() {
                     html += `<div class="result-file-row">
                         <span class="result-file-icon">${isExcel ? '📊' : '📋'}</span>
                         <span class="result-file-name">${escapeHtml(f.name)}</span>
-                        <a href="/api/results/download/${encodeURIComponent(f.name)}"
+                        <a href="${publicApiHref('/api/results/download/' + encodeURIComponent(f.name))}"
                            class="btn-download ${isExcel ? 'btn-dl-excel' : 'btn-dl-json'}" download>
                             <i class="bi bi-download"></i> 下载
                         </a>

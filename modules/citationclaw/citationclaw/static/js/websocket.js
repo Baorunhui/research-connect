@@ -17,6 +17,10 @@ class WebSocketManager {
     }
 
     connect() {
+        if (window.CCR_PUBLIC_API_BASE) {
+            this.connectPolling();
+            return;
+        }
         try {
             this.ws = new WebSocket(this.url);
 
@@ -62,6 +66,40 @@ class WebSocketManager {
         }
     }
 
+    connectPolling() {
+        this.updateStatus('已连接（公网中继）', 'success');
+        let lastLogCount = 0;
+        let previousStatus = 'idle';
+        const poll = async () => {
+            try {
+                const base = String(window.CCR_PUBLIC_API_BASE || '').replace(/\/$/, '');
+                const response = await fetch(base + '/api/task/status');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const data = await response.json();
+                const logs = Array.isArray(data.logs) ? data.logs : [];
+                if (logs.length < lastLogCount) lastLogCount = 0;
+                logs.slice(lastLogCount).forEach(item => this.emit('log', item));
+                lastLogCount = logs.length;
+                if (data.progress) this.emit('progress', data.progress);
+                const status = data.status || (data.is_running ? 'running' : 'idle');
+                if (previousStatus === 'running' && status === 'completed') this.emit('all_done', data.result || {});
+                if (previousStatus === 'running' && (status === 'failed' || status === 'cancelled')) {
+                    this.emit('task_finished', {status, message: data.error || '任务已结束'});
+                }
+                previousStatus = status;
+                this.updateStatus('已连接（公网中继）', 'success');
+            } catch (error) {
+                this.updateStatus('中继等待中', 'warning');
+            }
+        };
+        poll();
+        this.pollTimer = setInterval(poll, 2000);
+    }
+
+    emit(type, data) {
+        (this.handlers[type] || []).forEach(handler => handler(data));
+    }
+
     on(event, handler) {
         if (!this.handlers[event]) {
             this.handlers[event] = [];
@@ -74,6 +112,7 @@ class WebSocketManager {
     }
 
     disconnect() {
+        if (this.pollTimer) clearInterval(this.pollTimer);
         if (this.ws) {
             this.ws.close();
             this.ws = null;

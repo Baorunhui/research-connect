@@ -84,6 +84,24 @@ class Storage:
                 );
                 CREATE INDEX IF NOT EXISTS idx_site_runs_updated
                     ON site_runs(site_id, updated_at DESC);
+                CREATE TABLE IF NOT EXISTS site_commands (
+                    command_id TEXT PRIMARY KEY,
+                    site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+                    method TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    request_headers_json TEXT NOT NULL,
+                    request_body_b64 TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    response_status INTEGER,
+                    response_headers_json TEXT,
+                    response_body_b64 TEXT,
+                    error_message TEXT,
+                    created_at TEXT NOT NULL,
+                    claimed_at TEXT,
+                    completed_at TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_site_commands_queue
+                    ON site_commands(site_id, status, created_at);
                 """
             )
 
@@ -238,6 +256,56 @@ class Storage:
                 (site_id, json.dumps(config, ensure_ascii=False), now, now),
             )
         return self.get_site_config(site_id) or {"config": config}
+
+    def enqueue_site_command(
+        self, *, command_id: str, site_id: str, method: str, path: str,
+        headers: dict[str, str], body_b64: str,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO site_commands(command_id, site_id, method, path, "
+                "request_headers_json, request_body_b64, status, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)",
+                (command_id, site_id, method, path, json.dumps(headers), body_b64, now),
+            )
+        return self.get_site_command(command_id) or {}
+
+    def claim_site_command(self, site_id: str) -> dict[str, Any] | None:
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT command_id FROM site_commands WHERE site_id = ? AND status = 'queued' "
+                "ORDER BY created_at LIMIT 1", (site_id,),
+            ).fetchone()
+            if not row:
+                return None
+            now = utc_now()
+            db.execute(
+                "UPDATE site_commands SET status = 'claimed', claimed_at = ? "
+                "WHERE command_id = ? AND status = 'queued'", (now, row["command_id"]),
+            )
+        return self.get_site_command(str(row["command_id"]))
+
+    def get_site_command(self, command_id: str) -> dict[str, Any] | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM site_commands WHERE command_id = ?", (command_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def complete_site_command(
+        self, command_id: str, *, status_code: int, headers: dict[str, str],
+        body_b64: str, error_message: str = "",
+    ) -> None:
+        with self.connect() as db:
+            db.execute(
+                "UPDATE site_commands SET status = ?, response_status = ?, "
+                "response_headers_json = ?, response_body_b64 = ?, error_message = ?, "
+                "completed_at = ? WHERE command_id = ?",
+                ("failed" if error_message else "completed", status_code,
+                 json.dumps(headers), body_b64, error_message, utc_now(), command_id),
+            )
 
     def upsert_site_run(
         self, *, site_id: str, run_id: str, run: dict[str, Any], log_text: str

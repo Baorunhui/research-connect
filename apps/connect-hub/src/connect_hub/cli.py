@@ -29,6 +29,7 @@ from connect_hub.websearch import ExaMCPWebSearchProvider, JinaReaderProvider
 from connect_hub.reporting import ReportHubClient, ReportHubError
 from connect_hub.provider_config import (
     CredentialStore,
+    ModuleCommandRelay,
     RuntimeConfigManager,
     apply_to_settings,
     bootstrap_config,
@@ -83,6 +84,14 @@ def _build_runtime(
             else:
                 unified_config = bootstrap_config(settings)
                 report_hub.put_site_config(config_site_id, unified_config)
+            # Reading both legacy module views once lets an upgraded Report Hub
+            # import their former per-site settings into the single installation
+            # record. This is a one-time migration, not a precedence rule.
+            report_hub.get_site_config(daily_site_id)
+            report_hub.get_site_config(citation_site_id)
+            migrated = report_hub.get_site_config(config_site_id)
+            if isinstance(migrated.get("config"), dict):
+                unified_config = dict(migrated["config"])
             credential_store.save(unified_config)
         except ReportHubError as exc:
             logging.getLogger(__name__).warning("could not initialize unified configuration: %s", exc)
@@ -228,6 +237,19 @@ def _build_runtime(
         shortcut_urls=shortcut_urls,
         config_sync=(config_manager.sync if config_manager is not None else None),
     )
+    if config_manager is not None:
+        try:
+            config_manager.sync(force=True)
+        except Exception as exc:
+            logging.getLogger(__name__).warning("initial configuration sync failed: %s", exc)
+        relay = ModuleCommandRelay(
+            report_hub, citation_site_id, settings.citationclaw_endpoint,
+            config_sync=lambda: config_manager.sync(force=True),
+        )
+        relay.start()
+        # The connector owns the service for its whole lifetime; retain the daemon
+        # here so it is not garbage-collected while Feishu is running.
+        service.module_command_relay = relay
     return settings, gateway, store, service
 
 

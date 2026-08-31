@@ -4,6 +4,9 @@ import io
 import hashlib
 import json
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
+import time
+import base64
 
 from fastapi.testclient import TestClient
 
@@ -283,6 +286,66 @@ def test_public_daily_model_tools_use_saved_config(tmp_path, monkeypatch):
     )
     assert probe.json()["reply"] == "pong"
     assert requests[0][0].headers["Authorization"] == "Bearer saved-key"
+
+
+def test_module_pages_share_one_installation_config(tmp_path):
+    api = client(tmp_path)
+    sites = {}
+    for site_id, module in (("connect-config-abc", "other"), ("daily-paper-abc", "daily-paper"), ("citationclaw-abc", "citationclaw")):
+        sites[module] = api.post(
+            "/api/v1/sites", headers=auth(),
+            json={"site_id": site_id, "module_name": module, "title": module},
+        ).json()["public_url"].rstrip("/").rsplit("/", 1)[-1]
+    api.put(
+        "/api/v1/sites/connect-config-abc/config", headers=auth(),
+        json={"config": {"providers": {"llm.primary": {
+            "enabled": True, "base_url": "https://llm.example/v1", "model": "shared", "api_key": "shared-secret"
+        }}}},
+    )
+    daily = api.get(f"/s/{sites['daily-paper']}/api/local/config/structured").json()
+    assert daily["local"]["chat"]["model"] == "shared"
+    assert daily["local"]["chat"]["api_key_configured"] is True
+    citation = api.get(f"/s/{sites['citationclaw']}/api/config").json()
+    assert citation["dashboard_model"] == "shared"
+    assert citation["_configured_secrets"]["light_api_key"] is True
+
+    api.post(f"/s/{sites['citationclaw']}/api/config", json={
+        "openai_base_url": "https://search.example/v1", "openai_model": "search-model",
+        "openai_api_key": "search-secret", "light_base_url": "https://new.example/v1",
+        "dashboard_model": "shared-2", "light_api_key": "new-shared-secret",
+    })
+    private = api.get("/api/v1/sites/connect-config-abc/config", headers=auth()).json()["config"]
+    assert private["providers"]["llm.primary"]["model"] == "shared-2"
+    assert private["providers"]["citation.search_llm"]["model"] == "search-model"
+    daily2 = api.get(f"/s/{sites['daily-paper']}/api/local/config/structured").json()
+    assert daily2["local"]["chat"]["base_url"] == "https://new.example/v1"
+
+
+def test_public_module_command_round_trip(tmp_path):
+    api = client(tmp_path)
+    site = api.post(
+        "/api/v1/sites", headers=auth(),
+        json={"site_id": "citationclaw-relay", "module_name": "citationclaw", "title": "citation"},
+    ).json()
+    token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(lambda: api.get(f"/s/{token}/api/task/status"))
+        command = None
+        for _ in range(100):
+            command = api.get(
+                "/api/v1/sites/citationclaw-relay/commands/next", headers=auth()
+            ).json()["command"]
+            if command:
+                break
+            time.sleep(0.01)
+        assert command and command["path"] == "/api/task/status"
+        api.post(
+            f"/api/v1/sites/citationclaw-relay/commands/{command['command_id']}/complete",
+            headers=auth(), json={"status_code": 200, "headers": {"content-type": "application/json"},
+                                 "body_b64": base64.b64encode(b'{"status":"idle"}').decode()},
+        )
+        response = future.result(timeout=5)
+    assert response.json()["status"] == "idle"
 
 
 def test_websocket_receives_snapshot_and_event(tmp_path):

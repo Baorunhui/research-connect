@@ -37,20 +37,24 @@
 - [x] Connect Hub 启动时导入现有配置，运行时从 Report Hub 拉取，并写入权限为 `0600` 的本机 `providers.json` 缓存。
 - [x] 飞书增加 `/config`（兼容 `/settings`、`/配置`），同一飞书用户首次使用时只提醒一次配置入口。
 - [x] 统一配置可下发给 LLM Gateway、Daily Paper 和 CitationClaw；Daily Paper 的局部配置接口已允许更新 `source_backends`/`supabase`。
+- [x] 三个公网界面改为同一条安装级配置：统一配置页、Daily Paper 原版设置页、CitationClaw 原版设置页的共同字段实时一致，不设置覆盖顺序。
+- [x] 统一 LLM 映射到 Daily Paper chat 与 CitationClaw light/dashboard；CitationClaw Search LLM、ScraperAPI 和学术数据 Provider 也进入统一目录。
+- [x] CitationClaw 公网页通过 Report Hub `site_commands` 队列由本机 Connect Hub 出站执行，支持运行、状态、取消、配置测试和结果读取，不开放本机端口。
+- [x] CitationClaw 最近一次论文列表和运行参数保存为安装级 runtime defaults，跨设备打开时可预填。
 
 本 demo 暂不实现 OS Keyring、SQLite `secret_ref` 元数据、严格的 RuntimeCredentials 白名单信封和多级 Provider 优先级；飞书 App Secret 与 Report Hub Agent Token 仍是安装启动凭据，保留在本机 `.env`。
 
-### 当前问题
+### 后续强化项
 
-同一个凭据目前可能从系统环境变量、模块 `.env`、模块 YAML/JSON 配置、网页接口请求和任务 `secret` 五处进入。不同入口的优先级由各模块自己决定，已经造成“日报收到 embedding key、综述没有收到”的真实故障。CitationClaw 还会把 Connect Hub 的 LLM 环境变量同步进自己的配置对象，Daily Paper 网页则能把聊天 key 写入 `config.yaml`，职责边界不一致。
+Demo 运行期已经以 Report Hub 安装级记录为唯一来源；模块 YAML/JSON 是本机运行镜像，`.env` 只负责首次启动和基础连接。后续发行版仍需把秘密存储与白名单传递进一步收紧：
 
-- [ ] 由 Connect Hub 新增唯一的 `ProviderRegistry` 和 `CredentialStore`，统一管理 LLM、embedding、reranker、学术数据 API、飞书和 Report Hub 凭据；业务模块只使用稳定的 provider ID，不再自行解析多套 key 名。
+- [x] 由 Connect Hub/Report Hub 提供统一 Provider catalog 和 CredentialStore，业务投影使用稳定 provider ID。
 - [ ] 第一版采用跨平台私有文件保存秘密（建议 `~/.research-connect/config/secrets.json`，Linux 权限 `0600`，Windows 限当前用户），SQLite 只保存 provider 元数据、`secret_ref` 和“是否已配置”，不保存明文 key。后续可选接 OS Keyring，但不把它作为部署前置条件。
-- [ ] `.env` 只保留为首次安装/旧配置导入入口：启动时导入统一存储并提示迁移结果，运行期不再参与多层覆盖；模块自己的 `.env` 和 `config.yaml` 不再保存 API key。
+- [x] `.env` 作为首次安装/旧配置导入入口；运行时采用安装级配置，并对旧模块站点配置执行一次性迁移。
 - [ ] 定义稳定的凭据引用，例如 `llm.primary`、`llm.fallback`、`embedding.paper`、`rerank.paper`、`supabase.arxiv`、`citation.semantic_scholar`、`citation.scraperapi`、`feishu.bot`、`report_hub.agent`。
 - [ ] 定义 `RuntimeCredentials` 白名单信封：Hub 只把一次任务实际需要的最小凭据传给 adapter；HTTP 服务在创建公开 job 前剥离，子进程只在进程环境中接收，所有日志、事件、SQLite 和产物统一脱敏。
 - [x] 增加统一配置页：按 Provider 展示用途、端点、模型、配置状态和“测试连接”按钮；读取接口只返回状态，永不回传完整 key。
-- [ ] 明确唯一优先级：任务显式选择的 provider → 统一 ProviderRegistry 默认项；不再允许模块 `.env`、模块配置和请求字段暗中互相覆盖。
+- [x] 取消配置优先级概念：三个公网入口是同一记录的不同投影视图；空白密钥只表示保留，不构成另一层配置。
 - [x] 配置页连接探测报告 `ready / missing_credential / disabled / unreachable`；命令行 `doctor providers` 暂留后续。联网探测只由用户点击触发。
 
 ### API/凭据使用盘点
@@ -126,7 +130,8 @@ subscriptions:
 
 ## P1：网页与跨设备体验
 
-- [ ] Daily Paper 和 CitationClaw 前端移除固定轮询，统一消费 Connect/Report Hub WebSocket；创建任务时立即返回手机可打开的固定 URL。
+- [x] CitationClaw 公网页通过受限命令中继运行本机任务，并轮询统一状态；创建任务无需把本机端口暴露公网。
+- [ ] 后续若并发用户量增大，把 CitationClaw 状态轮询升级为 Connect/Report Hub 事件推送；Demo 版两秒轮询保持部署简单。
 - [ ] 排查 Daily Paper 静态页面依赖本机 API/CDN 的部分，发布报告必须在任务结束后仍可独立查看。
 - [ ] 优化 CitationClaw Dashboard 手机布局。
 - [ ] Report Hub 不可达时继续飞书进度，完成后以附件或本地链接降级。

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import mimetypes
@@ -22,7 +23,12 @@ from pydantic import BaseModel, Field
 from .archive import InvalidReportArchive, install_report_zip
 from .config import Settings
 from .provider_config import (
+    canonical_site_id,
     catalog_payload,
+    citation_public_config,
+    daily_public_config,
+    merge_citation_update,
+    merge_daily_update,
     merge_public_update,
     probe_provider,
     public_config,
@@ -63,6 +69,13 @@ class SiteRunUpdate(BaseModel):
 
 class SiteConfigUpdate(BaseModel):
     config: dict[str, Any]
+
+
+class SiteCommandComplete(BaseModel):
+    status_code: int = Field(ge=100, le=599)
+    headers: dict[str, str] = Field(default_factory=dict)
+    body_b64: str = ""
+    error_message: str = ""
 
 
 class Broker:
@@ -120,6 +133,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not site:
             raise HTTPException(status_code=404, detail="site not found")
         return site
+
+    def canonical_record(site: dict[str, Any]) -> tuple[str, dict[str, Any], bool]:
+        canonical_id = canonical_site_id(str(site["site_id"]))
+        canonical = storage.get_site_config(canonical_id)
+        if canonical is not None:
+            config = dict(canonical.get("config") or {})
+            if str(site["site_id"]) == canonical_id:
+                return canonical_id, config, True
+            legacy = storage.get_site_config(str(site["site_id"]))
+            migrations = config.get("module_config_imports") if isinstance(config.get("module_config_imports"), dict) else {}
+            if legacy is not None and not migrations.get(str(site["site_id"])):
+                legacy_config = dict(legacy.get("config") or {})
+                if site["module_name"] == "daily-paper":
+                    config = merge_daily_update(config, legacy_config)
+                elif site["module_name"] == "citationclaw":
+                    config = merge_citation_update(config, legacy_config)
+                config = merge_public_update(config, {"module_config_imports": {str(site["site_id"]): True}})
+                storage.save_site_config(canonical_id, config)
+            return canonical_id, config, True
+        # Upgrade path: an older deployment may only have per-module config.
+        legacy = storage.get_site_config(str(site["site_id"]))
+        return canonical_id, dict((legacy or {}).get("config") or {}), False
+
+    def save_canonical(site: dict[str, Any], config: dict[str, Any]) -> None:
+        canonical_id = canonical_site_id(str(site["site_id"]))
+        if storage.get_site(site_id=canonical_id) is None:
+            # Normally Connect Hub creates this site first. Keeping creation here
+            # makes an upgraded standalone Report Hub self-healing.
+            storage.create_site(
+                site_id=canonical_id,
+                public_token=secrets.token_urlsafe(24),
+                module_name="other",
+                title="Research Connect 配置中心",
+            )
+        storage.save_site_config(canonical_id, config)
 
     @app.get("/healthz")
     def health() -> dict[str, str]:
@@ -275,19 +323,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/v1/sites/{site_id}/config", dependencies=[Depends(require_agent)])
     def agent_site_config(site_id: str) -> dict[str, Any]:
-        resolve_site(site_id)
-        record = storage.get_site_config(site_id)
+        site = resolve_site(site_id)
+        canonical_id, config, configured = canonical_record(site)
+        if site["module_name"] == "daily-paper":
+            config = daily_public_config(config)
+        elif site["module_name"] == "citationclaw":
+            config = citation_public_config(config)
+        record = storage.get_site_config(canonical_id)
         return {
-            "configured": record is not None,
-            "config": (record or {}).get("config") or {},
+            "configured": configured,
+            "config": config,
             "updated_at": (record or {}).get("updated_at"),
         }
 
     @app.put("/api/v1/sites/{site_id}/config", dependencies=[Depends(require_agent)])
     def save_agent_site_config(site_id: str, body: SiteConfigUpdate) -> dict[str, Any]:
-        resolve_site(site_id)
-        storage.save_site_config(site_id, body.config)
+        site = resolve_site(site_id)
+        _canonical_id, current, _configured = canonical_record(site)
+        if site["module_name"] == "daily-paper":
+            merged = merge_daily_update(current, body.config)
+        elif site["module_name"] == "citationclaw":
+            merged = merge_citation_update(current, body.config)
+        else:
+            merged = merge_public_update(current, body.config)
+        save_canonical(site, merged)
         return {"accepted": True, "configured": True}
+
+    @app.get("/api/v1/sites/{site_id}/commands/next", dependencies=[Depends(require_agent)])
+    def next_site_command(site_id: str) -> dict[str, Any]:
+        resolve_site(site_id)
+        item = storage.claim_site_command(site_id)
+        if not item:
+            return {"command": None}
+        return {"command": {
+            "command_id": item["command_id"], "method": item["method"], "path": item["path"],
+            "headers": json.loads(item["request_headers_json"] or "{}"),
+            "body_b64": item["request_body_b64"],
+        }}
+
+    @app.post(
+        "/api/v1/sites/{site_id}/commands/{command_id}/complete",
+        dependencies=[Depends(require_agent)],
+    )
+    def finish_site_command(site_id: str, command_id: str, body: SiteCommandComplete) -> dict[str, Any]:
+        resolve_site(site_id)
+        item = storage.get_site_command(command_id)
+        if not item or item["site_id"] != site_id:
+            raise HTTPException(status_code=404, detail="command not found")
+        storage.complete_site_command(
+            command_id, status_code=body.status_code, headers=body.headers,
+            body_b64=body.body_b64, error_message=body.error_message,
+        )
+        return {"accepted": True}
 
     @app.post("/api/v1/jobs/{job_id}/events", dependencies=[Depends(require_agent)])
     async def append_event(job_id: str, body: EventCreate) -> dict[str, Any]:
@@ -371,8 +458,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return site
 
     def public_config_payload(site: dict[str, Any]) -> dict[str, Any]:
-        record = storage.get_site_config(site["site_id"])
-        return dict((record or {}).get("config") or {})
+        return canonical_record(site)[1]
 
     def configuration_site(public_token: str) -> dict[str, Any]:
         site = public_site(public_token)
@@ -419,23 +505,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/s/{public_token}/api/local/config/structured")
     def public_daily_config(public_token: str) -> dict[str, Any]:
         site = public_site(public_token)
-        config = public_config_payload(site)
-        local = dict(config.get("local") or {}) if isinstance(config.get("local"), dict) else {}
-        for key in ("subscriptions", "recommend_setting"):
-            if key in config:
-                local[key] = config[key]
+        _canonical_id, config, configured = canonical_record(site)
+        projected = daily_public_config(config)
+        local = dict(projected.get("local") or {})
+        for key in ("subscriptions", "recommend_setting", "source_backends", "supabase"):
+            if key in projected:
+                local[key] = projected[key]
+        chat = local.get("chat") if isinstance(local.get("chat"), dict) else {}
+        chat["api_key"] = ""
+        local["chat"] = chat
         return {
             "ok": True,
-            "configured": storage.get_site_config(site["site_id"]) is not None,
-            "local": _redact(local),
+            "configured": configured,
+            "local": local,
         }
 
     @app.post("/s/{public_token}/api/local/config/partial")
     def save_public_daily_config(public_token: str, body: dict[str, Any]) -> dict[str, Any]:
         site = public_site(public_token)
         current = public_config_payload(site)
-        merged = _merge_config(current, body)
-        storage.save_site_config(site["site_id"], merged)
+        merged = merge_daily_update(current, body)
+        save_canonical(site, merged)
         return {"ok": True, "configured": True}
 
     @app.post("/s/{public_token}/api/local/chat/models")
@@ -445,7 +535,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         site = public_site(public_token)
         try:
             base_url, api_key, _model = _public_chat_credentials(
-                public_config_payload(site), body
+                daily_public_config(public_config_payload(site)), body
             )
             request = urllib.request.Request(
                 _openai_endpoint(base_url, "models"),
@@ -482,7 +572,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         site = public_site(public_token)
         try:
             base_url, api_key, model = _public_chat_credentials(
-                public_config_payload(site), body
+                daily_public_config(public_config_payload(site)), body
             )
             if not model:
                 raise ValueError("请先填写模型名称")
@@ -532,7 +622,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/s/{public_token}/api/config")
     def public_citation_config(public_token: str) -> dict[str, Any]:
         site = public_site(public_token)
-        return _redact(public_config_payload(site))
+        projected = citation_public_config(public_config_payload(site))
+        configured = dict(projected.get("_configured_secrets") or {})
+        redacted = _redact(projected)
+        redacted["_configured_secrets"] = configured
+        return redacted
 
     @app.post("/s/{public_token}/api/config")
     def save_public_citation_config(
@@ -540,8 +634,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         site = public_site(public_token)
         current = public_config_payload(site)
-        storage.save_site_config(site["site_id"], _merge_config(current, body))
+        save_canonical(site, merge_citation_update(current, body))
         return {"status": "success", "message": "配置已保存", "configured": True}
+
+    @app.api_route(
+        "/s/{public_token}/api/{api_path:path}", methods=["GET", "POST", "DELETE"]
+    )
+    async def public_module_command(public_token: str, api_path: str, request: Request) -> Response:
+        site = public_site(public_token)
+        if site["module_name"] != "citationclaw" or not _citation_command_allowed(api_path):
+            raise HTTPException(status_code=404, detail="module endpoint not found")
+        raw = await request.body()
+        if len(raw) > 4 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="request is too large")
+        query = ("?" + request.url.query) if request.url.query else ""
+        if api_path in {"run", "run/from-cache"} and raw:
+            try:
+                runtime = json.loads(raw.decode("utf-8"))
+                if isinstance(runtime, dict):
+                    current = public_config_payload(site)
+                    save_canonical(site, merge_public_update(current, {
+                        "runtime_defaults": {"citationclaw": runtime}
+                    }))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                pass
+        command_id = uuid.uuid4().hex
+        storage.enqueue_site_command(
+            command_id=command_id, site_id=site["site_id"], method=request.method,
+            path=f"/api/{api_path}{query}",
+            headers={"content-type": request.headers.get("content-type", "application/json")},
+            body_b64=base64.b64encode(raw).decode("ascii"),
+        )
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            item = storage.get_site_command(command_id)
+            if item and item["status"] in {"completed", "failed"}:
+                if item["status"] == "failed":
+                    return JSONResponse(
+                        {"status": "error", "message": item["error_message"] or "本机服务请求失败"},
+                        status_code=item["response_status"] or 502,
+                    )
+                response_headers = json.loads(item["response_headers_json"] or "{}")
+                content_type = response_headers.get("content-type", "application/json")
+                return Response(
+                    content=base64.b64decode(item["response_body_b64"] or ""),
+                    status_code=item["response_status"] or 200,
+                    media_type=content_type.split(";", 1)[0],
+                )
+            await asyncio.sleep(0.25)
+        return JSONResponse(
+            {"status": "error", "message": "本机服务暂未响应，请确认 Connect Hub 正在运行"},
+            status_code=504,
+        )
 
     @app.get("/s/{public_token}")
     def site_without_slash(public_token: str) -> Response:
@@ -692,3 +836,12 @@ def _upstream_error(exc: BaseException) -> str:
     if isinstance(exc, urllib.error.URLError):
         return str(exc.reason)[:200]
     return str(exc)[:200]
+
+
+def _citation_command_allowed(path: str) -> bool:
+    exact = {
+        "providers", "presets", "run", "run/from-cache", "task/status", "task/cancel",
+        "task/year-traverse-respond", "quota/check", "test_openai",
+        "pretest/search_llm", "pretest/light_model", "results/list", "results/folders",
+    }
+    return path in exact or path.startswith("results/folder/") or path.startswith("results/download/") or path.startswith("results/view/")
