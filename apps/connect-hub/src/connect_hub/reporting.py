@@ -301,7 +301,15 @@ def build_daily_paper_site_archive(project_dir: Path) -> bytes:
         marker = r"""<script>
     (function () {
       var match = String(window.location.pathname || '').match(/^(\/s\/[^/]+)/);
-      if (match) window.DPR_LOCAL_API_BASE = match[1];
+      if (!match) return;
+      window.DPR_LOCAL_API_BASE = match[1];
+      // Daily Paper's original UI loads vendored scripts with relative URLs.
+      // Pin them to this stable site's bearer root instead of the browser's
+      // current nested route (which may differ on a public reverse proxy).
+      var base = document.createElement('base');
+      base.href = match[1] + '/';
+      base.setAttribute('data-research-connect-site-base', '1');
+      document.head.insertBefore(base, document.head.firstChild);
     })();
   </script>
 """
