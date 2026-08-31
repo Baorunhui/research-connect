@@ -69,6 +69,9 @@ External adapters
 
 ## 你需要在飞书网页完成的配置
 
+带截图编号、重建旧应用和逐步验收方式的正式教程见
+[`../../docs/FEISHU_BOT_SETUP.md`](../../docs/FEISHU_BOT_SETUP.md)。当前 Demo 只验收单聊，三个机器人菜单属于必配项，暂不申请群聊权限。
+
 服务器不需要浏览器，以下操作可以在你自己的 Windows 电脑或任何有浏览器的设备完成。
 
 1. 登录[飞书开放平台](https://open.feishu.cn/)，进入开发者后台。
@@ -79,7 +82,6 @@ External adapters
    - `App Secret`。
 5. 在“权限管理”添加最小权限：
    - `im:message.p2p_msg:readonly`：接收发给机器人的单聊消息；
-   - `im:message.group_at_msg:readonly`：接收群里 @机器人的消息；
    - `im:message:send_as_bot`：以机器人身份回复。
    - `im:resource`：上传并发送小红书卡片图片和论文日报文件。
 6. 先把 `App ID/App Secret` 写进服务器 `.env` 并启动长连接。
@@ -91,7 +93,7 @@ External adapters
     - 菜单名称：`查引用`；事件键：`connect_citationclaw`；
     - 菜单名称：`使用帮助`；事件键：`connect_help`。
 11. 创建新版本、发布应用，并设置应用可用范围。企业租户可能需要管理员审批；已经发布过的应用在新增事件或菜单后也要再次发布。
-12. 单聊搜索机器人，或者将机器人添加到群聊后 @它。菜单发布后会出现在机器人聊天页底部，点击后机器人会在单聊中主动回复对应内容。
+12. 在单聊中搜索机器人。菜单发布后会出现在机器人聊天页底部，点击后机器人会在单聊中主动回复对应内容。
 
 第一版不使用交互卡片，因此不需要 `card.action.trigger`、Encrypt Key、Verification Token或公网回调地址。自定义菜单事件同样通过当前 WebSocket 长连接接收。
 
