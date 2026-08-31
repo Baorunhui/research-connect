@@ -2434,7 +2434,8 @@ class Handler(SimpleHTTPRequestHandler):
     def _save_local_config_partial(self) -> None:
         """支持只更新 config.yaml 的指定顶层段，其余保持不变。
 
-        当前可更新段：local（chat/schedule）、subscriptions、academic_news（前端会议速览勾选）。
+        当前可更新段：local（chat/schedule）、subscriptions、source_backends、
+        supabase、academic_news（前端会议速览勾选）。
         未涉及的段保持原样。
         """
         if yaml is None:
@@ -2454,6 +2455,11 @@ class Handler(SimpleHTTPRequestHandler):
             subscriptions = payload.get("subscriptions")
             if isinstance(subscriptions, dict):
                 merged = merge_top_level_section(merged, "subscriptions", subscriptions)
+
+            for section in ("source_backends", "supabase"):
+                value = payload.get(section)
+                if isinstance(value, dict):
+                    merged = merge_top_level_section(merged, section, value)
 
             academic_news = payload.get("academic_news")
             if isinstance(academic_news, dict):

@@ -93,6 +93,33 @@ def test_agent_api_requires_token(tmp_path):
     assert response.status_code == 401
 
 
+def test_unified_configuration_page_redacts_and_preserves_secrets(tmp_path):
+    api = client(tmp_path)
+    site = api.post(
+        "/api/v1/sites",
+        headers=auth(),
+        json={"site_id": "connect-config-1", "module_name": "other", "title": "配置"},
+    ).json()
+    token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
+    assert api.get(f"/configure/{token}/").status_code == 200
+    assert api.get(f"/configure/{token}/api/catalog").json()["pipelines"]
+    saved = api.post(
+        f"/configure/{token}/api/config",
+        json={"providers": {"llm.primary": {"base_url": "https://llm.example/v1", "model": "m", "api_key": "secret"}}},
+    )
+    assert saved.status_code == 200
+    public = api.get(f"/configure/{token}/api/config").json()
+    assert public["providers"]["llm.primary"]["api_key"] == ""
+    assert public["providers"]["llm.primary"]["configured"] is True
+    api.post(
+        f"/configure/{token}/api/config",
+        json={"providers": {"llm.primary": {"api_key": "", "model": "m2"}}},
+    )
+    private = api.get("/api/v1/sites/connect-config-1/config", headers=auth()).json()["config"]
+    assert private["providers"]["llm.primary"]["api_key"] == "secret"
+    assert private["providers"]["llm.primary"]["model"] == "m2"
+
+
 def test_stable_site_keeps_url_and_exposes_runs_and_public_config(tmp_path):
     api = client(tmp_path)
     created = api.post(

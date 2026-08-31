@@ -28,6 +28,15 @@ from connect_hub.tools.web import web_tools
 from connect_hub.tools.xhs import xhs_generate_tool
 from connect_hub.websearch import ExaMCPWebSearchProvider, JinaReaderProvider
 from connect_hub.reporting import ReportHubClient, ReportHubError
+from connect_hub.provider_config import (
+    CredentialStore,
+    RuntimeConfigManager,
+    apply_to_settings,
+    bootstrap_config,
+    citation_configuration,
+    daily_configuration,
+    daily_environment,
+)
 from research_connect_core import DataPaths
 
 
@@ -35,7 +44,6 @@ def _build_runtime(
     *, interrupt_stale_jobs: bool = False, env_file: str | Path | None = None
 ) -> tuple[object, object, object, object]:
     settings = load_settings(env_file)
-    gateway = LLMGateway(settings.providers)
     store = ConversationStore(settings.db_path)
     report_hub = (
         ReportHubClient(
@@ -48,6 +56,9 @@ def _build_runtime(
     )
     daily_site_id = _module_site_id(settings, "daily-paper")
     citation_site_id = _module_site_id(settings, "citationclaw")
+    config_site_id = _module_site_id(settings, "connect-config")
+    credential_store = CredentialStore(settings.db_path.parent / "providers.json")
+    unified_config: dict[str, object] = credential_store.load()
     shortcut_urls: dict[str, str] = {}
     if report_hub is not None and report_hub.configured:
         for shortcut, site_id, module_name, title in (
@@ -62,6 +73,23 @@ def _build_runtime(
                 logging.getLogger(__name__).warning(
                     "could not resolve %s public site: %s", module_name, exc
                 )
+        try:
+            config_site_url, _ready = report_hub.ensure_site(
+                site_id=config_site_id, module_name="other", title="Research Connect 配置中心"
+            )
+            shortcut_urls["config"] = report_hub.configuration_url(config_site_url)
+            remote = report_hub.get_site_config(config_site_id)
+            if bool(remote.get("configured")) and isinstance(remote.get("config"), dict):
+                unified_config = dict(remote["config"])
+            else:
+                unified_config = bootstrap_config(settings)
+                report_hub.put_site_config(config_site_id, unified_config)
+            credential_store.save(unified_config)
+        except ReportHubError as exc:
+            logging.getLogger(__name__).warning("could not initialize unified configuration: %s", exc)
+    if unified_config:
+        settings = apply_to_settings(settings, unified_config)
+    gateway = LLMGateway(settings.providers)
     tools = ToolRegistry(
         store,
         jobs=JobCoordinator(
@@ -72,11 +100,11 @@ def _build_runtime(
     )
     tools.register(system_status_tool(lambda: tools.names))
     xhs_dir = settings.xhs_agent_dir
-    if xhs_dir.exists() and settings.providers:
+    if xhs_dir.exists():
         tools.register(
             xhs_generate_tool(
                 agent_dir=xhs_dir,
-                provider=settings.providers[0],
+                provider=lambda: gateway.primary_provider,
                 output_dir=DataPaths.for_module("xhs-agent").artifacts,
                 timeout_seconds=settings.xhs_agent_timeout_seconds,
                 offline=settings.xhs_agent_offline,
@@ -174,6 +202,34 @@ def _build_runtime(
         cache_hours=settings.web_search_cache_hours,
     ):
         tools.register(definition)
+    config_manager = None
+    if report_hub is not None and report_hub.configured and shortcut_urls.get("config"):
+        def apply_runtime(config: object) -> None:
+            if not isinstance(config, dict):
+                return
+            runtime_settings = apply_to_settings(settings, config)
+            gateway.update_providers(runtime_settings.providers)
+            if search_provider is not None:
+                search_provider.endpoint = runtime_settings.web_search_endpoint
+            if url_provider is not None:
+                url_provider.endpoint = runtime_settings.jina_reader_endpoint.rstrip("/") + "/"
+            daily_paper.extra_env.update(daily_environment(config))
+            if daily_paper.configured:
+                try:
+                    daily_paper.apply_configuration(daily_configuration(config))
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("could not apply Daily Paper configuration: %s", exc)
+            if citationclaw.configured:
+                try:
+                    citationclaw.apply_configuration(citation_configuration(config))
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("could not apply CitationClaw configuration: %s", exc)
+
+        config_manager = RuntimeConfigManager(
+            report_hub, config_site_id, credential_store, apply_runtime
+        )
+        # The remote value has already been applied to Settings. Mark it as the
+        # baseline and let the first message push it into running module APIs.
     service = ChatService(
         gateway,
         store,
@@ -181,6 +237,7 @@ def _build_runtime(
         history_chars=settings.history_chars,
         tools=tools,
         shortcut_urls=shortcut_urls,
+        config_sync=(config_manager.sync if config_manager is not None else None),
     )
     return settings, gateway, store, service
 

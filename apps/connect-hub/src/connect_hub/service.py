@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -11,6 +12,8 @@ from connect_hub.storage import ConversationStore
 from connect_hub.tools import ToolContext, ToolRegistry
 from connect_hub.jobs import short_job_id
 from connect_hub.llm import LLMGatewayError
+
+logger = logging.getLogger(__name__)
 
 
 class ChatGateway(Protocol):
@@ -104,6 +107,7 @@ class ChatService:
         max_url_fetch_calls: int = 1,
         max_business_tool_calls: int = 1,
         shortcut_urls: Mapping[str, str] | None = None,
+        config_sync: Callable[..., bool] | None = None,
     ) -> None:
         self.gateway = gateway
         self.store = store
@@ -119,6 +123,22 @@ class ChatService:
             for name, url in (shortcut_urls or {}).items()
             if str(name).strip() and str(url).strip()
         }
+        self.config_sync = config_sync
+
+    def first_use_notice(self, session_key: str) -> str:
+        url = self.shortcut_urls.get("config", "")
+        if not url:
+            return ""
+        parts = session_key.split(":")
+        subject = f"feishu-user:{parts[-1]}" if session_key.startswith("feishu:") and len(parts) >= 3 else session_key
+        if not self.store.claim_notice(subject, "unified-config-v1"):
+            return ""
+        return (
+            "首次使用：请先打开统一配置中心，填写并测试需要的 API/论文源。"
+            "保存后回到飞书继续即可。\n"
+            f"{url}\n"
+            "请勿把这个配置链接转发给别人；链接本身具有配置权限。"
+        )
 
     def set_feishu_user_web_mode(self, open_id: str, mode: str) -> ServiceReply:
         """Apply a web mode selected from the Feishu bot custom menu."""
@@ -161,6 +181,11 @@ class ChatService:
         content = text.strip()
         if not content:
             return ServiceReply("请发送文字消息。")
+        if self.config_sync is not None:
+            try:
+                self.config_sync()
+            except Exception as exc:
+                logger.warning("could not synchronize unified configuration: %s", exc)
         if content == "/ping":
             return ServiceReply("pong")
         if content == "/help":
@@ -175,6 +200,7 @@ class ChatService:
                 "/cancel - 取消当前会话最近的运行中任务\n"
                 "/paper_reader - 打开论文日报网页\n"
                 "/citationclaw - 打开查引用网页\n"
+                "/config - 打开统一 API 与论文源配置中心\n"
                 "/help - 显示帮助\n\n"
                 "联网默认开启；如需临时控制，可使用 /web on、/web off 或 /web auto。\n\n"
                 "其他文字会发送到统一 LLM 中台。"
@@ -185,13 +211,16 @@ class ChatService:
             names = self.tools.names if self.tools is not None else ()
             return ServiceReply("已注册工具：" + (", ".join(names) if names else "无"))
         shortcut = content.lower().replace("-", "_")
-        if shortcut in {"/paper_reader", "/citationclaw"}:
+        if shortcut in {"/paper_reader", "/citationclaw", "/config", "/settings", "/配置"}:
             key = shortcut[1:]
+            if key in {"settings", "配置"}:
+                key = "config"
             url = self.shortcut_urls.get(key, "")
             if not url:
                 return ServiceReply("对应公网网页尚未配置或暂时不可用。")
-            label = "论文日报" if key == "paper_reader" else "查引用"
-            return ServiceReply(f"{label}网页：\n{url}")
+            labels = {"paper_reader": "论文日报", "citationclaw": "查引用", "config": "统一配置中心"}
+            warning = "\n请勿转发该链接；链接本身具有配置权限。" if key == "config" else ""
+            return ServiceReply(f"{labels[key]}网页：\n{url}{warning}")
         web_command = _parse_web_command(content)
         if web_command is not None:
             if web_command:

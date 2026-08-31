@@ -12,6 +12,7 @@ import zipfile
 from datetime import date
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from connect_hub.contracts import JobEvent
 
@@ -176,6 +177,18 @@ class ReportHubClient:
 
     def get_site_config(self, site_id: str) -> Mapping[str, Any]:
         return self._json_request("GET", f"/api/v1/sites/{site_id}/config", None)
+
+    def put_site_config(self, site_id: str, config: Mapping[str, Any]) -> None:
+        self._json_request("PUT", f"/api/v1/sites/{site_id}/config", {"config": dict(config)})
+
+    def configuration_url(self, site_public_url: str) -> str:
+        """Turn a stable-site bearer URL into its unified configuration URL."""
+
+        parsed = urlparse(site_public_url)
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) < 2 or parts[-2] != "s":
+            raise ReportHubError("REPORT_PUBLISH_FAILED: invalid stable site URL")
+        return f"{parsed.scheme}://{parsed.netloc}/configure/{parts[-1]}/"
 
     def _json_request(
         self, method: str, path: str, payload: Mapping[str, Any] | None

@@ -6,7 +6,7 @@ import tempfile
 import uuid
 import sys
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from connect_hub.config import ProviderSettings
 from connect_hub.tools.base import ToolContext, ToolDefinition
@@ -15,7 +15,7 @@ from connect_hub.tools.base import ToolContext, ToolDefinition
 def xhs_generate_tool(
     *,
     agent_dir: Path,
-    provider: ProviderSettings,
+    provider: ProviderSettings | Callable[[], ProviderSettings],
     output_dir: Path,
     timeout_seconds: int,
     offline: bool,
@@ -24,6 +24,7 @@ def xhs_generate_tool(
     python_path = Path(sys.executable).resolve()
 
     def handler(arguments: Mapping[str, Any], context: ToolContext) -> dict[str, Any]:
+        active_provider = provider() if callable(provider) else provider
         request_id = f"feishu-{uuid.uuid4().hex[:12]}"
         materials = [
             {
@@ -74,9 +75,9 @@ def xhs_generate_tool(
         env = os.environ.copy()
         env.update(
             {
-                "USTC_LLM_API_KEY": provider.api_key,
-                "USTC_LLM_BASE_URL": provider.base_url.removesuffix("/v1"),
-                "USTC_LLM_TIMEOUT": str(provider.timeout_seconds),
+                "USTC_LLM_API_KEY": active_provider.api_key,
+                "USTC_LLM_BASE_URL": active_provider.base_url.removesuffix("/v1"),
+                "USTC_LLM_TIMEOUT": str(active_provider.timeout_seconds),
                 "XHS_AGENT_RENDERER": "html-strict",
                 "CONNECT_JOB_ID": context.job_id,
                 "CONNECT_EMIT_EVENTS": "1",

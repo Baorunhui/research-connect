@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Research Connect 配置中心</title>
+  <style>
+    :root{color-scheme:light;--bg:#f5f7fb;--card:#fff;--ink:#172033;--muted:#667085;--line:#e4e8f0;--brand:#315efb;--ok:#16865b;--warn:#b56800;--bad:#c63d47;--shadow:0 12px 34px rgba(31,45,78,.08)}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC",sans-serif}
+    header{background:linear-gradient(135deg,#16233f,#315efb);color:#fff;padding:34px max(20px,calc((100vw - 1080px)/2));box-shadow:var(--shadow)}
+    header h1{margin:0 0 8px;font-size:28px} header p{margin:0;opacity:.84;max-width:760px}
+    main{max-width:1080px;margin:0 auto;padding:24px 18px 64px}.notice{background:#eef3ff;border:1px solid #cfdcff;border-radius:14px;padding:14px 16px;margin-bottom:20px}
+    h2{font-size:21px;margin:28px 0 12px}.pipeline{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin:14px 0;box-shadow:var(--shadow)}
+    .pipeline h3{margin:0 0 5px;font-size:18px}.pipeline-note{color:var(--muted);font-size:13px;margin:6px 0 12px}.steps{display:grid;gap:9px}
+    .step{display:grid;grid-template-columns:32px minmax(150px,220px) 1fr auto;gap:10px;align-items:center;border-top:1px solid var(--line);padding:11px 0}.step:first-child{border-top:0}
+    .num{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:#edf1ff;color:var(--brand);font-weight:700}.provider-name{font-weight:650}.desc{color:var(--muted)}
+    .actions{display:flex;gap:7px;align-items:center}.status{font-size:12px;padding:3px 8px;border-radius:99px;background:#eef1f5;color:var(--muted);white-space:nowrap}.status.ready{background:#e8f7f0;color:var(--ok)}.status.missing{background:#fff3de;color:var(--warn)}.status.disabled{background:#f0f1f3;color:#777}
+    button{border:0;border-radius:9px;padding:8px 11px;background:#edf1ff;color:#244bc5;font-weight:650;cursor:pointer}button.primary{background:var(--brand);color:#fff}button.danger{background:#fff0f1;color:var(--bad)}button:disabled{opacity:.5;cursor:not-allowed}
+    .sources{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.source{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px}.source label{display:flex;gap:9px;align-items:center;font-weight:650}.source p{color:var(--muted);font-size:13px;margin:6px 0 0}
+    dialog{width:min(620px,calc(100vw - 28px));border:0;border-radius:18px;padding:0;box-shadow:0 30px 90px rgba(17,27,52,.28)}dialog::backdrop{background:rgba(17,27,52,.48)}
+    .modal{padding:22px}.modal-head{display:flex;justify-content:space-between;gap:12px}.modal h3{margin:0;font-size:21px}.modal p{color:var(--muted)}.field{margin:13px 0}.field label{display:block;font-size:13px;font-weight:650;margin-bottom:5px}.field input{width:100%;padding:11px 12px;border:1px solid #ccd3df;border-radius:9px;font:inherit}.toggle{display:flex!important;gap:8px;align-items:center}.toggle input{width:auto}
+    .modal-actions{display:flex;justify-content:space-between;gap:10px;margin-top:20px}.right{display:flex;gap:8px}.result{min-height:24px;margin-top:12px;font-size:13px}.result.ok{color:var(--ok)}.result.bad{color:var(--bad)}
+    .save-sources{margin-top:12px}.footer-note{color:var(--muted);font-size:13px;margin-top:24px}.loading{padding:50px;text-align:center;color:var(--muted)}
+    @media(max-width:760px){header{padding:26px 18px}.step{grid-template-columns:30px 1fr}.desc{grid-column:2}.actions{grid-column:2;justify-content:flex-start}.sources{grid-template-columns:1fr}main{padding-inline:12px}.pipeline{padding:15px}}
+  </style>
+</head>
+<body>
+<header><h1>Research Connect 配置中心</h1><p>一次配置飞书机器人、论文日报、论文总结、领域综述、查引用和小红书共同使用的外部服务。</p></header>
+<main>
+  <div class="notice"><strong>保存后如何生效：</strong>回到飞书给机器人发送任意消息，Connect Hub 会自动拉取最新配置。API Key 通过当前 HTTPS 页面提交；请勿转发本页地址，它本身就是配置权限凭证。</div>
+  <div id="app" class="loading">正在读取配置…</div>
+</main>
+<dialog id="editor"><form method="dialog" class="modal" id="editor-form"><div class="modal-head"><div><h3 id="editor-title"></h3><p id="editor-desc"></p></div><button value="cancel" aria-label="关闭">关闭</button></div><div id="fields"></div><div id="probe-result" class="result"></div><div class="modal-actions"><button type="button" id="probe">测试可用性</button><div class="right"><button value="cancel">取消</button><button type="button" class="primary" id="save">保存</button></div></div></form></dialog>
+<script>
+const app=document.getElementById('app'),dialog=document.getElementById('editor'),fields=document.getElementById('fields'),probeResult=document.getElementById('probe-result');
+let catalog={providers:[],pipelines:[]},config={providers:{},paper_sources:{}},editing=null;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const def=id=>catalog.providers.find(p=>p.id===id)||{id,label:id,fields:[],secret_fields:[]};
+function providerStatus(id){const d=def(id),p=config.providers[id]||{};if(p.enabled===false)return['未启用','disabled'];const secrets=d.secret_fields||[];if(secrets.length&&!p.configured)return['缺少凭据','missing'];if((d.fields||[]).includes('base_url')&&!p.base_url)return['缺少地址','missing'];return['已配置','ready'];}
+function render(){let html='<h2>按功能流水线查看配置</h2>';for(const pipe of catalog.pipelines){html+=`<section class="pipeline"><h3>${esc(pipe.title)}</h3>${pipe.note?`<div class="pipeline-note">${esc(pipe.note)}</div>`:''}<div class="steps">`;pipe.steps.forEach((step,i)=>{const d=def(step[0]),s=providerStatus(step[0]);html+=`<div class="step"><span class="num">${i+1}</span><span class="provider-name">${esc(d.label)}</span><span class="desc">${esc(step[1])}</span><span class="actions"><span class="status ${s[1]}">${s[0]}</span><button onclick="openEditor('${esc(step[0])}')">配置</button></span></div>`});html+='</div></section>'}
+  const sources=config.paper_sources||{};html+='<h2>论文源选择</h2><div class="sources">'+sourceCard('arxiv','arXiv 远程论文池','日报与综述默认使用 Supabase 近期论文池。',sources.arxiv?.enabled!==false,false)+sourceCard('deepxiv','DeepXiv 补充源','综述可选的新论文、被引数与外部语义召回。',!!sources.deepxiv?.enabled,false)+sourceCard('kaggle','Kaggle 本地快照','demo 版不部署，保持关闭。',false,true)+'</div><button class="primary save-sources" onclick="saveSources()">保存论文源选择</button>';
+  html+='<p class="footer-note">飞书 App Secret 和 Report Hub Agent Token 属于启动引导凭据，本 demo 仍从服务器本机 .env 读取，避免在机器人运行期间改坏连接。</p>';app.className='';app.innerHTML=html;}
+function sourceCard(id,title,text,checked,disabled){return `<div class="source"><label><input type="checkbox" data-source="${id}" ${checked?'checked':''} ${disabled?'disabled':''}>${esc(title)}</label><p>${esc(text)}</p></div>`}
+window.openEditor=id=>{editing=id;const d=def(id),p=config.providers[id]||{};document.getElementById('editor-title').textContent=d.label;document.getElementById('editor-desc').textContent=d.description||'';fields.innerHTML='';for(const name of d.fields||[]){if(name==='enabled'){fields.insertAdjacentHTML('beforeend',`<div class="field"><label class="toggle"><input name="enabled" type="checkbox" ${p.enabled!==false?'checked':''}>启用这个 Provider</label></div>`);continue}const secret=(d.secret_fields||[]).includes(name);const labels={base_url:'API 端点',model:'模型名称',api_key:'API Key',anon_key:'Anon / Publishable Key',papers_table:'论文表名',bm25_rpc:'BM25 RPC',vector_rpc:'向量 RPC',email:'联系邮箱'};fields.insertAdjacentHTML('beforeend',`<div class="field"><label>${esc(labels[name]||name)}</label><input name="${esc(name)}" type="${secret?'password':'text'}" value="${secret?'':esc(p[name]||'')}" placeholder="${secret&&p.configured?'已配置，留空保持不变':''}"></div>`)}probeResult.textContent='';probeResult.className='result';dialog.showModal()};
+function formValue(){const d=def(editing),out={};for(const name of d.fields||[]){const el=fields.querySelector(`[name="${name}"]`);out[name]=name==='enabled'?!!el.checked:el.value.trim()}return out}
+document.getElementById('save').onclick=async()=>{const value=formValue();setBusy(true);try{const r=await fetch('api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providers:{[editing]:value}})}),data=await r.json();if(!r.ok)throw Error(data.detail||data.error||'保存失败');await load();dialog.close()}catch(e){showResult(e.message,false)}finally{setBusy(false)}};
+document.getElementById('probe').onclick=async()=>{setBusy(true);showResult('正在发起最小测试请求…',true);try{const r=await fetch(`api/probe/${encodeURIComponent(editing)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:formValue()})}),data=await r.json();showResult(`${data.message||data.status}${data.latency_ms!=null?'（'+data.latency_ms+' ms）':''}`,!!data.ok)}catch(e){showResult(e.message,false)}finally{setBusy(false)}};
+function setBusy(v){document.getElementById('save').disabled=v;document.getElementById('probe').disabled=v}function showResult(t,ok){probeResult.textContent=t;probeResult.className='result '+(ok?'ok':'bad')}
+window.saveSources=async()=>{const body={paper_sources:{}};document.querySelectorAll('[data-source]').forEach(el=>body.paper_sources[el.dataset.source]={enabled:!!el.checked});const r=await fetch('api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(r.ok){await load();alert('论文源选择已保存')}else alert('保存失败')};
+async function load(){const [c1,c2]=await Promise.all([fetch('api/catalog'),fetch('api/config')]);if(!c1.ok||!c2.ok)throw Error('配置服务不可用');catalog=await c1.json();config=await c2.json();render()}
+load().catch(e=>{app.textContent='加载失败：'+e.message});
+</script>
+</body></html>

@@ -16,7 +16,7 @@
 FeishuConnector
   ↓ 快速入队，避免阻塞飞书 3 秒确认窗口
 ChatService
-  ├─ /ping /help /model /reset /jobs /job /cancel /web
+  ├─ /ping /help /model /reset /jobs /job /cancel /web /config
   ├─ 单 Agent 生成式编排（自然追问或固定工具调用）
   ├─ 模型按需调用 Exa MCP 搜索 + Jina Reader
   ├─ 每消息程序护栏与 agent run/step 审计

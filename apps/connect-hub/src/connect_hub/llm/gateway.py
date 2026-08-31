@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
@@ -56,16 +57,30 @@ class LLMGateway:
         *,
         client_factory: ClientFactory = _default_client_factory,
     ) -> None:
-        self._providers = tuple(provider for provider in providers if provider.configured)
-        if not self._providers:
-            raise ValueError("at least one configured LLM provider is required")
-        self._clients = {
-            provider.name: client_factory(provider) for provider in self._providers
-        }
+        self._client_factory = client_factory
+        self._lock = threading.RLock()
+        self._providers: tuple[ProviderSettings, ...] = ()
+        self._clients: dict[str, Any] = {}
+        self.update_providers(providers)
+
+    def update_providers(self, providers: Iterable[ProviderSettings]) -> None:
+        configured = tuple(provider for provider in providers if provider.configured)
+        clients = {provider.name: self._client_factory(provider) for provider in configured}
+        with self._lock:
+            self._providers = configured
+            self._clients = clients
 
     @property
     def provider_names(self) -> tuple[str, ...]:
-        return tuple(provider.name for provider in self._providers)
+        with self._lock:
+            return tuple(provider.name for provider in self._providers)
+
+    @property
+    def primary_provider(self) -> ProviderSettings:
+        with self._lock:
+            if not self._providers:
+                raise LLMGatewayError("no configured LLM provider; open /config first")
+            return self._providers[0]
 
     def chat(
         self,
@@ -77,8 +92,11 @@ class LLMGateway:
         tool_choice: str | Mapping[str, Any] | None = None,
     ) -> LLMResponse:
         errors: list[str] = []
-        for provider in self._providers:
-            client = self._clients[provider.name]
+        with self._lock:
+            providers = self._providers
+            clients = dict(self._clients)
+        for provider in providers:
+            client = clients[provider.name]
             request: dict[str, Any] = {
                 "model": provider.model,
                 "messages": list(messages),
@@ -114,4 +132,6 @@ class LLMGateway:
             except Exception as exc:  # provider errors vary between compatible APIs
                 logger.warning("LLM provider %s failed: %s", provider.name, exc)
                 errors.append(f"{provider.name}: {type(exc).__name__}: {exc}")
+        if not providers:
+            raise LLMGatewayError("no configured LLM provider; open /config first")
         raise LLMGatewayError("all LLM providers failed; " + " | ".join(errors))

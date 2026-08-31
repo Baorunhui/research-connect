@@ -33,6 +33,17 @@ class ConversationStore:
         connection.row_factory = sqlite3.Row
         return connection
 
+    def claim_notice(self, subject_key: str, notice_key: str) -> bool:
+        """Atomically claim a one-time user notice across concurrent messages."""
+
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT OR IGNORE INTO user_notices(subject_key, notice_key, shown_at) VALUES (?, ?, ?)",
+                (subject_key, notice_key, now),
+            )
+            return cursor.rowcount == 1
+
     def _initialize(self) -> None:
         with self._lock, self._connect() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
@@ -202,6 +213,16 @@ class ConversationStore:
                     web_mode TEXT NOT NULL DEFAULT 'auto'
                         CHECK(web_mode IN ('auto', 'on', 'off')),
                     updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_notices (
+                    subject_key TEXT NOT NULL,
+                    notice_key TEXT NOT NULL,
+                    shown_at TEXT NOT NULL,
+                    PRIMARY KEY(subject_key, notice_key)
                 )
                 """
             )

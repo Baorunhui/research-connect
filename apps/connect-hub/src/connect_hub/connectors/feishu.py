@@ -257,6 +257,9 @@ class FeishuConnector:
 
     def _process_message(self, message: InboundMessage) -> None:
         try:
+            notice = self.service.first_use_notice(message.session_key)
+            if notice:
+                self._reply_text(message.message_id, notice)
             reply = self.service.handle(
                 message.session_key,
                 message.text,

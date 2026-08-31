@@ -29,6 +29,17 @@
 
 ## P0：统一 Provider 与凭据管理
 
+### Demo 版已完成（2026-08-31）
+
+- [x] Report Hub 提供统一 HTTPS 配置中心，按实际功能流水线展示 Provider 用途、启用状态和论文源选择。
+- [x] 公网读取接口只返回配置状态与空白密钥；密钥留空保存表示保留旧值。
+- [x] 每个 Provider 提供用户主动点击的最小可用性探测，不在任务预检时自动消耗额度。
+- [x] Connect Hub 启动时导入现有配置，运行时从 Report Hub 拉取，并写入权限为 `0600` 的本机 `providers.json` 缓存。
+- [x] 飞书增加 `/config`（兼容 `/settings`、`/配置`），同一飞书用户首次使用时只提醒一次配置入口。
+- [x] 统一配置可下发给 LLM Gateway、Daily Paper 和 CitationClaw；Daily Paper 的局部配置接口已允许更新 `source_backends`/`supabase`。
+
+本 demo 暂不实现 OS Keyring、SQLite `secret_ref` 元数据、严格的 RuntimeCredentials 白名单信封和多级 Provider 优先级；飞书 App Secret 与 Report Hub Agent Token 仍是安装启动凭据，保留在本机 `.env`。
+
 ### 当前问题
 
 同一个凭据目前可能从系统环境变量、模块 `.env`、模块 YAML/JSON 配置、网页接口请求和任务 `secret` 五处进入。不同入口的优先级由各模块自己决定，已经造成“日报收到 embedding key、综述没有收到”的真实故障。CitationClaw 还会把 Connect Hub 的 LLM 环境变量同步进自己的配置对象，Daily Paper 网页则能把聊天 key 写入 `config.yaml`，职责边界不一致。
@@ -38,9 +49,9 @@
 - [ ] `.env` 只保留为首次安装/旧配置导入入口：启动时导入统一存储并提示迁移结果，运行期不再参与多层覆盖；模块自己的 `.env` 和 `config.yaml` 不再保存 API key。
 - [ ] 定义稳定的凭据引用，例如 `llm.primary`、`llm.fallback`、`embedding.paper`、`rerank.paper`、`supabase.arxiv`、`citation.semantic_scholar`、`citation.scraperapi`、`feishu.bot`、`report_hub.agent`。
 - [ ] 定义 `RuntimeCredentials` 白名单信封：Hub 只把一次任务实际需要的最小凭据传给 adapter；HTTP 服务在创建公开 job 前剥离，子进程只在进程环境中接收，所有日志、事件、SQLite 和产物统一脱敏。
-- [ ] 增加统一配置页：按 Provider 展示用途、端点、模型、是否必需、配置状态和“测试连接”按钮；读取接口只返回掩码及状态，永不回传完整 key。
+- [x] 增加统一配置页：按 Provider 展示用途、端点、模型、配置状态和“测试连接”按钮；读取接口只返回状态，永不回传完整 key。
 - [ ] 明确唯一优先级：任务显式选择的 provider → 统一 ProviderRegistry 默认项；不再允许模块 `.env`、模块配置和请求字段暗中互相覆盖。
-- [ ] 增加 `doctor providers`：只报告 `ready / missing_credential / disabled / unreachable`，联网探测必须由用户主动点击或显式执行，不能在每次任务预检时消耗额度。
+- [x] 配置页连接探测报告 `ready / missing_credential / disabled / unreachable`；命令行 `doctor providers` 暂留后续。联网探测只由用户点击触发。
 
 ### API/凭据使用盘点
 

@@ -1,5 +1,16 @@
 # 公网 Report Hub：技术路线与服务器交付说明
 
+## 2026-08-31：统一配置中心更新
+
+本次更新需要重新构建并滚动重启 Report Hub Docker 容器。无需新增端口、数据库或环境变量；仍使用现有 HTTPS 域名、SQLite 数据卷和 `REPORT_HUB_AGENT_TOKEN`。
+
+- `PUT /api/v1/sites/{site_id}/config` 供 Connect Hub 使用 Agent Token 初始化安装级配置；
+- `/configure/{public_token}/` 是带随机 bearer token 的手机兼容配置页；
+- 页面可保存、查看脱敏状态，并主动测试 LLM、Embedding、Reranker、Supabase、Exa、Jina 和 Citation Provider；
+- 配置仍保存在 Report Hub 数据卷内的 SQLite，不进入 Git 或模块静态网页。
+
+部署后先检查 `/healthz`。本机 Connect Hub 重启时会自动创建 `connect-config-*` 稳定站点；配置页链接本身具有管理权限，不应转发或公开。
+
 ## 一句话技术路线
 
 每位用户的 Windows/Linux 电脑负责执行论文日报、查引用和小红书任务；共同的公网 Report Hub 接收配置、进度/运行快照和最终静态网页。Daily Paper 与 CitationClaw 按安装实例发布固定原版网页地址；任务开始时链接就发到飞书，手机和电脑均可查看，任务结束后内容继续保存在公网服务器。

@@ -21,6 +21,12 @@ from pydantic import BaseModel, Field
 
 from .archive import InvalidReportArchive, install_report_zip
 from .config import Settings
+from .provider_config import (
+    catalog_payload,
+    merge_public_update,
+    probe_provider,
+    public_config,
+)
 from .storage import Storage
 
 JOB_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -277,6 +283,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "updated_at": (record or {}).get("updated_at"),
         }
 
+    @app.put("/api/v1/sites/{site_id}/config", dependencies=[Depends(require_agent)])
+    def save_agent_site_config(site_id: str, body: SiteConfigUpdate) -> dict[str, Any]:
+        resolve_site(site_id)
+        storage.save_site_config(site_id, body.config)
+        return {"accepted": True, "configured": True}
+
     @app.post("/api/v1/jobs/{job_id}/events", dependencies=[Depends(require_agent)])
     async def append_event(job_id: str, body: EventCreate) -> dict[str, Any]:
         job = resolve_job(job_id)
@@ -361,6 +373,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def public_config_payload(site: dict[str, Any]) -> dict[str, Any]:
         record = storage.get_site_config(site["site_id"])
         return dict((record or {}).get("config") or {})
+
+    def configuration_site(public_token: str) -> dict[str, Any]:
+        site = public_site(public_token)
+        if site["module_name"] != "other":
+            raise HTTPException(status_code=404, detail="configuration site not found")
+        return site
+
+    @app.get("/configure/{public_token}")
+    def configuration_without_slash(public_token: str) -> Response:
+        configuration_site(public_token)
+        return Response(status_code=307, headers={"Location": f"/configure/{public_token}/"})
+
+    @app.get("/configure/{public_token}/", response_class=HTMLResponse)
+    def configuration_page(public_token: str) -> str:
+        configuration_site(public_token)
+        return (static_dir / "config.html").read_text(encoding="utf-8")
+
+    @app.get("/configure/{public_token}/api/catalog")
+    def configuration_catalog(public_token: str) -> dict[str, Any]:
+        configuration_site(public_token)
+        return catalog_payload()
+
+    @app.get("/configure/{public_token}/api/config")
+    def configuration_snapshot(public_token: str) -> dict[str, Any]:
+        site = configuration_site(public_token)
+        return public_config(public_config_payload(site))
+
+    @app.post("/configure/{public_token}/api/config")
+    def save_configuration(public_token: str, body: dict[str, Any]) -> dict[str, Any]:
+        site = configuration_site(public_token)
+        merged = merge_public_update(public_config_payload(site), body)
+        storage.save_site_config(site["site_id"], merged)
+        return {"ok": True, "configured": True, "config": public_config(merged)}
+
+    @app.post("/configure/{public_token}/api/probe/{provider_id:path}")
+    def probe_configuration_provider(
+        public_token: str, provider_id: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        site = configuration_site(public_token)
+        update = {"providers": {provider_id: dict(body.get("provider") or {})}}
+        effective = merge_public_update(public_config_payload(site), update)
+        return probe_provider(provider_id, effective)
 
     @app.get("/s/{public_token}/api/local/config/structured")
     def public_daily_config(public_token: str) -> dict[str, Any]:
