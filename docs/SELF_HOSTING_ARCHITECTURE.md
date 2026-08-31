@@ -94,10 +94,10 @@ Report Hub 是唯一需要公网域名的组件。用户电脑主动建立出站
 
 ### Python 发行方式
 
-- 支持 Python 3.10+；
+- 支持 Python 3.11～3.13，推荐 Python 3.11；
 - 提供 Bash 和 PowerShell 安装/启动脚本；
-- Connect Hub 使用轻量核心环境，各领域模块允许独立 venv；
-- `setup` 负责生成配置，`doctor` 检查飞书、LLM、Report Hub 和模块依赖；
+- Python 版默认使用仓库根目录的统一 `.venv`，避免每个模块各维护一套重复环境；Docling 作为同一环境中的可选扩展安装；
+- `setup.sh/setup.ps1` 负责创建环境与配置模板，`doctor` 检查飞书、LLM、Report Hub、模块依赖和平台能力；
 - 不依赖 Bash 专属语义完成 Windows 安装。
 
 ### Docker 发行方式

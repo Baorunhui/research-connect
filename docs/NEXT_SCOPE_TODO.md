@@ -144,7 +144,7 @@ subscriptions:
 
 ## P1：发行与清理
 
-- [ ] 为 Windows/Linux 增加 `doctor` 与统一 `serve`，检查 Python、字体、浏览器、端口和外部 Provider。
+- [x] 提供 Windows/Linux Python 安装脚本、统一 `serve` 和基础 `doctor`，检查 Python、核心配置、依赖、数据目录、浏览器与公网服务。字体、端口占用和外部 Provider 深度探测按真实问题后续补充。
 - [ ] 增加 Windows 与 Linux CI；之后再制作 Docker CPU 镜像。
 - [ ] 清理三个上游模块中不再使用的实验脚本、旧缓存实现和冗余测试夹具；删除前逐项核对模块负责人仍在使用的入口。
 

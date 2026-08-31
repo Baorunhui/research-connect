@@ -1,59 +1,173 @@
 # Research Connect
 
-Research Connect 是一套面向个人用户的本地优先研究工具框架。每位用户在自己的 Windows 电脑、Linux 工作站或服务器上安装一份，通过飞书机器人调用论文日报、查引用和小红书内容生成等模块。
+Research Connect 是一套可自行部署的本地优先研究工具。每位用户在自己的 Windows 电脑、Linux 工作站或服务器上运行一份，通过飞书机器人在手机或电脑上调用研究功能。
 
-项目不是中心化计算 SaaS：论文处理、缓存、配置和本地任务数据默认留在用户自己的机器上。飞书承担跨设备入口和通知；轻量 Report Hub 只保存用户选择发布的任务进度与最终网页，让手机或其他电脑长期打开同一链接。
+当前 Python demo 包含：
 
-> 当前仓库已完成统一 Python 环境和公共运行时，尚未完成新版论文日报/CitationClaw 的正式任务适配，不能视为最终发行版。
+- 论文日报：按主题检索近期论文，经过 BM25、向量召回、RRF、Reranker 和 LLM 精筛生成日报；
+- 论文阅读：总结论文 URL/PDF，或围绕主题和种子论文生成领域综述；
+- 查引用：打开 CitationClaw 原版网页，查询施引论文、作者和引用语境；
+- 小红书：短时多次生成图文内容包；
+- 飞书 Connect Hub：自然语言理解、联网富化、任务进度、取消、缓存和用量记录；
+- 公网 Report Hub：把原版网页和历史报告提供给手机/其他电脑访问，不要求用户机器有公网 IP。
 
-## 仓库结构
+论文处理和任务进程运行在用户自己的机器；Embedding、Reranker、Supabase、Exa、Jina 和 LLM 可使用远程服务。默认不下载本地 embedding/reranker 模型，不需要 PostgreSQL、Redis 或 Docker。
 
-```text
-apps/connect-hub/                 飞书、LLM 网关、任务和统一事件中心
-apps/report-hub/                  公网任务进度与静态报告托管
-packages/research-connect-core/   共享 LLM、数据目录、文件缓存和 CLI 事件运行时
-modules/daily-paper-reader/      论文日报源码快照
-modules/citationclaw/            查引用源码快照
-modules/xhs-agent/               小红书内容生成源码快照
-docs/                            总体架构、路线和模块版本记录
-```
+> 当前是面向少量测试用户的 Python demo。每个安装只运行一个 Connect Hub；公网网页采用随机 bearer 链接，不应公开转发。
 
-仓库采用单体源码仓库而不是 Git submodule。最终用户只需要一次普通 `git clone`。Connect Hub、Report Hub、CitationClaw、Daily Paper 和 XHS Agent 共用根目录下一个 Python 3.11～3.13 虚拟环境；Docling 作为可选依赖，不进入默认环境。
+## 安装前准备
 
-## 统一安装
+- Windows 10/11 或常见 x86-64 Linux；
+- Python 3.11～3.13（推荐 3.11）和 Git；
+- 可以访问 PyPI、GitHub、飞书和所配置 API 的网络；
+- 自己创建的中国版飞书企业自建应用；
+- Report Hub 管理员私下发放的安装 token；
+- 一个 OpenAI 兼容 LLM 的端点、模型名和 API Key。
+
+每位用户应使用自己的飞书 App ID 和 Report Hub 安装 token。不要把服务器管理员 token 放进用户电脑。
+
+## 1. 下载与安装
 
 Linux：
 
 ```bash
+git clone https://github.com/Baorunhui/research-connect.git
+cd research-connect
 ./scripts/setup.sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-.\scripts\setup.ps1
+git clone https://github.com/Baorunhui/research-connect.git
+cd research-connect
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 ```
 
-脚本会创建根目录 `.venv`，按 `constraints.txt` 中已经联测的版本安装全部轻量依赖，并把两个模块需要的 Playwright Chromium 安装到共享数据根。需要 Docling 时使用 `RESEARCH_CONNECT_INSTALL_DOCLING=1 ./scripts/setup.sh`，Windows 使用 `-WithDocling`。
+安装脚本会：
 
-默认数据目录为 `~/.research-connect/data`，可用 `RESEARCH_CONNECT_DATA_DIR` 修改。每个模块的缓存、产物和状态位于 `modules/<模块名>/`；CitationClaw 的 JSON/PDF 内容保持为文件，`cache-index.sqlite3` 只保存键、路径、哈希和小型元数据。
+1. 创建仓库根目录下的 `.venv`；
+2. 安装 Connect Hub、Daily Paper、CitationClaw、XHS Agent 和共享运行时；
+3. 安装 Playwright Chromium；
+4. 首次运行时从 [.env.example](apps/connect-hub/.env.example) 创建本机 `apps/connect-hub/.env`，不会覆盖已有配置。
 
-所有 OpenAI 兼容调用共享进程内最多 4 并发、429/5xx 退避和 Provider 异常语义。直接运行模块 CLI 时也使用这套实现；设置 `CONNECT_EMIT_EVENTS=1` 后，会在 stderr 输出 `connect.job.v1` JSONL 事件供 Connect Hub 接管。
+需要 Daily Paper 使用 Docling 提取 PDF 图表时，推荐在首次安装时启用：
 
-## 目标部署方式
+```bash
+./scripts/setup.sh --with-docling       # Linux
+```
 
-- Python：Windows 与 Linux 上提供统一配置向导、环境检查和启动入口。
-- Docker：提供预构建镜像和 Compose 配置，默认 CPU、SQLite 和本地卷。
-- 飞书：使用出站 WebSocket 长连接，不要求用户开放机器人回调端口。
-- 实时网页：Connect Hub 创建任务后立即返回链接，浏览器通过 WebSocket 接收进度。
-- 公网报告：用户电脑仅通过出站 HTTPS 向公共或自托管 Report Hub 上报进度、上传静态结果，不需要内网穿透。
+```powershell
+.\scripts\setup.ps1 -WithDocling       # Windows
+```
 
-具体边界见 [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)、[自托管架构](docs/SELF_HOSTING_ARCHITECTURE.md)、[Report Hub 协议](docs/REPORT_HUB_V1.md)、[公网服务器交付说明](docs/PUBLIC_SERVER_HANDOFF.md)、[多安装接入](docs/REPORT_HUB_MULTI_INSTALL.md)、[开发路线](docs/ROADMAP.md) 和 [下一阶段待办](docs/NEXT_SCOPE_TODO.md)。
+Docling 支持 CPU，也会使用可用的 GPU；依赖和首次模型下载较大。未安装时 PDF 文本流程仍可运行，抽图会回退到 PyMuPDF。项目不会安装 PaperCropper、DocLayout-YOLO 或 OpenCV 路线。
 
-## 安全基线
+## 2. 填写配置
 
-仓库不提交真实飞书密钥、LLM Key、Scraper Key、SQLite、PDF、模型或生成结果。请从各模块的 `.env.example` 创建本机配置；不要把本机 `.env` 加入 Git。
+编辑 `apps/connect-hub/.env`，至少填写：
 
-## 模块来源
+```dotenv
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=xxx
 
-模块上游地址和本次导入版本记录在 [SOURCE_VERSIONS.md](docs/SOURCE_VERSIONS.md)。CitationClaw 使用的是用户提供的 `CitationClaw-20260829.tar.gz`，并非自动替换成公开仓库版本。
+LLM_BASE_URL=https://your-openai-compatible-endpoint/v1
+LLM_API_KEY=xxx
+LLM_MODEL=your-model
+
+REPORT_HUB_API_URL=https://report.sinksilk.com:8443
+REPORT_HUB_AGENT_TOKEN=rhi_xxx
+```
+
+安装 token 由 Report Hub 管理员为每个安装单独签发。LLM 配置首次启动后会导入统一配置中心；以后也可以在飞书 `/config` 返回的 HTTPS 页面修改。
+
+飞书开放平台需要添加机器人能力、权限、长连接事件和固定菜单，完整步骤见 [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)。
+
+## 3. 检查并启动
+
+Linux：
+
+```bash
+./scripts/doctor.sh
+./scripts/start.sh
+```
+
+Windows PowerShell：
+
+```powershell
+.\scripts\doctor.ps1
+.\scripts\start.ps1
+```
+
+看到飞书 WebSocket 连接成功后即可私聊机器人。终端需要保持运行，按 `Ctrl+C` 停止。`start` 会常驻轻量 Connect Hub，并自动管理本机 Daily Paper/CitationClaw HTTP 服务；重型 PDF 和论文流水线只在任务执行时运行。
+
+## 4. 使用
+
+可以直接自然语言输入，例如：
+
+```text
+帮我生成一份最近 15 天的 3D visual grounding 论文日报，使用 skims 模式
+总结这篇论文：https://arxiv.org/abs/xxxx.xxxxx
+围绕 embodied visual reasoning 生成领域综述，回溯半年，精选 8 篇
+把这份材料做成 5 页、面向研究生的小红书帖子
+```
+
+常用命令：
+
+```text
+/config          打开统一配置中心
+/paper_reader    打开论文日报/论文阅读原版网页
+/citationclaw    打开查引用原版网页
+/jobs            查看最近任务
+/cancel          取消当前任务
+/help            查看帮助
+```
+
+飞书菜单提供“读论文”“查引用”“使用帮助”。机器人默认可以联网富化含糊的研究主题；联网由 Exa MCP 搜索和 Jina URL 获取完成，不运行本地搜索模型。
+
+也可以不启动飞书，只运行单个原版模块：
+
+```bash
+.venv/bin/connect-hub --env-file apps/connect-hub/.env daily-paper
+.venv/bin/connect-hub --env-file apps/connect-hub/.env citationclaw
+```
+
+Windows 将 `.venv/bin/connect-hub` 换成 `.venv\Scripts\connect-hub.exe`。
+
+## 更新
+
+```bash
+git pull --ff-only
+./scripts/setup.sh                    # Linux
+```
+
+```powershell
+git pull --ff-only
+.\scripts\setup.ps1                  # Windows
+```
+
+脚本可以重复执行，不会覆盖 `.env`。如果原安装启用了 Docling，更新时继续传 `--with-docling` 或 `-WithDocling`。
+
+## 数据与安全
+
+- 默认数据根：`~/.research-connect/data`；可用 `RESEARCH_CONNECT_DATA_DIR` 修改；
+- SQLite 只保存任务、事件、索引和小型元数据；PDF、JSON 大对象、图片和网页仍保存为文件；
+- `.env`、本地数据库、缓存、PDF、生成结果和模型不会提交 Git；
+- Report Hub 安装 token 只允许操作本安装的资源；服务端只保存 token 哈希；
+- 公网配置读取不会回显 API Key，但拿到配置页随机链接的人可以修改配置，因此链接也应保密；
+- 一个飞书 App ID 不应在两台机器上同时运行 Connect Hub。
+
+## 仓库结构
+
+```text
+apps/connect-hub/                 飞书、LLM 网关、任务与统一事件中心
+apps/report-hub/                  公网页面、配置和受限命令中继
+packages/research-connect-core/   共享 LLM、数据目录、缓存和 CLI 事件运行时
+modules/daily-paper-reader/       论文日报、论文总结与领域综述
+modules/citationclaw/             查引用与引用画像
+modules/xhs-agent/                小红书内容生成
+scripts/                          Windows/Linux 安装、检查和启动入口
+docs/                             部署、协议和开发文档
+```
+
+进一步阅读：[Python 安装与故障排查](docs/PYTHON_INSTALL.md)、[飞书配置](docs/FEISHU_BOT_SETUP.md)、[多安装公网接入](docs/REPORT_HUB_MULTI_INSTALL.md)、[自托管架构](docs/SELF_HOSTING_ARCHITECTURE.md) 和 [下一阶段待办](docs/NEXT_SCOPE_TODO.md)。

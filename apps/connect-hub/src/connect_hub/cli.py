@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import logging
 import os
+import platform
 import signal
 import subprocess
 import sys
@@ -37,7 +39,7 @@ from connect_hub.provider_config import (
     daily_configuration,
     daily_environment,
 )
-from research_connect_core import DataPaths
+from research_connect_core import DataPaths, configure_playwright_browsers
 
 
 def _build_runtime(
@@ -263,15 +265,64 @@ def _configure_logging(level: str) -> None:
 def command_check(env_file: str | Path | None = None) -> int:
     settings = load_settings(env_file)
     _configure_logging(settings.log_level)
-    print(f"Feishu credentials: {'configured' if settings.feishu_configured else 'missing'}")
-    print(f"Feishu domain: {settings.feishu_domain}")
-    print(f"LLM providers: {', '.join(p.name + ':' + p.model for p in settings.providers) or 'missing'}")
-    print(f"SQLite path: {settings.db_path}")
+    failures: list[str] = []
+    warnings: list[str] = []
+
+    def report(label: str, ok: bool, detail: str, *, required: bool = True) -> None:
+        print(f"[{'OK' if ok else 'WARN' if not required else 'FAIL'}] {label}: {detail}")
+        if not ok:
+            (failures if required else warnings).append(label)
+
+    supported_python = (3, 11) <= sys.version_info < (3, 14)
+    report("Python", supported_python, f"{platform.python_version()} · {platform.system()} {platform.machine()}")
+    report("Feishu", settings.feishu_configured, f"domain={settings.feishu_domain}; credentials {'configured' if settings.feishu_configured else 'missing'}")
+    report(
+        "LLM",
+        settings.llm_configured,
+        ", ".join(p.name + ":" + p.model for p in settings.providers) or "missing base_url/model/api_key",
+    )
+    report(
+        "Report Hub",
+        bool(settings.report_hub_api_url and settings.report_hub_agent_token),
+        settings.report_hub_api_url or "missing REPORT_HUB_API_URL / REPORT_HUB_AGENT_TOKEN",
+    )
+    required_modules = ("fitz", "PIL", "playwright", "citationclaw", "connect_hub")
+    missing_modules = [name for name in required_modules if importlib.util.find_spec(name) is None]
+    report("Python dependencies", not missing_modules, "ready" if not missing_modules else "missing " + ", ".join(missing_modules))
+    daily_ok = settings.daily_paper_dir.is_dir() and (settings.daily_paper_dir / "src" / "local_server.py").is_file()
+    report("Daily Paper source", daily_ok, str(settings.daily_paper_dir))
+    xhs_ok = settings.xhs_agent_dir.is_dir() and (settings.xhs_agent_dir / "src" / "xhs_agent").is_dir()
+    report("XHS Agent source", xhs_ok, str(settings.xhs_agent_dir))
+    try:
+        settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+        probe = settings.db_path.parent / ".write-test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        data_ok = True
+    except OSError:
+        data_ok = False
+    report("Data directory", data_ok, str(settings.db_path.parent))
+
+    docling_ok = importlib.util.find_spec("docling") is not None and importlib.util.find_spec("pypdfium2") is not None
+    report("Docling", docling_ok, "ready" if docling_ok else "not installed; PDF figures fall back to PyMuPDF", required=False)
+    try:
+        browser_path = configure_playwright_browsers()
+        browser_names = {"chrome", "chrome.exe", "headless_shell", "headless_shell.exe"}
+        browser_ok = any(path.is_file() and path.name in browser_names for path in browser_path.rglob("*"))
+        browser_detail = str(browser_path)
+    except OSError as exc:
+        browser_ok = False
+        browser_detail = str(exc)[:160]
+    report("Playwright Chromium", browser_ok, browser_detail, required=False)
+
+    if settings.report_hub_api_url:
+        report("Report Hub health", _healthy(settings.report_hub_api_url.rstrip("/") + "/healthz"), settings.report_hub_api_url, required=False)
     if settings.feishu_allowed_open_ids:
-        print(f"Feishu allowlist: {len(settings.feishu_allowed_open_ids)} user(s)")
+        print(f"[INFO] Feishu allowlist: {len(settings.feishu_allowed_open_ids)} user(s)")
     else:
-        print("Feishu allowlist: empty (application availability scope applies)")
-    return 0 if settings.feishu_configured and settings.llm_configured else 2
+        print("[INFO] Feishu allowlist: empty; application availability scope applies")
+    print(f"Doctor result: {len(failures)} failure(s), {len(warnings)} optional warning(s)")
+    return 0 if not failures else 2
 
 
 def command_chat(env_file: str | Path | None = None) -> int:
@@ -575,13 +626,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env-file", help="load configuration from this .env file")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("check", help="validate configuration without revealing secrets")
+    subparsers.add_parser("doctor", help="check configuration, dependencies and platform readiness")
     subparsers.add_parser("chat", help="test the LLM gateway in a local terminal")
     subparsers.add_parser("feishu", help="start the Feishu WebSocket connector")
     subparsers.add_parser("serve", help="start local module APIs and the Feishu connector")
     subparsers.add_parser("daily-paper", help="start Daily Paper with public config preflight")
     subparsers.add_parser("citationclaw", help="start CitationClaw with public config preflight")
     args = parser.parse_args(argv)
-    if args.command == "check":
+    if args.command in {"check", "doctor"}:
         return command_check(args.env_file)
     if args.command == "chat":
         return command_chat(args.env_file)
