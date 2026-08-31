@@ -705,6 +705,8 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
         if arxiv_id:
             emit("fetch_arxiv", f"正在从 arXiv 获取元数据（{arxiv_id}）")
             meta = _fetch_arxiv_metadata(arxiv_id)
+            if meta.get("metadata_source") == "arxiv_abs_fallback":
+                emit("fetch_arxiv", "arXiv Atom API 受限，已从论文摘要页取得完整元数据")
             title, text = meta["title"], "标题：" + meta["title"] + "\n\n摘要：" + meta["abstract"]
             kind = "arxiv"
             paper_meta = meta
@@ -1562,17 +1564,30 @@ def _extract_arxiv_id(url: str) -> str | None:
     return None
 
 
-def _fetch_arxiv_metadata(arxiv_id: str) -> dict[str, str]:
-    """通过 arXiv Atom API 拉取标题与摘要。失败抛异常。"""
+def _fetch_arxiv_metadata(arxiv_id: str) -> dict[str, Any]:
+    """Fetch arXiv metadata, falling back to the public abstract page.
+
+    ``export.arxiv.org`` can rate-limit a shared campus/server IP while the
+    corresponding ``arxiv.org/abs`` page remains available. The abstract page
+    exposes standard citation meta tags, so this fallback needs no LLM call.
+    """
     import urllib.parse
     import xml.etree.ElementTree as ET
 
-    url = "http://export.arxiv.org/api/query?" + urllib.parse.urlencode({"id_list": arxiv_id})
-    data = _http_get_with_retry(
-        url,
-        headers={"User-Agent": "daily-paper-reader/1.0"},
-        timeout=20,
-    ).decode("utf-8", errors="replace")
+    url = "https://export.arxiv.org/api/query?" + urllib.parse.urlencode({"id_list": arxiv_id})
+    try:
+        data = _http_get_with_retry(
+            url,
+            headers={"User-Agent": "research-connect/0.1 (personal paper reader)"},
+            timeout=20,
+        ).decode("utf-8", errors="replace")
+    except Exception as atom_error:  # noqa: BLE001 - fallback preserves availability
+        try:
+            return _fetch_arxiv_abs_metadata(arxiv_id)
+        except Exception as fallback_error:  # noqa: BLE001
+            raise RuntimeError(
+                f"arXiv 元数据获取失败：Atom={atom_error}; abs={fallback_error}"
+            ) from fallback_error
     ns = {"a": "http://www.w3.org/2005/Atom"}
     root = ET.fromstring(data)
     entry = root.find("a:entry", ns)
@@ -1593,6 +1608,49 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict[str, str]:
         "published": published,
         "link": f"https://arxiv.org/abs/{arxiv_id}",
         "pdf_url": f"https://arxiv.org/pdf/{arxiv_id}",
+    }
+
+
+def _fetch_arxiv_abs_metadata(arxiv_id: str) -> dict[str, Any]:
+    """Parse standard citation metadata from ``arxiv.org/abs/<id>``."""
+    from html.parser import HTMLParser
+
+    class _MetaParser(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=True)
+            self.values: dict[str, list[str]] = {}
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag.lower() != "meta":
+                return
+            values = {str(key).lower(): str(value or "") for key, value in attrs}
+            name = (values.get("name") or values.get("property") or "").lower()
+            content = values.get("content", "").strip()
+            if name and content:
+                self.values.setdefault(name, []).append(content)
+
+    url = f"https://arxiv.org/abs/{arxiv_id}"
+    data = _http_get_with_retry(
+        url,
+        headers={"User-Agent": "research-connect/0.1 (personal paper reader)"},
+        timeout=20,
+    ).decode("utf-8", errors="replace")
+    parser = _MetaParser()
+    parser.feed(data)
+    title = " ".join((parser.values.get("citation_title") or [""])[0].split())
+    abstract = " ".join((parser.values.get("og:description") or [""])[0].split())
+    if not title:
+        raise ValueError(f"arXiv 摘要页没有论文元数据：{arxiv_id}")
+    published = (parser.values.get("citation_date") or [""])[0].replace("/", "-")
+    pdf_url = (parser.values.get("citation_pdf_url") or [""])[0]
+    return {
+        "title": title,
+        "abstract": abstract,
+        "authors": parser.values.get("citation_author") or [],
+        "published": published,
+        "link": url,
+        "pdf_url": pdf_url or f"https://arxiv.org/pdf/{arxiv_id}",
+        "metadata_source": "arxiv_abs_fallback",
     }
 
 

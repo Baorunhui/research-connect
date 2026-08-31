@@ -183,6 +183,41 @@ def test_extract_arxiv_id_variants():
         assert _extract_arxiv_id(url) == expected, url
 
 
+def test_fetch_arxiv_metadata_falls_back_to_abs_page_on_atom_429(monkeypatch):
+    import urllib.error
+    import src.local_server as ls
+
+    html = b'''<html><head>
+      <meta property="og:description" content="A grounded 3D vision abstract." />
+      <meta name="citation_title" content="Scene Graph Grounder" />
+      <meta name="citation_author" content="Author One" />
+      <meta name="citation_author" content="Author Two" />
+      <meta name="citation_date" content="2026/05/20" />
+      <meta name="citation_pdf_url" content="https://arxiv.org/pdf/2605.21788" />
+    </head></html>'''
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append(url)
+        if "export.arxiv.org" in url:
+            raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+        return html
+
+    monkeypatch.setattr(ls, "_http_get_with_retry", fake_get)
+
+    meta = ls._fetch_arxiv_metadata("2605.21788")
+
+    assert calls == [
+        "https://export.arxiv.org/api/query?id_list=2605.21788",
+        "https://arxiv.org/abs/2605.21788",
+    ]
+    assert meta["title"] == "Scene Graph Grounder"
+    assert meta["authors"] == ["Author One", "Author Two"]
+    assert meta["abstract"] == "A grounded 3D vision abstract."
+    assert meta["published"] == "2026-05-20"
+    assert meta["metadata_source"] == "arxiv_abs_fallback"
+
+
 def test_extract_pdf_text_returns_text():
     from src.local_server import _extract_pdf_text
     text = _extract_pdf_text(_tiny_pdf_b64())
