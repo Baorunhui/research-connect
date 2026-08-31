@@ -298,7 +298,7 @@ def build_daily_paper_site_archive(project_dir: Path) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         index_text = index.read_text(encoding="utf-8", errors="replace")
-        marker = """<script>
+        marker = r"""<script>
     (function () {
       var match = String(window.location.pathname || '').match(/^(\/s\/[^/]+)/);
       if (match) window.DPR_LOCAL_API_BASE = match[1];
@@ -336,7 +336,7 @@ def build_citationclaw_site_archive(project_dir: Path) -> bytes:
         ).render(now=date.today().isoformat())
     except Exception as exc:
         raise ReportHubError(f"REPORT_ARTIFACT_INVALID: cannot render CitationClaw UI: {exc}") from exc
-    marker = """<script>
+    marker = r"""<script>
     (function () {
       var match = String(window.location.pathname || '').match(/^(\/s\/[^/]+)/);
       if (match) window.CCR_PUBLIC_API_BASE = match[1];

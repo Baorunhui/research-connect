@@ -565,9 +565,15 @@ class _LocalService:
         if _healthy(endpoint + health_path):
             logging.getLogger(__name__).info("reusing %s service at %s", name, endpoint)
             return cls(name)
+        child_env = dict(os.environ)
+        # Windows commonly defaults redirected child stdout to a legacy code
+        # page (for example GBK/cp936). CitationClaw's startup output contains
+        # Unicode symbols, so force every managed Python service to UTF-8.
+        child_env["PYTHONUTF8"] = "1"
+        child_env["PYTHONIOENCODING"] = "utf-8"
         options: dict[str, object] = {
             "cwd": str(cwd),
-            "env": dict(os.environ),
+            "env": child_env,
             "text": True,
         }
         log_dir = DataPaths.for_module("connect-hub").state / "service-logs"
