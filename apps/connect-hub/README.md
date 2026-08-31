@@ -42,7 +42,8 @@ External adapters
 - `generate_paper_survey`：按原版 `/api/survey` 综述流水线执行召回、精选、抽取、聚类、深读、写作与审校；支持联网富化主题，以及 URL/PDF 种子论文。
 
 飞书入站 PDF 需要机器人具备已发布的 `im:resource` 权限。附件限制为 PDF、最大 30 MiB；文件保存到统一 data root 的 `modules/connect-hub/artifacts/inbound/`，不会写入 Git 仓库。
-- `lookup_citations`：调用 CitationClaw，转发进度、支持取消，并发布最终 Dashboard。
+- CitationClaw 不注册为 LLM 工具。用户点击“查引用”菜单或发送
+  `/citationclaw` 打开固定公网网页，后续检索与任务操作均在原版网页完成。
 
 工具只能来自静态注册表。LLM不能执行任意 shell、动态导入代码或调用未注册工具；每次工具调用的参数、状态、结果/错误和时间都会审计到 SQLite `tool_runs` 表。
 

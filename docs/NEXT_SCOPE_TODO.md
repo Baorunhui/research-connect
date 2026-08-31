@@ -5,7 +5,7 @@
 ## P0：模块接入与任务边界
 
 - [x] Daily Paper 适配最新版 `/api/local/workflows/dispatch`，补齐 submit、事件、artifact、错误回调和进程树取消。
-- [x] CitationClaw 增加 Connect Hub adapter，外部 `job_id` 贯穿提交、状态、取消与最终报告。
+- [x] CitationClaw 保留 Connect Hub adapter 和原版网页发布能力；当前产品入口不向 LLM 注册查引用工具，飞书菜单仅返回固定网页，由用户在网页内操作。
 - [x] Connect Hub 成为唯一对外任务生命周期所有者；模块状态仅作为内部执行句柄。
 - [x] Linux/Windows 子进程树取消已实现，模块轮询持续检查 Hub 取消标志。
 - [x] 把 Daily Paper 已有的“论文总结”异步接口（`/api/paper/summarize`）注册为飞书固定工具，接入统一任务、进度、取消、产物与固定日报站点刷新；支持论文 URL 和飞书 PDF 上传。

@@ -23,7 +23,6 @@ from connect_hub.storage import ConversationStore
 from connect_hub.tools import ToolRegistry
 from connect_hub.tools.builtin import system_status_tool
 from connect_hub.tools.daily_paper import daily_paper_tools
-from connect_hub.tools.citationclaw import citationclaw_tool
 from connect_hub.tools.web import web_tools
 from connect_hub.tools.xhs import xhs_generate_tool
 from connect_hub.websearch import ExaMCPWebSearchProvider, JinaReaderProvider
@@ -164,16 +163,6 @@ def _build_runtime(
         timeout_seconds=settings.citationclaw_timeout_seconds,
         poll_seconds=settings.citationclaw_poll_seconds,
     )
-    if citationclaw.configured:
-        tools.register(
-            citationclaw_tool(
-                citationclaw,
-                report_hub=report_hub,
-                site_id=citation_site_id,
-                project_dir=MONOREPO_ROOT / "modules" / "citationclaw",
-                public_url=shortcut_urls.get("citationclaw", ""),
-            )
-        )
     search_provider = None
     if settings.web_search_provider == "exa_mcp":
         search_provider = ExaMCPWebSearchProvider(

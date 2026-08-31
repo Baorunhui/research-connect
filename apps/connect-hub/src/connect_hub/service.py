@@ -334,9 +334,6 @@ class ChatService:
             for item in (daily_output, summary_output, survey_output)
         ):
             answer = "本轮没有成功创建新的论文任务。具体原因：" + daily_business_errors[-1]
-        citation_output = _latest_tool_output(outcome.executions, "lookup_citations")
-        if isinstance(citation_output, Mapping):
-            answer, attachments = _format_citation_result(citation_output)
         if not answer:
             answer = "模型没有返回文字内容。"
         if outcome.sources:
