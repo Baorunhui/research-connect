@@ -170,14 +170,13 @@ class ChatService:
                 "/reset - 清空当前会话上下文\n"
                 "/model - 查看当前 LLM provider\n"
                 "/tools - 查看已注册工具\n"
-                "/web - 查看当前联网模式\n"
-                "/web auto|on|off - 自动、始终或禁止联网\n"
                 "/jobs - 查看当前会话最近任务\n"
                 "/job <任务ID> - 查看任务详情、事件、产物与用量\n"
                 "/cancel - 取消当前会话最近的运行中任务\n"
                 "/paper_reader - 打开论文日报网页\n"
                 "/citationclaw - 打开查引用网页\n"
                 "/help - 显示帮助\n\n"
+                "联网默认开启；如需临时控制，可使用 /web on、/web off 或 /web auto。\n\n"
                 "其他文字会发送到统一 LLM 中台。"
             )
         if content == "/model":

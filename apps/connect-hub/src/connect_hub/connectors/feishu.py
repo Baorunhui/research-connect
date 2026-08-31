@@ -47,6 +47,11 @@ BOT_MENU_WEB_MODES = {
     "connect_web_off": "off",
 }
 BOT_MENU_WEB_TOGGLE = "connect_web_toggle"
+BOT_MENU_ACTIONS = {
+    "connect_paper_reader": "/paper_reader",
+    "connect_citationclaw": "/citationclaw",
+    "connect_help": "/help",
+}
 
 
 def _nested(data: Mapping[str, Any], *keys: str) -> Any:
@@ -193,8 +198,13 @@ class FeishuConnector:
             logger.exception("failed to parse Feishu bot menu event")
             return
 
+        action = BOT_MENU_ACTIONS.get(menu_event.event_key)
         mode = BOT_MENU_WEB_MODES.get(menu_event.event_key)
-        if mode is None and menu_event.event_key != BOT_MENU_WEB_TOGGLE:
+        if (
+            action is None
+            and mode is None
+            and menu_event.event_key != BOT_MENU_WEB_TOGGLE
+        ):
             logger.info("ignored unknown Feishu bot menu event_key=%s", menu_event.event_key)
             return
         if not self._authorized_open_id(menu_event.operator_open_id):
@@ -203,7 +213,13 @@ class FeishuConnector:
                 menu_event.operator_open_id,
             )
             return
-        if menu_event.event_key == BOT_MENU_WEB_TOGGLE:
+        if action is not None:
+            self._executor.submit(
+                self._process_bot_menu_action,
+                menu_event.operator_open_id,
+                action,
+            )
+        elif menu_event.event_key == BOT_MENU_WEB_TOGGLE:
             self._executor.submit(
                 self._process_bot_menu_toggle,
                 menu_event.operator_open_id,
@@ -214,6 +230,14 @@ class FeishuConnector:
                 menu_event.operator_open_id,
                 mode,
             )
+
+    def _process_bot_menu_action(self, open_id: str, command: str) -> None:
+        try:
+            reply = self.service.handle(f"feishu:menu:{open_id}", command)
+            self._send_text_to_open_id(open_id, reply.text)
+        except Exception:
+            logger.exception("failed to process Feishu bot menu action=%s", command)
+            self._send_text_to_open_id(open_id, "菜单操作失败，请直接发送对应的斜杠命令。")
 
     def _process_bot_menu_toggle(self, open_id: str) -> None:
         try:

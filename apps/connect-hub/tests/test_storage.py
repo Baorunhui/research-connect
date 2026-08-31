@@ -30,6 +30,13 @@ def test_feishu_bot_menu_web_mode_applies_to_known_and_future_sessions(tmp_path)
     assert store.get_web_mode(other) == "off"
 
 
+def test_web_search_defaults_to_on(tmp_path):
+    store = ConversationStore(tmp_path / "web-default.sqlite3")
+
+    assert store.get_web_mode("new-session") == "on"
+    assert store.get_web_mode("feishu:oc_new:ou_new") == "on"
+
+
 def test_agent_run_and_step_audit(tmp_path):
     store = ConversationStore(tmp_path / "agent-audit.sqlite3")
     store.start_agent_run("agent-1", "s1", "OCC 是什么？")

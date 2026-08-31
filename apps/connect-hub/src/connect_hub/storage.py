@@ -442,7 +442,7 @@ class ConversationStore:
                         "SELECT web_mode FROM conversation_settings WHERE session_key = ?",
                         (_feishu_user_settings_key(open_id),),
                     ).fetchone()
-        return str(row["web_mode"]) if row is not None else "auto"
+        return str(row["web_mode"]) if row is not None else "on"
 
     def set_web_mode(self, session_key: str, mode: str) -> None:
         normalized = mode.strip().lower()

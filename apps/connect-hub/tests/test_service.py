@@ -96,21 +96,21 @@ def test_web_mode_commands_persist_per_session(tmp_path):
     store = ConversationStore(tmp_path / "web-mode.sqlite3")
     service = ChatService(gateway, store)
 
-    assert "自动" in service.handle("s", "/web").text
+    assert "开启" in service.handle("s", "/web").text
     assert "开启" in service.handle("s", "/web on").text
     assert store.get_web_mode("s") == "on"
     assert "关闭" in service.handle("s", "关闭联网").text
     assert store.get_web_mode("s") == "off"
-    assert store.get_web_mode("another") == "auto"
+    assert store.get_web_mode("another") == "on"
 
 
-def test_feishu_single_menu_item_toggles_web_on_and_off(tmp_path):
+def test_legacy_feishu_web_menu_toggle_still_works(tmp_path):
     store = ConversationStore(tmp_path / "menu-toggle.sqlite3")
     service = ChatService(FakeGateway(), store)
 
     first = service.toggle_feishu_user_web_mode("ou_user")
     second = service.toggle_feishu_user_web_mode("ou_user")
 
-    assert "开启" in first.text
-    assert "关闭" in second.text
-    assert store.get_web_mode("feishu:oc_chat:ou_user") == "off"
+    assert "关闭" in first.text
+    assert "开启" in second.text
+    assert store.get_web_mode("feishu:oc_chat:ou_user") == "on"

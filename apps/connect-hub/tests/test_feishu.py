@@ -94,6 +94,25 @@ def test_sends_new_text_message_to_menu_operator():
     assert created[0].request_body.msg_type == "text"
 
 
+def test_menu_action_reuses_slash_command_handler():
+    calls = []
+    sent = []
+
+    class Service:
+        def handle(self, session_key, command):
+            calls.append((session_key, command))
+            return SimpleNamespace(text="论文日报网页：\nhttps://reports.test/papers/")
+
+    connector = FeishuConnector(SimpleNamespace(workers=1), service=Service())
+    connector._send_text_to_open_id = lambda open_id, text: sent.append((open_id, text))
+
+    connector._process_bot_menu_action("ou_user", "/paper_reader")
+
+    connector._executor.shutdown(wait=True)
+    assert calls == [("feishu:menu:ou_user", "/paper_reader")]
+    assert sent == [("ou_user", "论文日报网页：\nhttps://reports.test/papers/")]
+
+
 def test_uploads_and_replies_with_image(tmp_path):
     image_path = tmp_path / "card.png"
     image_path.write_bytes(b"not-a-real-png-but-sdk-does-not-parse-it")
