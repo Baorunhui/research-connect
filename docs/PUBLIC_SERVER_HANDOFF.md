@@ -10,7 +10,7 @@
 - 配置仍保存在 Report Hub 数据卷内的 SQLite，不进入 Git 或模块静态网页。
 - `connect-config-*`、`daily-paper-*`、`citationclaw-*` 使用相同安装 ID 后缀，映射到同一条安装级配置；三个页面不再各存一份配置，也没有覆盖优先级；
 - Daily Paper 的聊天模型与 CitationClaw 的轻量模型都映射到 `llm.primary`；CitationClaw Search LLM 单独映射到 `citation.search_llm`；
-- 新增 `site_commands` 出站命令队列。公网 CitationClaw 页面把运行、状态、取消、结果读取请求写入队列，本机 Connect Hub 主动拉取后调用 `127.0.0.1` 模块接口，再回传响应；
+- `site_commands` 出站命令队列同时服务 CitationClaw 与 Daily Paper。公网原版页面把运行、问答、总结、综述、状态、取消和结果读取请求写入队列，本机 Connect Hub 主动拉取后调用 `127.0.0.1` 模块接口，再回传响应；
 - 用户电脑不需要公网 IP、端口映射或额外穿透软件。旧版每模块配置会在首次访问时一次性导入安装级配置。
 
 部署后先检查 `/healthz`。本机 Connect Hub 重启时会自动创建 `connect-config-*` 稳定站点；配置页链接本身具有管理权限，不应转发或公开。
@@ -30,7 +30,7 @@
 
 这不是让公网服务器主动反向代理用户电脑，也不把本机 FastAPI 暴露到公网。因此用户不需要公网 IP、内网穿透账号或路由器配置。三个配置界面读写同一份安装级配置，本机 Connect Hub 主动拉取配置和待执行命令；飞书 Secret 仍只留在本机。由于配置包含 LLM/API Key，正式服务必须启用 HTTPS，并妥善保护 Report Hub 数据目录、页面 bearer 链接和 Agent Token。
 
-公网 CitationClaw 的任务操作是一条动态“邮箱”链路：浏览器投递请求，用户电脑上的 Connect Hub 取件并执行，再把响应放回公网。它不是通用 HTTP 隧道，只允许代码内列出的 CitationClaw API 路径；单次请求等待 45 秒，长任务本身仍是异步启动，之后通过状态轮询取得进度。Report Hub 容器无需连接用户内网。
+公网 CitationClaw 与 Daily Paper 的任务操作是一条动态“邮箱”链路：浏览器投递请求，用户电脑上的 Connect Hub 取件并执行，再把响应放回公网。它不是通用 HTTP 隧道，只允许代码内分别列出的模块 API 路径；单次请求最多等待 140 秒，日报、总结和综述等长任务本身仍是异步启动，之后通过状态轮询取得进度。Report Hub 容器无需连接用户内网。
 
 ## 需要服务器管理员提供
 
@@ -79,6 +79,7 @@ docker compose up -d --build
 5. 重启 Report Hub，确认 SQLite 与报告目录仍在。
 6. 在统一配置页修改统一 LLM 模型，刷新 Daily Paper 设置页和 CitationClaw 首页，确认两边同时显示新模型且密钥显示“已配置”；
 7. 在 CitationClaw 公网页提交一个测试任务，确认本机 Connect Hub 日志出现命令中继请求，公网状态与结果列表可以刷新。
+8. 在 Daily Paper 公网页检查论文问答模型，并提交一条论文链接总结；确认立即返回 `job_id`，随后能轮询查看实时进度。
 
 ## 安全与运维边界
 
