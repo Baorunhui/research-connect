@@ -55,6 +55,23 @@ class BasenameTest(unittest.TestCase):
             self.mod.build_report_basename("same query", "20260827"),
         )
 
+    def test_long_enriched_query_fits_typical_windows_install_path(self):
+        query = (
+            "3D visual grounding 3DVG recent methods for localizing objects in "
+            "3D point cloud scenes from natural language descriptions covering "
+            "LLM based approaches reasoning pipelines zero shot open world "
+            "generalization and spatial pruning"
+        )
+        base, report_id = self.mod.build_report_basename(query, "20260901")
+        install_dir = (
+            r"C:\Users\13955\Desktop\research-connect\modules\daily-paper-reader"
+            r"\docs\survey"
+        )
+
+        self.assertLessEqual(len(base.encode("utf-8")), 120)
+        self.assertLess(len(install_dir + "\\" + base + ".md"), 240)
+        self.assertTrue(base.endswith(report_id))
+
 
 class ReportMarkdownTest(unittest.TestCase):
     @classmethod

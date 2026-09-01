@@ -26,8 +26,11 @@ DEFAULT_DOCS_DIR = ROOT_DIR / "docs"
 DEFAULT_SIDEBAR_PATH = ROOT_DIR / "docs" / "_sidebar.md"
 SURVEY_HEADING = "* Survey Reports\n"
 SURVEY_ROUTE_DIR = "survey"
-SURVEY_FILENAME_MAX_BYTES = 255
-SURVEY_BASENAME_MAX_BYTES = 240
+# Windows 在未启用 longPathsEnabled 时通常仍受 260 字符完整路径限制。
+# 这里限制的是 basename，必须给安装目录、docs/survey 和扩展名留出空间；
+# 完整标题仍保存在 Markdown front matter，不依赖文件名承载。
+SURVEY_FILENAME_MAX_BYTES = 140
+SURVEY_BASENAME_MAX_BYTES = 120
 
 try:  # fcntl 仅 Unix 存在；Windows 降级无锁（与 conference_sidebar 同策略）。
     import fcntl  # type: ignore
