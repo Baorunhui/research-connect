@@ -492,6 +492,39 @@ def test_daily_tool_gate_error_is_returned_exactly(tmp_path):
     assert store.recent_agent_runs("s", 1)[0]["business_tool_calls"] == 0
 
 
+def test_failed_business_tool_stops_without_retry_masking_original_error(tmp_path):
+    store = ConversationStore(tmp_path / "failed-business.sqlite3")
+
+    def fail(_arguments, _context):
+        raise RuntimeError("report sidebar write failed")
+
+    registry = _registry(store, _daily_tool(fail))
+    first_call = ToolCall(
+        "daily-first",
+        "generate_daily_paper_report",
+        json.dumps({"topics": [{"tag": "3DVG"}]}),
+    )
+    duplicate_call = ToolCall(
+        "daily-duplicate",
+        "generate_daily_paper_report",
+        json.dumps({"topics": [{"tag": "3DVG"}]}),
+    )
+    gateway = ScriptedGateway(
+        [
+            FakeResponse(tool_calls=(first_call,)),
+            FakeResponse(tool_calls=(duplicate_call,)),
+        ]
+    )
+    service = ChatService(gateway, store, tools=registry)
+
+    reply = service.handle("s", "确认")
+
+    assert len(gateway.messages_seen) == 1
+    assert "report sidebar write failed" in reply.text
+    assert "禁止重复调用" not in reply.text
+    assert store.recent_agent_runs("s", 1)[0]["business_tool_calls"] == 1
+
+
 def test_mcp_sse_and_exa_result_parsing():
     decoded = _decode_mcp_body(
         b'event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{"ok":true}}\n\n'

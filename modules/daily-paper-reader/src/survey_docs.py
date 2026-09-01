@@ -189,10 +189,19 @@ def update_sidebar_with_survey(sidebar_path: Path, info: Dict[str, Any]) -> None
 
 
 def persist_survey_report(result: Dict[str, Any], *, docs_dir: Path | None = None, sidebar_path: Path | None = None) -> Dict[str, Any]:
-    """写报告页 + 注册侧栏，返回报告信息（含 route/paper_id/md_path）。"""
+    """写报告页并尽力注册侧栏。
+
+    报告正文是主产物，侧栏只是导航索引。侧栏更新失败时保留已经生成的
+    Markdown，并把失败原因交给调用方显示；不能让完整综述在最后一步被判失败。
+    """
     docs_dir = Path(docs_dir) if docs_dir else DEFAULT_DOCS_DIR
     sidebar_path = Path(sidebar_path) if sidebar_path else DEFAULT_SIDEBAR_PATH
     info = write_report_docs(docs_dir, result)
-    update_sidebar_with_survey(sidebar_path, info)
-    info["registered"] = True
+    try:
+        update_sidebar_with_survey(sidebar_path, info)
+    except Exception as exc:  # noqa: BLE001 - 次要导航写入不得毁掉主产物
+        info["registered"] = False
+        info["registration_error"] = f"{type(exc).__name__}: {exc}"
+    else:
+        info["registered"] = True
     return info

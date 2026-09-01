@@ -529,11 +529,10 @@ class ChatService:
                         "content": serialized,
                     }
                 )
-                if (
-                    execution is not None
-                    and bool(getattr(execution, "success", False))
-                    and self.tools.kind(call.name) == "business"
-                ):
+                # 一个业务工具调用本身就是本轮的最终动作。无论成功或失败都在
+                # 此处停止，避免模型在同一条用户消息里自动重试，并让随后产生的
+                # “重复调用被禁止”掩盖第一次调用的真实错误。
+                if execution is not None and self.tools.kind(call.name) == "business":
                     return _AgentOutcome(
                         response, tuple(executions), tuple(sources), tuple(errors)
                     )

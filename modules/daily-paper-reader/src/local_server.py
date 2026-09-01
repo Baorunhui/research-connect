@@ -1260,7 +1260,25 @@ def _run_survey_job(
             from src.survey_docs import persist_survey_report
 
         info = persist_survey_report(result)
-        emit("render", "报告已生成", payload={"paper_id": info["paper_id"], "route": info["route"]})
+        registration_error = str(info.get("registration_error") or "").strip()
+        if registration_error:
+            log_lines.append(f"[survey] sidebar registration failed: {registration_error}")
+            emit(
+                "render",
+                "报告已生成；侧栏注册失败，但不影响通过报告地址查看",
+                payload={
+                    "paper_id": info["paper_id"],
+                    "route": info["route"],
+                    "registered": False,
+                    "registration_error": registration_error,
+                },
+            )
+        else:
+            emit(
+                "render",
+                "报告已生成",
+                payload={"paper_id": info["paper_id"], "route": info["route"]},
+            )
         log_lines.append(f"[survey] completed route={info['route']}")
         _flush_log()
         return {
@@ -1275,10 +1293,20 @@ def _run_survey_job(
                 "cluster_names": [c.get("name_zh") for c in result.get("clusters") or []],
             },
             "meta": result.get("report_meta"),
-            "warnings": result.get("warnings") or [],
+            "warnings": [
+                *(result.get("warnings") or []),
+                *(
+                    [f"侧栏注册失败：{registration_error}"]
+                    if registration_error
+                    else []
+                ),
+            ],
         }
-    except Exception:
-        log_lines.append(f"[survey] failed")
+    except Exception as exc:
+        import traceback
+
+        log_lines.append(f"[survey] failed: {type(exc).__name__}: {exc}")
+        log_lines.append(traceback.format_exc())
         _flush_log()
         raise
 

@@ -5,6 +5,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -88,6 +89,23 @@ class WriteReportDocsTest(unittest.TestCase):
             self.assertEqual(info["date"], "2026-08-27")
             content = md_path.read_text(encoding="utf-8")
             self.assertIn("多模态大模型安全研究综述", content)
+
+    def test_sidebar_failure_keeps_generated_report(self):
+        with tempfile.TemporaryDirectory() as td:
+            docs = pathlib.Path(td) / "docs"
+            sidebar = docs / "_sidebar.md"
+            with mock.patch.object(
+                self.mod,
+                "update_sidebar_with_survey",
+                side_effect=PermissionError("sidebar is busy"),
+            ):
+                info = self.mod.persist_survey_report(
+                    _sample_result(), docs_dir=docs, sidebar_path=sidebar
+                )
+
+            self.assertFalse(info["registered"])
+            self.assertIn("PermissionError: sidebar is busy", info["registration_error"])
+            self.assertTrue(pathlib.Path(info["md_path"]).exists())
 
 
 class SidebarTest(unittest.TestCase):
