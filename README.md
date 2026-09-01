@@ -165,4 +165,4 @@ scripts/                          Windows/Linux 安装、检查和启动入口
 docs/                             部署、协议和开发文档
 ```
 
-进一步阅读：[Python 安装与故障排查](docs/PYTHON_INSTALL.md)、[飞书配置](docs/FEISHU_BOT_SETUP.md)、[多安装公网接入](docs/REPORT_HUB_MULTI_INSTALL.md)、[自托管架构](docs/SELF_HOSTING_ARCHITECTURE.md) 和 [下一阶段待办](docs/NEXT_SCOPE_TODO.md)。
+进一步阅读：[作品设计说明书](docs/DESIGN_DOCUMENT.md)、[Python 安装与故障排查](docs/PYTHON_INSTALL.md)、[飞书配置](docs/FEISHU_BOT_SETUP.md)、[多安装公网接入](docs/REPORT_HUB_MULTI_INSTALL.md)、[自托管架构](docs/SELF_HOSTING_ARCHITECTURE.md) 和 [下一阶段待办](docs/NEXT_SCOPE_TODO.md)。
