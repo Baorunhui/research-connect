@@ -298,10 +298,10 @@ def daily_public_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
     local = result.setdefault("local", {})
     llm = ((full.get("providers") or {}).get("llm.primary") or {})
     local["chat"] = {
-        "base_url": llm.get("base_url", ""),
-        "model": llm.get("model", ""),
-        "api_key": llm.get("api_key", ""),
-        "api_key_configured": bool(str(llm.get("api_key") or "").strip()),
+        "base_url": _active_value(llm, "base_url"),
+        "model": _active_value(llm, "model"),
+        "api_key": _active_value(llm, "api_key"),
+        "api_key_configured": bool(_active_value(llm, "api_key")),
     }
     # The unified provider is the source of truth. Project it into Daily
     # Paper's native source_backends schema so the original UI and pipeline
@@ -335,10 +335,14 @@ def merge_daily_update(config: Mapping[str, Any] | None, update: Mapping[str, An
     local = patch.get("local") if isinstance(patch.get("local"), dict) else {}
     chat = local.pop("chat", None) if isinstance(local, dict) else None
     if isinstance(chat, dict):
-        full = merge_public_update(full, {"providers": {"llm.primary": {
+        llm_patch = _nonblank_provider_fields({
             "base_url": chat.get("base_url", ""), "model": chat.get("model", ""),
-            "api_key": chat.get("api_key", ""), "enabled": True,
-        }}})
+            "api_key": chat.get("api_key", ""),
+        })
+        if llm_patch:
+            full = merge_public_update(full, {"providers": {"llm.primary": {
+                **llm_patch, "enabled": True,
+            }}})
     source_backends = patch.get("source_backends") if isinstance(patch.get("source_backends"), dict) else {}
     arxiv = source_backends.get("arxiv") if isinstance(source_backends.get("arxiv"), dict) else None
     if isinstance(arxiv, dict):
@@ -367,23 +371,30 @@ def citation_public_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
     providers = full.get("providers") or {}
     scraper = providers.get("citation.scraperapi") or {}
     search_llm = providers.get("citation.search_llm") or {}
+    s2 = providers.get("citation.semantic_scholar") or {}
+    openalex = providers.get("citation.openalex") or {}
+    wos = providers.get("citation.wos") or {}
+    mineru = providers.get("document.mineru") or {}
     result.update({
-        "light_api_key": llm.get("api_key", ""),
-        "light_base_url": llm.get("base_url", ""),
-        "dashboard_model": llm.get("model", ""),
-        "scraper_api_keys": [scraper.get("api_key")] if scraper.get("api_key") else [],
-        "openai_api_key": search_llm.get("api_key", ""),
-        "openai_base_url": search_llm.get("base_url", ""),
-        "openai_model": search_llm.get("model", ""),
-        "s2_api_key": (providers.get("citation.semantic_scholar") or {}).get("api_key", ""),
-        "openalex_email": (providers.get("citation.openalex") or {}).get("email", ""),
-        "wos_api_key": (providers.get("citation.wos") or {}).get("api_key", ""),
-        "mineru_api_token": (providers.get("document.mineru") or {}).get("api_key", ""),
+        "light_api_key": _active_value(llm, "api_key"),
+        "light_base_url": _active_value(llm, "base_url"),
+        "dashboard_model": _active_value(llm, "model"),
+        "scraper_api_keys": [_active_value(scraper, "api_key")] if _active_value(scraper, "api_key") else [],
+        "openai_api_key": _active_value(search_llm, "api_key"),
+        "openai_base_url": _active_value(search_llm, "base_url"),
+        "openai_model": _active_value(search_llm, "model"),
+        "s2_api_key": _active_value(s2, "api_key"),
+        "openalex_email": _active_value(openalex, "email"),
+        "wos_api_key": _active_value(wos, "api_key"),
+        "mineru_api_token": _active_value(mineru, "api_key"),
     })
     result["_configured_secrets"] = {
-        "light_api_key": bool(str(llm.get("api_key") or "").strip()),
+        "light_api_key": bool(_active_value(llm, "api_key")),
         "openai_api_key": bool(str(result.get("openai_api_key") or "").strip()),
         "scraper_api_keys": bool(result.get("scraper_api_keys")),
+        "s2_api_key": bool(_active_value(s2, "api_key")),
+        "wos_api_key": bool(_active_value(wos, "api_key")),
+        "mineru_api_token": bool(_active_value(mineru, "api_key")),
     }
     result["_runtime_defaults"] = ((full.get("runtime_defaults") or {}).get("citationclaw") or {})
     return result
@@ -392,10 +403,13 @@ def citation_public_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
 def merge_citation_update(config: Mapping[str, Any] | None, update: Mapping[str, Any]) -> dict[str, Any]:
     full = merged_defaults(config)
     patch = {k: v for k, v in dict(update).items() if not str(k).startswith("_")}
-    light = {"api_key": patch.pop("light_api_key", ""),
-             "base_url": patch.pop("light_base_url", ""),
-             "model": patch.pop("dashboard_model", "")}
-    full = merge_public_update(full, {"providers": {"llm.primary": {**light, "enabled": True}}})
+    light = _nonblank_provider_fields({
+        "api_key": patch.pop("light_api_key", ""),
+        "base_url": patch.pop("light_base_url", ""),
+        "model": patch.pop("dashboard_model", ""),
+    })
+    if light:
+        full = merge_public_update(full, {"providers": {"llm.primary": {**light, "enabled": True}}})
     scraper_keys = patch.pop("scraper_api_keys", [])
     search_key = patch.pop("openai_api_key", "")
     search_base = patch.pop("openai_base_url", "")
@@ -406,13 +420,25 @@ def merge_citation_update(config: Mapping[str, Any] | None, update: Mapping[str,
             **({"enabled": True} if scraper_keys else {}),
         },
         "citation.search_llm": {
-            "api_key": search_key, "base_url": search_base, "model": search_model,
+            **_nonblank_provider_fields({"api_key": search_key, "base_url": search_base, "model": search_model}),
             **({"enabled": True} if search_key else {}),
         },
-        "citation.semantic_scholar": {"api_key": patch.pop("s2_api_key", "")},
-        "citation.openalex": {"email": patch.pop("openalex_email", ""), "enabled": True},
-        "citation.wos": {"api_key": patch.pop("wos_api_key", "")},
-        "document.mineru": {"api_key": patch.pop("mineru_api_token", "")},
+        "citation.semantic_scholar": {
+            "api_key": (s2_key := patch.pop("s2_api_key", "")),
+            **({"enabled": True} if s2_key else {}),
+        },
+        "citation.openalex": {
+            **_nonblank_provider_fields({"email": (openalex_email := patch.pop("openalex_email", ""))}),
+            **({"enabled": True} if openalex_email else {}),
+        },
+        "citation.wos": {
+            "api_key": (wos_key := patch.pop("wos_api_key", "")),
+            **({"enabled": True} if wos_key else {}),
+        },
+        "document.mineru": {
+            "api_key": (mineru_key := patch.pop("mineru_api_token", "")),
+            **({"enabled": True} if mineru_key else {}),
+        },
     }
     full = merge_public_update(full, {"providers": provider_patch})
     return merge_public_update(full, {"modules": {"citationclaw": patch}})
@@ -434,6 +460,17 @@ def _deep_merge(base: dict[str, Any], update: dict[str, Any], *, preserve_blank_
 def _secret_name(name: str) -> bool:
     normalized = name.lower().replace("-", "_")
     return any(part in normalized for part in ("api_key", "anon_key", "token", "secret", "password"))
+
+
+def _active_value(provider: Mapping[str, Any], key: str) -> str:
+    if not isinstance(provider, Mapping) or provider.get("enabled", True) is False:
+        return ""
+    return str(provider.get(key) or "").strip()
+
+
+def _nonblank_provider_fields(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Original module forms use blank as 'keep existing' for provider fields."""
+    return {key: value for key, value in values.items() if str(value or "").strip()}
 
 
 def probe_provider(provider_id: str, config: Mapping[str, Any]) -> dict[str, Any]:

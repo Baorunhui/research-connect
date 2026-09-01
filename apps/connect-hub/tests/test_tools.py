@@ -78,6 +78,24 @@ def test_registry_validates_and_audits(tmp_path):
     assert store.recent_tool_runs("s")[0]["status"] == "completed"
 
 
+def test_registry_can_replace_runtime_provider_tool(tmp_path):
+    store = ConversationStore(tmp_path / "runtime-tools.sqlite3")
+    registry = ToolRegistry(store)
+    definition = ToolDefinition(
+        name="runtime_search",
+        description="runtime",
+        parameters={"type": "object", "properties": {}, "additionalProperties": False},
+        handler=lambda _args, _context: {"ok": True},
+    )
+    registry.register(definition)
+    assert "runtime_search" in registry.names
+    assert registry.unregister("runtime_search") is True
+    assert registry.unregister("runtime_search") is False
+    assert "runtime_search" not in registry.names
+    registry.register(definition)
+    assert "runtime_search" in registry.names
+
+
 def test_registry_validates_nonempty_business_inputs(tmp_path):
     store = ConversationStore(tmp_path / "nonempty.sqlite3")
     registry = ToolRegistry(store)

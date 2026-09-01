@@ -20,6 +20,19 @@ def test_connect_hub_secret_env_allowlist_includes_remote_embedding():
     assert "UNSAFE_ARBITRARY_ENV" not in env
 
 
+def test_connect_hub_secret_env_allowlist_includes_external_academic_services():
+    from src.local_server import build_secret_env
+
+    env = build_secret_env({
+        "DEEPXIV_BASE_URL": "https://deepxiv.example",
+        "DEEPXIV_TOKEN": "deepxiv-token",
+        "SEMANTIC_SCHOLAR_API_KEY": "s2-token",
+    })
+    assert env["DEEPXIV_BASE_URL"] == "https://deepxiv.example"
+    assert env["DEEPXIV_TOKEN"] == "deepxiv-token"
+    assert env["SEMANTIC_SCHOLAR_API_KEY"] == "s2-token"
+
+
 def test_runtime_docs_shell_is_created_from_clean_templates(tmp_path, monkeypatch):
     from src import local_server
 

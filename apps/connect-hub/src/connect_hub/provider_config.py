@@ -90,11 +90,11 @@ def apply_to_settings(settings: Settings, config: Mapping[str, Any]) -> Settings
     return replace(
         settings,
         providers=configured_llm,
-        daily_paper_embed_api_url=str(embedding.get("base_url") or settings.daily_paper_embed_api_url).strip(),
-        daily_paper_embed_api_key=str(embedding.get("api_key") or settings.daily_paper_embed_api_key).strip(),
-        daily_paper_rerank_base_url=str(rerank.get("base_url") or settings.daily_paper_rerank_base_url).strip(),
-        daily_paper_rerank_model=str(rerank.get("model") or settings.daily_paper_rerank_model).strip(),
-        daily_paper_rerank_api_key=str(rerank.get("api_key") or settings.daily_paper_rerank_api_key).strip(),
+        daily_paper_embed_api_url=_runtime_value(embedding, "base_url", settings.daily_paper_embed_api_url),
+        daily_paper_embed_api_key=_runtime_value(embedding, "api_key", settings.daily_paper_embed_api_key),
+        daily_paper_rerank_base_url=_runtime_value(rerank, "base_url", settings.daily_paper_rerank_base_url),
+        daily_paper_rerank_model=_runtime_value(rerank, "model", settings.daily_paper_rerank_model),
+        daily_paper_rerank_api_key=_runtime_value(rerank, "api_key", settings.daily_paper_rerank_api_key),
         web_search_provider="exa_mcp" if _enabled(exa) else "disabled",
         web_search_endpoint=str(exa.get("base_url") or settings.web_search_endpoint).strip(),
         url_fetch_provider="jina" if _enabled(jina) else "disabled",
@@ -110,8 +110,9 @@ def daily_configuration(config: Mapping[str, Any]) -> dict[str, Any]:
     result = json.loads(json.dumps(saved, ensure_ascii=False))
     local = result.setdefault("local", {})
     local["chat"] = {
-        "base_url": llm.get("base_url", ""), "api_key": llm.get("api_key", ""),
-        "model": llm.get("model", ""),
+        "base_url": llm.get("base_url", "") if _enabled(llm) else "",
+        "api_key": llm.get("api_key", "") if _enabled(llm) else "",
+        "model": llm.get("model", "") if _enabled(llm) else "",
     }
     local.setdefault("rerank", {"profile": "public-zwwen-rerank"})
     result["source_backends"] = {
@@ -130,13 +131,24 @@ def daily_configuration(config: Mapping[str, Any]) -> dict[str, Any]:
 
 def daily_environment(config: Mapping[str, Any]) -> dict[str, str]:
     providers = config.get("providers") if isinstance(config.get("providers"), Mapping) else {}
-    embedding, rerank, deepxiv = (_provider(providers, name) for name in ("embedding.paper", "rerank.paper", "academic.deepxiv"))
+    embedding, rerank, deepxiv, semantic_scholar = (
+        _provider(providers, name)
+        for name in (
+            "embedding.paper", "rerank.paper", "academic.deepxiv",
+            "citation.semantic_scholar",
+        )
+    )
     return {
-        "DPR_EMBED_API_URL": str(embedding.get("base_url") or ""), "DPR_EMBED_API_KEY": str(embedding.get("api_key") or ""),
-        "RERANK_API_BASE_URL": str(rerank.get("base_url") or ""), "PUBLIC_RERANK_API_BASE_URL": str(rerank.get("base_url") or ""),
-        "RERANK_API_KEY": str(rerank.get("api_key") or ""), "PUBLIC_RERANK_API_KEY": str(rerank.get("api_key") or ""),
-        "RERANK_MODEL": str(rerank.get("model") or ""), "DEEPXIV_BASE_URL": str(deepxiv.get("base_url") or ""),
-        "DEEPXIV_TOKEN": str(deepxiv.get("api_key") or ""),
+        "DPR_EMBED_API_URL": _active_value(embedding, "base_url"),
+        "DPR_EMBED_API_KEY": _active_value(embedding, "api_key"),
+        "RERANK_API_BASE_URL": _active_value(rerank, "base_url"),
+        "PUBLIC_RERANK_API_BASE_URL": _active_value(rerank, "base_url"),
+        "RERANK_API_KEY": _active_value(rerank, "api_key"),
+        "PUBLIC_RERANK_API_KEY": _active_value(rerank, "api_key"),
+        "RERANK_MODEL": _active_value(rerank, "model"),
+        "DEEPXIV_BASE_URL": _active_value(deepxiv, "base_url"),
+        "DEEPXIV_TOKEN": _active_value(deepxiv, "api_key"),
+        "SEMANTIC_SCHOLAR_API_KEY": _active_value(semantic_scholar, "api_key"),
     }
 
 
@@ -149,15 +161,15 @@ def citation_configuration(config: Mapping[str, Any]) -> dict[str, Any]:
     saved = modules.get("citationclaw") if isinstance(modules.get("citationclaw"), Mapping) else {}
     result = json.loads(json.dumps(saved, ensure_ascii=False))
     result.update({
-        "openai_api_key": str(search_llm.get("api_key") or ""),
-        "openai_base_url": str(search_llm.get("base_url") or ""),
-        "openai_model": str(search_llm.get("model") or ""),
-        "light_api_key": str(llm.get("api_key") or ""), "light_base_url": str(llm.get("base_url") or ""), "dashboard_model": str(llm.get("model") or ""),
+        "openai_api_key": _active_value(search_llm, "api_key"),
+        "openai_base_url": _active_value(search_llm, "base_url"),
+        "openai_model": _active_value(search_llm, "model"),
+        "light_api_key": _active_value(llm, "api_key"), "light_base_url": _active_value(llm, "base_url"), "dashboard_model": _active_value(llm, "model"),
         "scraper_api_keys": [str(scraper.get("api_key"))] if _enabled(scraper) and scraper.get("api_key") else [],
-        "s2_api_key": str(_provider(providers, "citation.semantic_scholar").get("api_key") or ""),
-        "openalex_email": str(_provider(providers, "citation.openalex").get("email") or ""),
-        "wos_api_key": str(_provider(providers, "citation.wos").get("api_key") or ""),
-        "mineru_api_token": str(_provider(providers, "document.mineru").get("api_key") or ""),
+        "s2_api_key": _active_value(_provider(providers, "citation.semantic_scholar"), "api_key"),
+        "openalex_email": _active_value(_provider(providers, "citation.openalex"), "email"),
+        "wos_api_key": _active_value(_provider(providers, "citation.wos"), "api_key"),
+        "mineru_api_token": _active_value(_provider(providers, "document.mineru"), "api_key"),
     })
     return result
 
@@ -262,3 +274,13 @@ def _provider(providers: Mapping[str, Any], name: str) -> Mapping[str, Any]:
 
 def _enabled(provider: Mapping[str, Any]) -> bool:
     return bool(provider) and provider.get("enabled", True) is not False
+
+
+def _active_value(provider: Mapping[str, Any], key: str) -> str:
+    return str(provider.get(key) or "").strip() if _enabled(provider) else ""
+
+
+def _runtime_value(provider: Mapping[str, Any], key: str, fallback: str) -> str:
+    if not provider:
+        return str(fallback or "").strip()
+    return _active_value(provider, key)

@@ -357,6 +357,68 @@ def test_module_pages_share_one_installation_config(tmp_path):
     assert provider["papers_table"] == "papers_v2"
 
 
+def test_disabled_citation_providers_are_not_projected_to_original_ui(tmp_path):
+    api = client(tmp_path)
+    sites = {}
+    for site_id, module in (("connect-config-off", "other"), ("citationclaw-off", "citationclaw")):
+        sites[module] = api.post(
+            "/api/v1/sites", headers=auth(),
+            json={"site_id": site_id, "module_name": module, "title": module},
+        ).json()["public_url"].rstrip("/").rsplit("/", 1)[-1]
+    api.put("/api/v1/sites/connect-config-off/config", headers=auth(), json={"config": {"providers": {
+        "llm.primary": {"enabled": False, "base_url": "https://llm", "model": "m", "api_key": "llm-key"},
+        "citation.search_llm": {"enabled": False, "base_url": "https://search", "model": "s", "api_key": "search-key"},
+        "citation.scraperapi": {"enabled": False, "api_key": "scraper-key"},
+        "citation.semantic_scholar": {"enabled": False, "api_key": "s2-key"},
+        "citation.wos": {"enabled": False, "api_key": "wos-key"},
+        "document.mineru": {"enabled": False, "api_key": "mineru-key"},
+    }}})
+    projected = api.get(f"/s/{sites['citationclaw']}/api/config").json()
+    assert projected["light_base_url"] == ""
+    assert projected["openai_base_url"] == ""
+    assert projected["scraper_api_keys"] == []
+    assert projected["_configured_secrets"] == {
+        "light_api_key": False,
+        "openai_api_key": False,
+        "scraper_api_keys": False,
+        "s2_api_key": False,
+        "wos_api_key": False,
+        "mineru_api_token": False,
+    }
+
+
+def test_disabled_shared_llm_is_not_reenabled_by_blank_module_forms(tmp_path):
+    api = client(tmp_path)
+    sites = {}
+    for site_id, module in (
+        ("connect-config-disabled", "other"),
+        ("daily-paper-disabled", "daily-paper"),
+        ("citationclaw-disabled", "citationclaw"),
+    ):
+        sites[module] = api.post(
+            "/api/v1/sites", headers=auth(),
+            json={"site_id": site_id, "module_name": module, "title": module},
+        ).json()["public_url"].rstrip("/").rsplit("/", 1)[-1]
+    api.put("/api/v1/sites/connect-config-disabled/config", headers=auth(), json={"config": {"providers": {
+        "llm.primary": {"enabled": False, "base_url": "https://old", "model": "old", "api_key": "old-key"},
+    }}})
+    daily = api.get(f"/s/{sites['daily-paper']}/api/local/config/structured").json()
+    assert daily["local"]["chat"]["base_url"] == ""
+    assert daily["local"]["chat"]["api_key_configured"] is False
+    api.post(f"/s/{sites['daily-paper']}/api/local/config/partial", json={
+        "local": {"chat": {"base_url": "", "model": "", "api_key": ""}},
+        "local_only_setting": True,
+    })
+    api.post(f"/s/{sites['citationclaw']}/api/config", json={
+        "light_base_url": "", "dashboard_model": "", "light_api_key": "",
+        "openai_base_url": "", "openai_model": "", "openai_api_key": "",
+        "scraper_api_keys": [],
+    })
+    private = api.get("/api/v1/sites/connect-config-disabled/config", headers=auth()).json()["config"]
+    assert private["providers"]["llm.primary"]["enabled"] is False
+    assert private["providers"]["llm.primary"]["api_key"] == "old-key"
+
+
 def test_public_module_command_round_trip(tmp_path):
     api = client(tmp_path)
     site = api.post(

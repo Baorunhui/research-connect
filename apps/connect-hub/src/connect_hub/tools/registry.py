@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from typing import Any, Mapping
 
@@ -17,12 +18,14 @@ class ToolRegistry:
         jobs: JobCoordinator | None = None,
     ) -> None:
         self._tools: dict[str, ToolDefinition] = {}
+        self._lock = threading.RLock()
         self._audit_store = audit_store
         self._jobs = jobs or JobCoordinator(audit_store)
 
     @property
     def names(self) -> tuple[str, ...]:
-        return tuple(sorted(self._tools))
+        with self._lock:
+            return tuple(sorted(self._tools))
 
     @property
     def jobs(self) -> JobCoordinator:
@@ -31,28 +34,37 @@ class ToolRegistry:
     def register(self, definition: ToolDefinition) -> None:
         if not definition.name or not definition.name.replace("_", "").isalnum():
             raise ValueError(f"invalid tool name: {definition.name!r}")
-        if definition.name in self._tools:
-            raise ValueError(f"tool already registered: {definition.name}")
-        ModuleManifest(
-            module_name=definition.module_name,
-            module_version=definition.module_version,
-            supported_job_types=(definition.job_type or definition.name,),
-        ).validate()
-        self._tools[definition.name] = definition
+        with self._lock:
+            if definition.name in self._tools:
+                raise ValueError(f"tool already registered: {definition.name}")
+            ModuleManifest(
+                module_name=definition.module_name,
+                module_version=definition.module_version,
+                supported_job_types=(definition.job_type or definition.name,),
+            ).validate()
+            self._tools[definition.name] = definition
+
+    def unregister(self, name: str) -> bool:
+        """Remove a runtime-configurable tool without disturbing active calls."""
+        with self._lock:
+            return self._tools.pop(name, None) is not None
 
     def cancel_latest(self, session_key: str):
         return self._jobs.cancel_latest(session_key)
 
     def openai_tools(self, names: set[str] | None = None) -> list[dict[str, Any]]:
-        selected = sorted(self._tools if names is None else set(self._tools) & names)
-        return [self._tools[name].as_openai_tool() for name in selected]
+        with self._lock:
+            selected = sorted(self._tools if names is None else set(self._tools) & names)
+            return [self._tools[name].as_openai_tool() for name in selected]
 
     def kind(self, name: str) -> str:
-        definition = self._tools.get(name)
+        with self._lock:
+            definition = self._tools.get(name)
         return definition.kind if definition is not None else "unknown"
 
     def progress_message(self, name: str) -> str:
-        definition = self._tools.get(name)
+        with self._lock:
+            definition = self._tools.get(name)
         return definition.progress_message if definition is not None else ""
 
     def execute(
@@ -64,7 +76,8 @@ class ToolRegistry:
         tool_call_id: str,
     ) -> ToolExecution:
         started = time.monotonic()
-        definition = self._tools.get(name)
+        with self._lock:
+            definition = self._tools.get(name)
         if definition is None:
             return ToolExecution(name, False, error="tool is not registered")
 

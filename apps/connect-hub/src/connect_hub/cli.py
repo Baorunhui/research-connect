@@ -194,25 +194,48 @@ def _build_runtime(
         raise ValueError(
             f"unsupported URL_FETCH_PROVIDER: {settings.url_fetch_provider}"
         )
-    for definition in web_tools(
-        store,
-        search_provider=search_provider,
-        url_provider=url_provider,
-        max_results=settings.web_search_max_results,
-        cache_hours=settings.web_search_cache_hours,
-    ):
-        tools.register(definition)
+    def sync_web_tools() -> None:
+        tools.unregister("web_search")
+        tools.unregister("read_web_page")
+        for definition in web_tools(
+            store,
+            search_provider=search_provider,
+            url_provider=url_provider,
+            max_results=settings.web_search_max_results,
+            cache_hours=settings.web_search_cache_hours,
+        ):
+            tools.register(definition)
+
+    sync_web_tools()
     config_manager = None
     if report_hub is not None and report_hub.configured and shortcut_urls.get("config"):
         def apply_runtime(config: object) -> None:
+            nonlocal search_provider, url_provider
             if not isinstance(config, dict):
                 return
             runtime_settings = apply_to_settings(settings, config)
             gateway.update_providers(runtime_settings.providers)
-            if search_provider is not None:
-                search_provider.endpoint = runtime_settings.web_search_endpoint
-            if url_provider is not None:
-                url_provider.endpoint = runtime_settings.jina_reader_endpoint.rstrip("/") + "/"
+            if runtime_settings.web_search_provider == "exa_mcp":
+                if search_provider is None:
+                    search_provider = ExaMCPWebSearchProvider(
+                        runtime_settings.web_search_endpoint,
+                        timeout_seconds=runtime_settings.web_search_timeout_seconds,
+                    )
+                else:
+                    search_provider.endpoint = runtime_settings.web_search_endpoint
+            else:
+                search_provider = None
+            if runtime_settings.url_fetch_provider == "jina":
+                if url_provider is None:
+                    url_provider = JinaReaderProvider(
+                        runtime_settings.jina_reader_endpoint,
+                        timeout_seconds=runtime_settings.web_search_timeout_seconds,
+                    )
+                else:
+                    url_provider.endpoint = runtime_settings.jina_reader_endpoint.rstrip("/") + "/"
+            else:
+                url_provider = None
+            sync_web_tools()
             daily_paper.extra_env.update(daily_environment(config))
             if daily_paper.configured:
                 try:
