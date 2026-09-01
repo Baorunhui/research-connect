@@ -60,7 +60,10 @@ def web_tools(
                         }
                 except (TypeError, ValueError):
                     pass
-            context.report_progress(f"🔎 正在联网搜索：{_progress_preview(query)}")
+            freshness_label = f"（最近 {freshness} 天）" if freshness is not None else ""
+            context.report_progress(
+                f"🔎 正在联网搜索{freshness_label}：{_progress_preview(query)}"
+            )
             response = search_provider.search(
                 query,
                 max_results=limit,

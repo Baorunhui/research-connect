@@ -210,13 +210,13 @@ def test_web_tools_report_cache_and_page_read_progress(tmp_path):
 
     first = registry.execute(
         "web_search",
-        {"query": "OCC meaning"},
+        {"query": "OCC meaning", "freshness_days": 10},
         context=context,
         tool_call_id="search-first",
     )
     cached = registry.execute(
         "web_search",
-        {"query": "OCC meaning"},
+        {"query": "OCC meaning", "freshness_days": 10},
         context=context,
         tool_call_id="search-cached",
     )
@@ -230,7 +230,7 @@ def test_web_tools_report_cache_and_page_read_progress(tmp_path):
     assert first.success and cached.success and page.success
     assert search.calls == 1
     assert progress == [
-        "🔎 正在联网搜索：OCC meaning",
+        "🔎 正在联网搜索（最近 10 天）：OCC meaning",
         "🔎 已使用联网搜索缓存：OCC meaning",
         "📖 正在读取网页：https://example.test/paper",
     ]
