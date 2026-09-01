@@ -1,6 +1,7 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
-from connect_hub.service import ChatService
+from connect_hub.service import ChatService, _runtime_context_prompt
 from connect_hub.storage import ConversationStore
 
 
@@ -34,6 +35,19 @@ def test_commands_and_history(tmp_path):
         {"role": "assistant", "content": "answer"},
     ]
     assert service.handle("s", "/reset").text.startswith("已清空当前会话")
+
+
+def test_runtime_context_injects_current_date_and_search_time_rule(tmp_path):
+    prompt = _runtime_context_prompt(datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc))
+    assert "当前日期：2026-09-01" in prompt
+    assert "freshness_days" in prompt
+    assert "不要把旧年份写入搜索词" in prompt
+
+    gateway = FakeGateway()
+    service = ChatService(gateway, ConversationStore(tmp_path / "date.sqlite3"))
+    service.handle("s", "调研最近五天的 RAG")
+    system_messages = [m["content"] for m in gateway.messages if m["role"] == "system"]
+    assert any("当前日期：" in message for message in system_messages)
 
 
 def test_module_page_shortcuts_do_not_call_llm(tmp_path):

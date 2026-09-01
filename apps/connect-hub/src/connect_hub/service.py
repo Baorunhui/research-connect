@@ -5,6 +5,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
@@ -38,6 +39,7 @@ SYSTEM_PROMPT = """你是 Research Connect Hub 的单 Agent 助手，通过飞�
 - 生成论文日报和小红书属于耗时业务动作。只有对话中存在用户明确的生成/调研请求，并且主题已经足够明确时才能调用。
 - 用户先提出生成请求、随后确认你对缩写或主题的理解，也算明确授权。
 - 如果需要联网理解含糊主题，先调用搜索，阅读结果后再决定追问或调用业务工具；不要在同一批调用里同时搜索和启动业务任务。
+- 构造搜索请求时必须以系统提供的当前日期为准。用户说“最近 N 天”时优先设置 web_search.freshness_days=N；不要凭训练语料猜测年份，也不要在搜索词中硬编码已经过去的年份。
 - 论文日报有固定的一轮 Intent 预检：首次收到明确的日报请求时，必须先联网搜索该主题近期使用的任务定义、相关概念、方法路线和 benchmark；不要直接启动日报。阅读搜索结果后，以“联网生成的 Intent 候选：”为标题，给出 2～4 条完整英文语义查询，每条附简短中文解释。候选应覆盖不同研究角度并引入搜索结果支持的具体概念，不能只是把用户关键词机械拼接。随后请用户回复“确认/直接开始”，或补充、删除、改写候选。用户下一轮未补充时就采用这些候选；不要再次确认。只有经过这一步，才能调用 generate_daily_paper_report，并把最终候选逐条写入 intent_queries。
 - 如果用户关闭了联网，说明日报 Intent 预检需要联网，请其开启；不得假装搜索。CLI 或其他非对话入口的模板兜底不替代飞书中的联网预检。
 - 论文日报默认最近30天、standard、发布固定网页；小红书默认5页、不自动发布。用户有明确要求时覆盖默认值。
@@ -260,6 +262,7 @@ class ChatService:
         web_mode = self.store.get_web_mode(session_key)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": _runtime_context_prompt()},
             {"role": "system", "content": _web_mode_prompt(web_mode)},
             *history,
             {"role": "user", "content": content},
@@ -657,6 +660,19 @@ def _web_mode_prompt(mode: str) -> str:
     return (
         "当前联网模式：自动。仅在术语含糊、问题具有时效性、用户要求搜索，"
         "或生成任务缺少可公开补充的事实材料时联网；不要为闲聊或用户偏好搜索。"
+    )
+
+
+def _runtime_context_prompt(now: datetime | None = None) -> str:
+    current = now or datetime.now().astimezone()
+    if current.tzinfo is None:
+        current = current.astimezone()
+    timezone_name = current.tzname() or str(current.utcoffset() or "local")
+    return (
+        f"当前日期：{current.date().isoformat()}；当前时区：{timezone_name}。"
+        "解释‘今天、最近、过去 N 天、本月、今年’时必须以这个日期为准。"
+        "构造近期联网搜索时优先使用 freshness_days 表达时间窗口；"
+        "除非用户明确指定年份，否则不要把旧年份写入搜索词。"
     )
 
 

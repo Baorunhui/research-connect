@@ -91,7 +91,10 @@ def web_tools(
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "自包含的搜索问题，包含必要领域上下文。",
+                            "description": (
+                                "自包含的搜索问题，包含必要领域上下文。不要为‘近期’请求猜测或硬编码旧年份；"
+                                "相对时间范围使用 freshness_days。"
+                            ),
                         },
                         "max_results": {
                             "type": "integer",
