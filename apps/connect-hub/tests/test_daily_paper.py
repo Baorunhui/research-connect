@@ -51,6 +51,36 @@ def test_native_summary_job_polls_events_and_returns_result(monkeypatch):
     assert events[0]["stage"] == "parse_pdf"
 
 
+def test_apply_configuration_updates_adapter_and_runtime_without_name_error(monkeypatch):
+    adapter = DailyPaperAdapter("local_http", "http://127.0.0.1:8567")
+    calls = []
+    monkeypatch.setattr(
+        adapter,
+        "_request",
+        lambda method, path, payload: calls.append((method, path, payload)) or {"ok": True},
+    )
+    config = {
+        "local": {
+            "chat": {
+                "base_url": "https://llm.example/v1",
+                "api_key": "llm-secret",
+                "model": "model-a",
+            },
+            "rerank": {"profile": "public-zwwen-rerank"},
+        }
+    }
+
+    adapter.apply_configuration(config)
+    adapter.apply_runtime_environment({"SUPABASE_URL": "https://papers.example"})
+
+    assert calls[0] == ("POST", "/api/local/config/partial", config)
+    assert calls[1][0:2] == ("POST", "/api/local/runtime-env")
+    assert adapter.extra_env["SUMMARY_API_KEY"] == "llm-secret"
+    assert adapter.extra_env["SUMMARY_BASE_URL"] == "https://llm.example/v1"
+    assert adapter.extra_env["SUMMARY_MODEL"] == "model-a"
+    assert adapter.extra_env["RERANK_PROFILE"] == "public-zwwen-rerank"
+
+
 def test_native_survey_passes_embedding_credentials_outside_business_input(monkeypatch):
     adapter = DailyPaperAdapter(
         "local_http",
