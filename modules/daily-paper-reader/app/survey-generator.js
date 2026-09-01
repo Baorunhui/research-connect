@@ -447,7 +447,7 @@ window.SurveyGenerator = (function () {
           pollJob(data.job_id);
         } else {
           setBusy(false);
-          renderError('提交失败：' + ((data && data.error) || '未知错误'));
+          renderError('提交失败：' + ((data && (data.error || data.detail || data.message)) || '未知错误'));
         }
       })
       .catch(function () {

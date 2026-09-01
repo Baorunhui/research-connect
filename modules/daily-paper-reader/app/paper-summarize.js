@@ -180,7 +180,7 @@ window.PaperSummarizer = (function () {
       .then(function (data) {
         if (!data || !data.ok || !data.job_id) {
           state.busy = false;
-          var msg = (data && data.error) || '后端未返回 job_id';
+          var msg = (data && (data.error || data.detail || data.message)) || '后端未返回 job_id';
           renderError(msg);
           setStatus('');
           return;
