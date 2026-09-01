@@ -147,7 +147,7 @@ def daily_environment(config: Mapping[str, Any]) -> dict[str, str]:
         "RERANK_API_KEY": _active_value(rerank, "api_key"),
         "PUBLIC_RERANK_API_KEY": _active_value(rerank, "api_key"),
         "RERANK_MODEL": _active_value(rerank, "model"),
-        "DEEPXIV_BASE_URL": _active_value(deepxiv, "base_url"),
+        "DEEPXIV_API_BASE_URL": _active_value(deepxiv, "base_url"),
         "DEEPXIV_TOKEN": _active_value(deepxiv, "api_key"),
         "SEMANTIC_SCHOLAR_API_KEY": _active_value(semantic_scholar, "api_key"),
         "DPR_DEFAULT_USE_DEEPXIV": (

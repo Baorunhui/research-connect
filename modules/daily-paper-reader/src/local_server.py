@@ -141,7 +141,7 @@ def build_secret_env(secret: dict[str, Any] | None) -> dict[str, str]:
         "SILICONFLOW_API_KEY",
         "SILICONFLOW_RERANK_URL",
         "DPR_PUBLIC_SERVICE_API_KEY",
-        "DEEPXIV_BASE_URL",
+        "DEEPXIV_API_BASE_URL",
         "DEEPXIV_TOKEN",
         "SEMANTIC_SCHOLAR_API_KEY",
         "DPR_DEFAULT_USE_DEEPXIV",

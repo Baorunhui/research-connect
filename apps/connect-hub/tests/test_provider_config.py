@@ -12,6 +12,7 @@ def test_daily_environment_projects_enabled_external_providers():
     assert env["DPR_EMBED_API_KEY"] == "ek"
     assert env["RERANK_API_KEY"] == "rk"
     assert env["DEEPXIV_TOKEN"] == "dk"
+    assert env["DEEPXIV_API_BASE_URL"] == "https://deepxiv"
     assert env["SEMANTIC_SCHOLAR_API_KEY"] == "s2k"
     assert env["DPR_DEFAULT_USE_DEEPXIV"] == "1"
     assert env["DPR_DEFAULT_USE_KAGGLE"] == "0"
