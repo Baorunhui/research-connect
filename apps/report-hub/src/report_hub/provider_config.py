@@ -10,6 +10,14 @@ import urllib.request
 from typing import Any, Mapping
 
 
+# Public demo services published by daily-paper-reader. These credentials are
+# intentionally public client credentials, not Supabase service-role secrets.
+# Users may replace them with a compatible private service in /config.
+PUBLIC_ZWWEN_API_KEY = "26932a86d772001af60cbd9d2c162bfda3a90e094f797f3d6806f6077478b27a"
+PUBLIC_ARXIV_SUPABASE_URL = "https://lyucdwgefyfbmaiopjbk.supabase.co"
+PUBLIC_ARXIV_SUPABASE_KEY = "sb_publishable_lX-oi64Uxyd7SIVv3_w2Uw_MTOojeKq"
+
+
 PROVIDERS: dict[str, dict[str, Any]] = {
     "llm.primary": {
         "label": "统一 LLM",
@@ -21,21 +29,21 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     "embedding.paper": {
         "label": "论文 Embedding",
         "kind": "embedding",
-        "description": "把检索意图编码成向量，用于日报和综述的 Supabase 语义召回。",
+        "description": "把检索意图编码成向量，用于日报和综述的 Supabase 语义召回；Demo 已预置上游公开服务。",
         "fields": ["enabled", "base_url", "model", "api_key"],
         "secret_fields": ["api_key"],
     },
     "rerank.paper": {
         "label": "论文 Reranker",
         "kind": "rerank",
-        "description": "对融合后的候选论文做专用相关性重排，再交给 LLM 精筛。",
+        "description": "对融合后的候选论文做专用相关性重排，再交给 LLM 精筛；Demo 已预置上游公开服务。",
         "fields": ["enabled", "base_url", "model", "api_key"],
         "secret_fields": ["api_key"],
     },
     "supabase.arxiv": {
         "label": "arXiv Supabase 论文池",
         "kind": "supabase",
-        "description": "保存近期 arXiv 元数据和向量，提供 BM25 与向量召回。",
+        "description": "保存近期 arXiv 元数据和向量，提供 BM25 与向量召回；Demo 已预置上游公开只读论文池。",
         "fields": ["enabled", "base_url", "anon_key", "papers_table", "bm25_rpc", "vector_rpc"],
         "secret_fields": ["anon_key"],
     },
@@ -178,18 +186,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "enabled": True,
             "base_url": "https://zwwen.online/embed",
             "model": "BAAI/bge-small-en-v1.5",
-            "api_key": "",
+            "api_key": PUBLIC_ZWWEN_API_KEY,
         },
         "rerank.paper": {
             "enabled": True,
             "base_url": "https://zwwen.online/rerank",
             "model": "Qwen/Qwen3-Reranker-0.6B",
-            "api_key": "",
+            "api_key": PUBLIC_ZWWEN_API_KEY,
         },
         "supabase.arxiv": {
             "enabled": True,
-            "base_url": "",
-            "anon_key": "",
+            "base_url": PUBLIC_ARXIV_SUPABASE_URL,
+            "anon_key": PUBLIC_ARXIV_SUPABASE_KEY,
             "papers_table": "arxiv_papers",
             "bm25_rpc": "match_arxiv_papers_bm25",
             "vector_rpc": "match_arxiv_papers_exact",
@@ -255,7 +263,31 @@ def catalog_payload() -> dict[str, Any]:
 
 
 def merged_defaults(config: Mapping[str, Any] | None) -> dict[str, Any]:
-    return _deep_merge(DEFAULT_CONFIG, dict(config or {}), preserve_blank_secrets=False)
+    supplied = json.loads(json.dumps(dict(config or {}), ensure_ascii=False))
+    _migrate_public_service_blanks(supplied)
+    return _deep_merge(DEFAULT_CONFIG, supplied, preserve_blank_secrets=False)
+
+
+def _migrate_public_service_blanks(config: dict[str, Any]) -> None:
+    """Upgrade old demo configs without overwriting custom provider services."""
+    providers = config.get("providers")
+    if not isinstance(providers, dict):
+        return
+    for provider_id, public_url, secret_name in (
+        ("embedding.paper", "https://zwwen.online/embed", "api_key"),
+        ("rerank.paper", "https://zwwen.online/rerank", "api_key"),
+        ("supabase.arxiv", PUBLIC_ARXIV_SUPABASE_URL, "anon_key"),
+    ):
+        provider = providers.get(provider_id)
+        if not isinstance(provider, dict):
+            continue
+        configured_url = str(provider.get("base_url") or "").strip().rstrip("/")
+        if configured_url and configured_url != public_url.rstrip("/"):
+            continue
+        if not configured_url:
+            provider.pop("base_url", None)
+        if not str(provider.get(secret_name) or "").strip():
+            provider.pop(secret_name, None)
 
 
 def public_config(config: Mapping[str, Any] | None) -> dict[str, Any]:

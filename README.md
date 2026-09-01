@@ -23,14 +23,10 @@ Research Connect 是一套可自行部署的本地优先研究工具。每位用
 - 自己创建的中国版飞书企业自建应用；
 - Report Hub 管理员私下发放的安装 token；
 - 一个 OpenAI 兼容 LLM 的端点、模型名和 API Key。
-- 流程中使用到的第三方服务，包括：
-    - arXiv Supabase 论文池
-    - 论文 Embedding
-    - 论文 Reranker
-    - Semantic Scholar
-    - CitationClaw Search LLM
+- 流程中使用到的第三方服务：Demo 已预置 Daily Paper 上游公开的 arXiv Supabase
+  论文池、论文 Embedding 和论文 Reranker；查引用建议用户自行申请 Semantic Scholar Key。
 
-这些服务不都能通过注册普通平台账号直接获得；申请方式、配置字段和安全边界见 [外部论文服务申请与配置](docs/EXTERNAL_SERVICES_SETUP.md)。
+公开服务开箱可用，但共享额度、没有可用性保证；可在 `/config` 中测试或换成自己的兼容服务。默认值、申请/替换教程和安全边界见 [外部论文服务申请与配置](docs/EXTERNAL_SERVICES_SETUP.md)。
 
 每位用户应使用自己的飞书 App ID 和 Report Hub 安装 token。不要把服务器管理员 token 放进用户电脑。
 
@@ -80,6 +76,9 @@ REPORT_HUB_AGENT_TOKEN=rhi_xxx
 ```
 
 REPORT_HUB_AGENT_TOKEN 由 Report Hub 管理员为每个安装单独签发。LLM 配置首次启动后会导入统一配置中心；以后也可以在飞书 `/config` 返回的 HTTPS 页面修改。
+
+统一配置中心已为论文池、Embedding 和 Reranker 填入上游公开配置，普通 Demo
+用户无需再申请这三项。公开 Key 会以“已配置”显示而不回显原文；需要独立额度或自建服务时可覆盖并点击“测试可用性”。
 
 ## 4. 检查并启动
 

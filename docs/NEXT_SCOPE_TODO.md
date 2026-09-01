@@ -128,6 +128,13 @@ subscriptions:
 
 其中 `provider` 只引用 ProviderRegistry；任何 key 都不出现在这份论文源配置里。
 
+## P1：减少论文检索与查引用的配置项
+
+- [ ] 评估用 Semantic Scholar Academic Graph 的 bulk paper search 替代综述所需的 Kaggle 4GB 历史元数据快照：复用 `citation.semantic_scholar`，按主题、年份和日期分页召回，再在本地做临时缓存、去重和重排。先验证主题召回率、分页完整性、429/5xx 重试和实际额度；第一版保留 OpenAlex 作为无 Key 降级，不把 S2 设成唯一召回源。
+- [ ] Kaggle 索引继续保持默认关闭和可选，不要求普通用户下载；只有 S2/OpenAlex 无法满足历史召回质量或离线需求时才提供本地索引插件。
+- [ ] 合并 CitationClaw Search LLM 配置：用现有 Exa 搜索候选网页、Jina 获取选中页面正文，再交给统一 `llm.primary` 提取和核验作者、机构与学术头衔。这样普通路线可删除独立的 `citation.search_llm` Key；原生联网模型仅保留为可选 Provider/降级路线。
+- [ ] 明确能力边界：Exa + Jina 负责“找证据、读网页”，不能单独完成实体消歧和学术头衔判断；最终结构化判断仍由统一 LLM 完成，并在报告中保留来源 URL。
+
 ## P1：网页与跨设备体验
 
 - [x] CitationClaw 公网页通过受限命令中继运行本机任务，并轮询统一状态；创建任务无需把本机端口暴露公网。

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from report_hub.app import _site_command_allowed, create_app
 from report_hub.config import Settings
+from report_hub.provider_config import merged_defaults
 from report_hub.storage import Storage
 
 
@@ -136,6 +137,12 @@ def test_unified_configuration_page_redacts_and_preserves_secrets(tmp_path):
     token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
     assert api.get(f"/configure/{token}/").status_code == 200
     assert api.get(f"/configure/{token}/api/catalog").json()["pipelines"]
+    defaults = api.get(f"/configure/{token}/api/config").json()["providers"]
+    assert defaults["supabase.arxiv"]["base_url"] == "https://lyucdwgefyfbmaiopjbk.supabase.co"
+    assert defaults["supabase.arxiv"]["anon_key"] == ""
+    assert defaults["supabase.arxiv"]["configured"] is True
+    assert defaults["embedding.paper"]["configured"] is True
+    assert defaults["rerank.paper"]["configured"] is True
     saved = api.post(
         f"/configure/{token}/api/config",
         json={"providers": {"llm.primary": {"base_url": "https://llm.example/v1", "model": "m", "api_key": "secret"}}},
@@ -151,6 +158,20 @@ def test_unified_configuration_page_redacts_and_preserves_secrets(tmp_path):
     private = api.get("/api/v1/sites/connect-config-1/config", headers=auth()).json()["config"]
     assert private["providers"]["llm.primary"]["api_key"] == "secret"
     assert private["providers"]["llm.primary"]["model"] == "m2"
+
+
+def test_old_blank_public_provider_config_is_upgraded_without_overwriting_custom_service():
+    private = merged_defaults({
+        "providers": {
+            "supabase.arxiv": {"base_url": "", "anon_key": ""},
+            "embedding.paper": {"base_url": "https://zwwen.online/embed", "api_key": ""},
+            "rerank.paper": {"base_url": "https://private.example/rerank", "api_key": ""},
+        }
+    })["providers"]
+    assert private["supabase.arxiv"]["anon_key"].startswith("sb_publishable_")
+    assert private["embedding.paper"]["api_key"]
+    assert private["rerank.paper"]["base_url"] == "https://private.example/rerank"
+    assert private["rerank.paper"]["api_key"] == ""
 
 
 def test_stable_site_keeps_url_and_exposes_runs_and_public_config(tmp_path):

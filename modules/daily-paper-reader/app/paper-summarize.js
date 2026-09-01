@@ -414,7 +414,9 @@ window.PaperSummarizer = (function () {
     var subtitle = el('p', 'paper-summarize-sub', '贴一篇 arXiv/网页链接，或上传 PDF，即可得到结构化中文总结（本地后端驱动）。');
     root.appendChild(subtitle);
 
-    var local = isProbablyLocal();
+    // 公网站点会通过 Report Hub 的受限 API 中继访问用户电脑上的本地后端。
+    // 它不是 localhost，但同样具备 PDF 上传能力，不能按“静态站点”隐藏入口。
+    var local = isProbablyLocal() || Boolean(String(window.DPR_LOCAL_API_BASE || '').trim());
 
     // ---- 链接输入 ----
     var urlSection = el('div', 'paper-summarize-section');
@@ -447,7 +449,7 @@ window.PaperSummarizer = (function () {
       var fileLabel = el('div', 'paper-summarize-file-name', '拖入 PDF，或点击选择文件');
       fileLabel.id = 'paper-summarize-file-name';
       drop.appendChild(fileLabel);
-      drop.appendChild(el('div', 'paper-summarize-drop-hint', 'PDF 全文将在本地后端解析，上限 50MB'));
+      drop.appendChild(el('div', 'paper-summarize-drop-hint', 'PDF 将经当前安装的安全中继交给本机后端解析，上限 50MB'));
       var fileInput = el('input', 'paper-summarize-file-input');
       fileInput.type = 'file';
       fileInput.id = 'paper-summarize-file-input';
