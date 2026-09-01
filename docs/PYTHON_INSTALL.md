@@ -92,7 +92,7 @@ LLM_BASE_URL=https://your-openai-compatible-endpoint/v1
 LLM_API_KEY=xxx
 LLM_MODEL=your-model
 
-REPORT_HUB_API_URL=https://report.sinksilk.com:8443
+REPORT_HUB_API_URL=https://report.sinksilk.com:58443
 REPORT_HUB_AGENT_TOKEN=rhi_xxx
 ```
 

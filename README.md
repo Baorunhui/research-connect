@@ -23,6 +23,11 @@ Research Connect 是一套可自行部署的本地优先研究工具。每位用
 - 自己创建的中国版飞书企业自建应用；
 - Report Hub 管理员私下发放的安装 token；
 - 一个 OpenAI 兼容 LLM 的端点、模型名和 API Key。
+- 流程中使用到的第三方 API Key，包括：
+    - arXiv Supabase 论文池
+    - 论文 Embedding
+    - 论文 Reranker
+    - CitationClaw Search LLM
 
 每位用户应使用自己的飞书 App ID 和 Report Hub 安装 token。不要把服务器管理员 token 放进用户电脑。
 
@@ -33,7 +38,7 @@ Linux：
 ```bash
 git clone https://github.com/Baorunhui/research-connect.git
 cd research-connect
-./scripts/setup.sh
+./scripts/setup.sh  --with-docling
 ```
 
 Windows PowerShell：
@@ -41,7 +46,7 @@ Windows PowerShell：
 ```powershell
 git clone https://github.com/Baorunhui/research-connect.git
 cd research-connect
-powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1  -WithDocling
 ```
 
 安装脚本会：
@@ -49,21 +54,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 1. 创建仓库根目录下的 `.venv`；
 2. 安装 Connect Hub、Daily Paper、CitationClaw、XHS Agent 和共享运行时；
 3. 安装 Playwright Chromium；
-4. 首次运行时从 [.env.example](apps/connect-hub/.env.example) 创建本机 `apps/connect-hub/.env`，不会覆盖已有配置。
+4. 安装 Docling 模型提取 pdf 图片和表格
+5. 首次运行时创建本机配置 `apps/connect-hub/.env`。
 
-需要 Daily Paper 使用 Docling 提取 PDF 图表时，推荐在首次安装时启用：
+## 2. 配置飞书机器人
+飞书开放平台需要添加机器人能力、权限、长连接事件和固定菜单，完整步骤见 [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)。
 
-```bash
-./scripts/setup.sh --with-docling       # Linux
-```
-
-```powershell
-.\scripts\setup.ps1 -WithDocling       # Windows
-```
-
-Docling 支持 CPU，也会使用可用的 GPU；依赖和首次模型下载较大。未安装时 PDF 文本流程仍可运行，抽图会回退到 PyMuPDF。项目不会安装 PaperCropper、DocLayout-YOLO 或 OpenCV 路线。
-
-## 2. 填写配置
+## 3. 填写配置
 
 编辑 `apps/connect-hub/.env`，至少填写：
 
@@ -75,15 +72,13 @@ LLM_BASE_URL=https://your-openai-compatible-endpoint/v1
 LLM_API_KEY=xxx
 LLM_MODEL=your-model
 
-REPORT_HUB_API_URL=https://report.sinksilk.com:8443
+REPORT_HUB_API_URL=https://report.sinksilk.com:58443
 REPORT_HUB_AGENT_TOKEN=rhi_xxx
 ```
 
-安装 token 由 Report Hub 管理员为每个安装单独签发。LLM 配置首次启动后会导入统一配置中心；以后也可以在飞书 `/config` 返回的 HTTPS 页面修改。
+REPORT_HUB_AGENT_TOKEN 由 Report Hub 管理员为每个安装单独签发。LLM 配置首次启动后会导入统一配置中心；以后也可以在飞书 `/config` 返回的 HTTPS 页面修改。
 
-飞书开放平台需要添加机器人能力、权限、长连接事件和固定菜单，完整步骤见 [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)。
-
-## 3. 检查并启动
+## 4. 检查并启动
 
 Linux：
 
@@ -101,7 +96,7 @@ Windows PowerShell：
 
 看到飞书 WebSocket 连接成功后即可私聊机器人。终端需要保持运行，按 `Ctrl+C` 停止。`start` 会常驻轻量 Connect Hub，并自动管理本机 Daily Paper/CitationClaw HTTP 服务；重型 PDF 和论文流水线只在任务执行时运行。
 
-## 4. 使用
+## 5. 使用
 
 可以直接自然语言输入，例如：
 
@@ -145,8 +140,6 @@ git pull --ff-only
 git pull --ff-only
 .\scripts\setup.ps1                  # Windows
 ```
-
-脚本可以重复执行，不会覆盖 `.env`。如果原安装启用了 Docling，更新时继续传 `--with-docling` 或 `-WithDocling`。
 
 ## 数据与安全
 

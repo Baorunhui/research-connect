@@ -54,7 +54,7 @@ docker compose logs --tail=100 report-hub
 ```dotenv
 REPORT_HUB_HOST=0.0.0.0
 REPORT_HUB_PORT=58787
-REPORT_HUB_PUBLIC_BASE_URL=https://report.sinksilk.com:8443
+REPORT_HUB_PUBLIC_BASE_URL=https://report.sinksilk.com:58443
 REPORT_HUB_AGENT_TOKEN=<双方已经约定的 token，不要发到公开仓库或日志>
 REPORT_HUB_MAX_UPLOAD_MB=256
 REPORT_HUB_MAX_EXPANDED_MB=1024
@@ -62,7 +62,7 @@ REPORT_HUB_MAX_EXPANDED_MB=1024
 
 Compose 已把持久化目录固定为 `/data`，对应 `report-hub-data` 命名卷，不需要在 `.env` 中另改宿主机路径。
 
-Nginx 应把 `https://report.sinksilk.com:8443` 的全部路径原样反向代理到 Report Hub 的 `58787` 端口，不能只代理 `/healthz` 或 `/api/v1/jobs`。请使用 [nginx-report-hub.conf](../apps/report-hub/deploy/nginx-report-hub.conf) 中的关键设置，尤其是 `client_max_body_size 256m`。论文日报原版站点会保留历史图片，实际压缩包可能超过 50 MiB；Nginx 和 `REPORT_HUB_MAX_UPLOAD_MB` 两层限制必须同时放大。
+Nginx 应把 `https://report.sinksilk.com:58443` 的全部路径原样反向代理到 Report Hub 的 `58787` 端口，不能只代理 `/healthz` 或 `/api/v1/jobs`。请使用 [nginx-report-hub.conf](../apps/report-hub/deploy/nginx-report-hub.conf) 中的关键设置，尤其是 `client_max_body_size 256m`。论文日报原版站点会保留历史图片，实际压缩包可能超过 50 MiB；Nginx 和 `REPORT_HUB_MAX_UPLOAD_MB` 两层限制必须同时放大。
 
 修改 Nginx 后执行：
 
@@ -76,7 +76,7 @@ nginx -s reload
 ## 升级验收
 
 ```bash
-BASE=https://report.sinksilk.com:8443
+BASE=https://report.sinksilk.com:58443
 AGENT_TOKEN='<REPORT_HUB_AGENT_TOKEN>'
 
 curl -fsS "$BASE/healthz"
