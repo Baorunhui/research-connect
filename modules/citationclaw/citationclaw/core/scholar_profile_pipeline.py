@@ -129,7 +129,14 @@ async def fetch_target_citations(
         async with sem:
             title = tp.get("title", "")
             meta = None
-            if arxiv_db is not None:
+            # Papers obtained from S2's author endpoint already carry their
+            # canonical paperId.  Reuse it directly: title search is slower,
+            # fuzzy, and especially fragile on the shared anonymous quota.
+            if tp.get("s2_id"):
+                meta = dict(tp)
+                meta.setdefault("cited_by_count", tp.get("citations", 0) or 0)
+                log(f"  [S2] 直接使用 paperId: {title[:60]}")
+            elif arxiv_db is not None:
                 db_hit = arxiv_db.lookup_by_title(title)
                 if db_hit and db_hit.get("arxiv_id"):
                     meta = await s2.get_paper_by_arxiv_id(db_hit["arxiv_id"])

@@ -18,8 +18,12 @@ class S2Client:
         self._has_key = bool(api_key)
         if api_key:
             self._client.headers["x-api-key"] = api_key
-            self._rate_delay = 0.4  # With key: ~2.5 req/s per slot
-            self._sem = asyncio.Semaphore(2)  # 2 concurrent × 0.4s = ~5 req/s
+            # New keys start at roughly 1 request/second unless Semantic
+            # Scholar explicitly grants a higher quota.  Staying within that
+            # default is slower than optimistic concurrency, but avoids turning
+            # every throttled response into an apparent "paper not found".
+            self._rate_delay = 1.05
+            self._sem = asyncio.Semaphore(1)
         else:
             self._rate_delay = 1.1  # Free tier: 1 req/s
             self._sem = asyncio.Semaphore(1)
@@ -196,7 +200,10 @@ class S2Client:
         papers: List[dict] = []
         offset = 0
         limit = 100
-        fields = "title,year,citationCount"
+        # Keep paperId and target authors here.  The scholar-profile pipeline
+        # can then walk citations directly instead of throwing this identity
+        # away and performing a second fuzzy title search for every paper.
+        fields = "paperId,title,year,citationCount,authors,externalIds"
         while offset < max_papers:
             url = (f"{BASE_URL}/author/{author_id}/papers"
                    f"?fields={fields}&limit={limit}&offset={offset}")
@@ -225,10 +232,14 @@ class S2Client:
                     year = int(y) if y else None
                 except (ValueError, TypeError):
                     year = None
+                parsed = self._parse_paper(p)
                 papers.append({
                     "title": p.get("title", "") or "",
                     "year": year,
                     "citations": p.get("citationCount", 0) or 0,
+                    "s2_id": parsed.get("s2_id", ""),
+                    "authors": parsed.get("authors", []),
+                    "arxiv_id": parsed.get("arxiv_id", ""),
                 })
             if len(batch) < limit:
                 break

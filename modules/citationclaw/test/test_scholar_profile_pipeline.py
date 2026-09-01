@@ -314,6 +314,32 @@ def test_fetch_target_citations_unresolved():
     assert citing == []
 
 
+def test_fetch_target_citations_reuses_existing_s2_id():
+    s2 = MagicMock()
+    s2.search_paper = AsyncMock(return_value=None)
+    s2.get_paper_citations = AsyncMock(return_value=[
+        {"title": "Citing A", "authors": [], "s2_id": "C1"},
+    ])
+    target_papers = [{
+        "title": "Known S2 Paper",
+        "citations": 42,
+        "s2_id": "P123",
+        "authors": [{"name": "Alice", "s2_id": "A1"}],
+    }]
+
+    results = asyncio.get_event_loop().run_until_complete(
+        fetch_target_citations(s2, target_papers, log=lambda msg: None)
+    )
+
+    _, meta, citing = results[0]
+    assert meta["s2_id"] == "P123"
+    assert meta["cited_by_count"] == 42
+    assert meta["authors"][0]["name"] == "Alice"
+    assert len(citing) == 1
+    s2.search_paper.assert_not_awaited()
+    s2.get_paper_citations.assert_awaited_once_with("P123", max_papers=5000)
+
+
 def test_fetch_target_citations_cancel():
     s2 = MagicMock()
     s2.search_paper = AsyncMock(return_value={"s2_id": "X", "title": "T"})
