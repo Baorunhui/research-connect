@@ -23,11 +23,14 @@ Research Connect 是一套可自行部署的本地优先研究工具。每位用
 - 自己创建的中国版飞书企业自建应用；
 - Report Hub 管理员私下发放的安装 token；
 - 一个 OpenAI 兼容 LLM 的端点、模型名和 API Key。
-- 流程中使用到的第三方 API Key，包括：
+- 流程中使用到的第三方服务，包括：
     - arXiv Supabase 论文池
     - 论文 Embedding
     - 论文 Reranker
+    - Semantic Scholar
     - CitationClaw Search LLM
+
+这些服务不都能通过注册普通平台账号直接获得；申请方式、配置字段和安全边界见 [外部论文服务申请与配置](docs/EXTERNAL_SERVICES_SETUP.md)。
 
 每位用户应使用自己的飞书 App ID 和 Report Hub 安装 token。不要把服务器管理员 token 放进用户电脑。
 
