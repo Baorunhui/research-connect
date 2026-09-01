@@ -40,6 +40,8 @@ class ScholarProfileScraper:
 
     async def _scraper_fetch(self, url: str) -> Optional[str]:
         """Fetch a page via ScraperAPI, non-blocking via asyncio.to_thread."""
+        if not self.api_keys:
+            return None
         for attempt in range(self.retry_max_attempts):
             key_idx = self._key_idx % len(self.api_keys)
             api_key = self.api_keys[key_idx]
@@ -149,26 +151,30 @@ class ScholarProfileScraper:
         all_papers = []
         cstart = 0
 
-        self.log_callback(f"[ScholarProfile] 开始爬取 user={user_id} 的论文列表")
-        while True:
-            url = f"{base}?user={user_id}&sortby=citations&cstart={cstart}&pagesize=100"
-            self.log_callback(f"[ScholarProfile] 获取第 {cstart//100 + 1} 页 (cstart={cstart})")
-            html = await self._scraper_fetch(url)
-            if not html:
-                self.log_callback(f"[ScholarProfile] 获取页面失败，停止分页")
-                break
-            batch = self.parse_paper_rows(html)
-            self.log_callback(f"[ScholarProfile] 本页解析到 {len(batch)} 篇论文")
-            all_papers.extend(batch)
-            if len(batch) < 100:
-                break
-            cstart += 100
+        if self.api_keys:
+            self.log_callback(f"[ScholarProfile] 开始爬取 user={user_id} 的论文列表")
+            while True:
+                url = f"{base}?user={user_id}&sortby=citations&cstart={cstart}&pagesize=100"
+                self.log_callback(f"[ScholarProfile] 获取第 {cstart//100 + 1} 页 (cstart={cstart})")
+                html = await self._scraper_fetch(url)
+                if not html:
+                    self.log_callback(f"[ScholarProfile] 获取页面失败，停止分页")
+                    break
+                batch = self.parse_paper_rows(html)
+                self.log_callback(f"[ScholarProfile] 本页解析到 {len(batch)} 篇论文")
+                all_papers.extend(batch)
+                if len(batch) < 100:
+                    break
+                cstart += 100
+        else:
+            self.log_callback("[ScholarProfile] 未配置 ScraperAPI，直接使用 Semantic Scholar")
 
         all_papers.sort(key=lambda p: p['citations'], reverse=True)
         self.log_callback(f"[ScholarProfile] 共爬取到 {len(all_papers)} 篇论文")
 
-        # ScraperAPI fallback: if no papers collected, try Semantic Scholar
-        if not all_papers and self._s2_api_key:
+        # ScraperAPI 不存在或失败时走 Semantic Scholar。S2 的公开 API 无需
+        # Key 也可使用（1 req/s）；Key 仅用于提高限额。
+        if not all_papers:
             all_papers = await self._s2_fallback(profile_url)
             if all_papers:
                 self.log_callback(f"[ScholarProfile] S2 兜底获取到 {len(all_papers)} 篇论文")

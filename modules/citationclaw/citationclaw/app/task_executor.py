@@ -2281,10 +2281,6 @@ class TaskExecutor:
                 all_papers = ScholarProfileScraper.parse_html(profile_html)
                 self.log_manager.info(f"  [本地上传] 解析到 {len(all_papers)} 篇论文")
             elif profile_url:
-                if not config.scraper_api_keys:
-                    self.log_manager.error("未配置 ScraperAPI 密钥，无法爬取学者主页")
-                    await self._broadcast_task_finished("error", "未配置 ScraperAPI 密钥")
-                    return
                 scraper = ScholarProfileScraper(
                     api_keys=config.scraper_api_keys,
                     log_callback=self.log_manager.info,

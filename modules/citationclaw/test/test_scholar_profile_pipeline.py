@@ -16,6 +16,24 @@ from citationclaw.core.scholar_profile_pipeline import (
 )
 from citationclaw.core.pipeline_adapter import PipelineAdapter
 from citationclaw.core.self_citation import SelfCitationDetector
+from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper
+
+
+def test_profile_without_scraper_key_uses_public_s2_fallback():
+    logs = []
+    scraper = ScholarProfileScraper(api_keys=[], log_callback=logs.append, s2_api_key="")
+    expected = [{"title": "Paper A", "citations": 10}]
+    scraper._s2_fallback = AsyncMock(return_value=expected)
+
+    papers = asyncio.run(
+        scraper.fetch_all_papers(
+            "https://scholar.google.com/citations?user=abc&name=Wenfei+Yang"
+        )
+    )
+
+    assert papers == expected
+    scraper._s2_fallback.assert_awaited_once()
+    assert any("直接使用 Semantic Scholar" in message for message in logs)
 
 
 # ── filter_top_papers ──────────────────────────────────────────────────

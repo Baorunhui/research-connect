@@ -899,6 +899,7 @@ def _citation_command_allowed(path: str) -> bool:
         "providers", "presets", "run", "run/from-cache", "task/status", "task/cancel",
         "task/year-traverse-respond", "quota/check", "test_openai",
         "pretest/search_llm", "pretest/light_model", "results/list", "results/folders",
+        "scholar/papers", "profile/run", "profile/upload",
     }
     return path in exact or path.startswith("results/folder/") or path.startswith("results/download/") or path.startswith("results/view/")
 

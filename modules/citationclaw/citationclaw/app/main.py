@@ -414,9 +414,6 @@ class ScholarProfileRequest(BaseModel):
 async def fetch_scholar_papers(request: ScholarProfileRequest):
     url = _validate_scholar_url(request.profile_url)
     config = config_manager.get()
-    if not config.scraper_api_keys:
-        return JSONResponse(status_code=400,
-            content={"error": "未配置 ScraperAPI 密钥，请先在配置页设置"})
 
     from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper
     scraper = ScholarProfileScraper(

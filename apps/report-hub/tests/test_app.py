@@ -446,6 +446,46 @@ def test_public_module_command_round_trip(tmp_path):
     assert response.json()["status"] == "idle"
 
 
+def test_public_citation_profile_command_is_relayed(tmp_path):
+    api = client(tmp_path)
+    site = api.post(
+        "/api/v1/sites", headers=auth(),
+        json={"site_id": "citation-profile-relay", "module_name": "citationclaw", "title": "citation"},
+    ).json()
+    token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
+    payload = {
+        "profile_url": "https://scholar.google.com/citations?user=abc&name=Wenfei+Yang",
+        "top_n": 30,
+    }
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(
+            lambda: api.post(f"/s/{token}/api/profile/run", json=payload)
+        )
+        command = None
+        for _ in range(100):
+            command = api.get(
+                "/api/v1/sites/citation-profile-relay/commands/next", headers=auth()
+            ).json()["command"]
+            if command:
+                break
+            time.sleep(0.01)
+        assert command and command["path"] == "/api/profile/run"
+        api.post(
+            f"/api/v1/sites/citation-profile-relay/commands/{command['command_id']}/complete",
+            headers=auth(),
+            json={
+                "status_code": 200,
+                "headers": {"content-type": "application/json"},
+                "body_b64": base64.b64encode(
+                    b'{"status":"success","message":"started"}'
+                ).decode(),
+            },
+        )
+        response = future.result(timeout=5)
+
+    assert response.json()["status"] == "success"
+
+
 def test_public_daily_paper_command_round_trip_and_allowlist(tmp_path):
     api = client(tmp_path)
     site = api.post(
