@@ -679,10 +679,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     async def public_module_command(public_token: str, api_path: str, request: Request) -> Response:
         site = public_site(public_token)
-        if site["module_name"] != "citationclaw" or not _citation_command_allowed(api_path):
+        module_name = str(site["module_name"] or "")
+        allowed = (
+            module_name == "citationclaw" and _citation_command_allowed(api_path)
+        ) or (
+            module_name == "daily-paper"
+            and _daily_paper_command_allowed(api_path, request.method)
+        )
+        if not allowed:
             raise HTTPException(status_code=404, detail="module endpoint not found")
         raw = await request.body()
-        if len(raw) > 4 * 1024 * 1024:
+        # A Daily Paper PDF is base64-encoded inside JSON (50 MiB source limit),
+        # while all other module commands should remain small.
+        request_limit = (
+            72 * 1024 * 1024
+            if module_name == "daily-paper" and api_path == "paper/summarize"
+            else 4 * 1024 * 1024
+        )
+        if len(raw) > request_limit:
             raise HTTPException(status_code=413, detail="request is too large")
         query = ("?" + request.url.query) if request.url.query else ""
         if api_path in {"run", "run/from-cache"} and raw:
@@ -702,7 +716,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers={"content-type": request.headers.get("content-type", "application/json")},
             body_b64=base64.b64encode(raw).decode("ascii"),
         )
-        deadline = time.monotonic() + 45
+        deadline = time.monotonic() + 140
         while time.monotonic() < deadline:
             item = storage.get_site_command(command_id)
             if item and item["status"] in {"completed", "failed"}:
@@ -887,3 +901,23 @@ def _citation_command_allowed(path: str) -> bool:
         "pretest/search_llm", "pretest/light_model", "results/list", "results/folders",
     }
     return path in exact or path.startswith("results/folder/") or path.startswith("results/download/") or path.startswith("results/view/")
+
+
+def _daily_paper_command_allowed(path: str, method: str) -> bool:
+    """Allow only the original UI's operational endpoints through the agent relay."""
+    verb = str(method or "GET").upper()
+    if verb == "GET":
+        return (
+            path in {"local/health", "local/runs", "chat/config", "paper/summarize", "survey"}
+            or path.startswith("local/runs/")
+            or path.startswith("paper/summarize/")
+            or path.startswith("survey/")
+        )
+    if verb == "POST":
+        return (
+            path in {"chat", "paper/summarize", "survey", "local/workflows/dispatch", "local/smart-query"}
+            or (path.startswith("local/runs/") and path.endswith("/cancel"))
+            or (path.startswith("paper/summarize/") and path.endswith("/cancel"))
+            or (path.startswith("survey/") and path.endswith("/cancel"))
+        )
+    return False

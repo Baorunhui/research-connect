@@ -5,7 +5,12 @@
 window.SurveyGenerator = (function () {
   'use strict';
 
-  var SURVEY_ENDPOINT = '/api/survey';
+  function apiUrl(path) {
+    var base = String(window.DPR_LOCAL_API_BASE || '').trim().replace(/\/$/, '');
+    return base + path;
+  }
+
+  var SURVEY_ENDPOINT = apiUrl('/api/survey');
   var POLL_INTERVAL = 2500;
 
   // 阶段序与进度条权重（累计到该阶段完成时的比例；带 current/total 的事件在区间内线性推进）
@@ -59,7 +64,7 @@ window.SurveyGenerator = (function () {
 
   function backendAvailable() {
     // 轻量 health 探测，避免向后端发空请求建废 job
-    return fetch('/api/local/health', { cache: 'no-store' })
+    return fetch(apiUrl('/api/local/health'), { cache: 'no-store' })
       .then(function (r) { return r.ok; })
       .catch(function () { return false; });
   }

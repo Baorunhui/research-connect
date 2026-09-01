@@ -283,14 +283,20 @@ def _build_runtime(
             config_manager.sync(force=True)
         except Exception as exc:
             logging.getLogger(__name__).warning("initial configuration sync failed: %s", exc)
-        relay = ModuleCommandRelay(
+        citation_relay = ModuleCommandRelay(
             report_hub, citation_site_id, settings.citationclaw_endpoint,
             config_sync=lambda: config_manager.sync(force=True),
         )
-        relay.start()
+        daily_relay = ModuleCommandRelay(
+            report_hub, daily_site_id, settings.daily_paper_endpoint,
+            config_sync=lambda: config_manager.sync(force=True),
+            max_response_bytes=80 * 1024 * 1024,
+        )
+        citation_relay.start()
+        daily_relay.start()
         # The connector owns the service for its whole lifetime; retain the daemon
         # here so it is not garbage-collected while Feishu is running.
-        service.module_command_relay = relay
+        service.module_command_relays = (citation_relay, daily_relay)
     return settings, gateway, store, service
 
 

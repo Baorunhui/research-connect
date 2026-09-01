@@ -4,7 +4,12 @@
 window.PaperSummarizer = (function () {
   'use strict';
 
-  var SUMMARIZE_ENDPOINT = '/api/paper/summarize';
+  function apiUrl(path) {
+    var base = String(window.DPR_LOCAL_API_BASE || '').trim().replace(/\/$/, '');
+    return base + path;
+  }
+
+  var SUMMARIZE_ENDPOINT = apiUrl('/api/paper/summarize');
   var MAX_PDF_BYTES = 50 * 1024 * 1024; // 与后端默认一致（DPR_PDF_MAX_MB 默认 50MB）
 
   function isProbablyLocal() {
@@ -21,7 +26,7 @@ window.PaperSummarizer = (function () {
 
   function backendAvailable() {
     // 用轻量 health 端点探测，避免向 /api/paper/summarize 发空请求建废 job
-    return fetch('/api/local/health', { cache: 'no-store' })
+    return fetch(apiUrl('/api/local/health'), { cache: 'no-store' })
       .then(function (r) { return r.ok; })
       .catch(function () { return false; });
   }

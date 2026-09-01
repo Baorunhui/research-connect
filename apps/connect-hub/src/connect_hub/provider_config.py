@@ -216,12 +216,15 @@ class ModuleCommandRelay:
     def __init__(
         self, client: ReportHubClient, site_id: str, local_endpoint: str,
         *, config_sync: Callable[[], object] | None = None, poll_seconds: float = 0.75,
+        request_timeout_seconds: int = 130, max_response_bytes: int = 8 * 1024 * 1024,
     ) -> None:
         self.client = client
         self.site_id = site_id
         self.local_endpoint = local_endpoint.rstrip("/")
         self.config_sync = config_sync
         self.poll_seconds = max(0.25, poll_seconds)
+        self.request_timeout_seconds = max(10, int(request_timeout_seconds))
+        self.max_response_bytes = max(1024 * 1024, int(max_response_bytes))
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -263,12 +266,12 @@ class ModuleCommandRelay:
                 headers=headers,
             )
             try:
-                with urllib.request.urlopen(request, timeout=40) as response:
-                    response_body = response.read(8 * 1024 * 1024)
+                with urllib.request.urlopen(request, timeout=self.request_timeout_seconds) as response:
+                    response_body = response.read(self.max_response_bytes)
                     status = response.status
                     response_headers = {"content-type": response.headers.get("content-type", "application/json")}
             except urllib.error.HTTPError as exc:
-                response_body = exc.read(8 * 1024 * 1024)
+                response_body = exc.read(self.max_response_bytes)
                 status = exc.code
                 response_headers = {"content-type": exc.headers.get("content-type", "application/json")}
             self.client.complete_site_command(

@@ -446,6 +446,42 @@ def test_public_module_command_round_trip(tmp_path):
     assert response.json()["status"] == "idle"
 
 
+def test_public_daily_paper_command_round_trip_and_allowlist(tmp_path):
+    api = client(tmp_path)
+    site = api.post(
+        "/api/v1/sites", headers=auth(),
+        json={"site_id": "daily-paper-relay", "module_name": "daily-paper", "title": "daily"},
+    ).json()
+    token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(lambda: api.post(
+            f"/s/{token}/api/paper/summarize",
+            json={"source": "url", "url": "https://arxiv.org/abs/2601.00001"},
+        ))
+        command = None
+        for _ in range(100):
+            command = api.get(
+                "/api/v1/sites/daily-paper-relay/commands/next", headers=auth()
+            ).json()["command"]
+            if command:
+                break
+            time.sleep(0.01)
+        assert command and command["path"] == "/api/paper/summarize"
+        api.post(
+            f"/api/v1/sites/daily-paper-relay/commands/{command['command_id']}/complete",
+            headers=auth(), json={
+                "status_code": 200,
+                "headers": {"content-type": "application/json"},
+                "body_b64": base64.b64encode(
+                    b'{"ok":true,"job_id":"sum-test","status":"queued"}'
+                ).decode(),
+            },
+        )
+        response = future.result(timeout=5)
+    assert response.json()["job_id"] == "sum-test"
+    assert api.get(f"/s/{token}/api/local/secret").status_code == 404
+
+
 def test_install_tokens_are_isolated_and_revocable(tmp_path):
     api = client(tmp_path)
     first, first_token = api.app.state.storage.issue_installation("Alice")

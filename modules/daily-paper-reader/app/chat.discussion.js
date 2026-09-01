@@ -1,5 +1,9 @@
 // 私人研讨区模块：负责聊天 UI、LLM 配置与本地记忆（IndexedDB）
 window.PrivateDiscussionChat = (function () {
+  const apiUrl = (path) => {
+    const base = String(window.DPR_LOCAL_API_BASE || '').trim().replace(/\/$/, '');
+    return base + path;
+  };
   const CHAT_HISTORY_KEY = 'dpr_chat_history_v1'; // 仅用于旧版本迁移
   const CHAT_DB_NAME = 'dpr_chat_db_v1';
   const CHAT_STORE_NAME = 'paper_chats';
@@ -51,7 +55,7 @@ window.PrivateDiscussionChat = (function () {
   const resolveChatConfig = async () => {
     if (_chatBackendModelResolved) return _chatBackendModel;
     try {
-      const resp = await fetch('/api/chat/config');
+      const resp = await fetch(apiUrl('/api/chat/config'));
       if (!resp.ok) return null;
       const data = await resp.json();
       const model = (data && data.model) ? data.model : null;
@@ -1178,7 +1182,7 @@ window.PrivateDiscussionChat = (function () {
         fallbackPayload.max_tokens = primaryPayload.max_tokens;
       }
 
-      const doChatFetch = async (payload) => fetch('/api/chat', {
+      const doChatFetch = async (payload) => fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
