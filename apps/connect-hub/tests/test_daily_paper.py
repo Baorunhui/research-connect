@@ -24,6 +24,7 @@ def test_daily_tool_schema_requires_structured_intent_candidates(tmp_path):
         "summarize_paper",
         "generate_paper_survey",
     ]
+    assert definition.timeout_seconds >= 6 * 60 * 60
 
 
 def test_native_summary_job_polls_events_and_returns_result(monkeypatch):

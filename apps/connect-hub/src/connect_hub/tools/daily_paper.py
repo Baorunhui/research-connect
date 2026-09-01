@@ -408,7 +408,11 @@ def daily_paper_tools(
             "additionalProperties": False,
         },
         handler=generate,
-        timeout_seconds=adapter.timeout_seconds + 30,
+        # The adapter already enforces a no-activity timeout and cooperatively
+        # cancels the Daily Paper process.  Keep this outer safety net much
+        # wider: Step 6 can legitimately spend more than 30 minutes producing
+        # many paper pages while still reporting steady progress.
+        timeout_seconds=max(adapter.timeout_seconds + 30, 6 * 60 * 60),
         progress_message=(
             "论文日报任务已启动。将执行 BM25召回、语义向量召回、RRF、专用 reranker 和 LLM 精筛；"
             "每进入一个步骤都会在这里汇报。"
