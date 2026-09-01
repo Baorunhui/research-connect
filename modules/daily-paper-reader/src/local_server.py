@@ -144,12 +144,36 @@ def build_secret_env(secret: dict[str, Any] | None) -> dict[str, str]:
         "DEEPXIV_BASE_URL",
         "DEEPXIV_TOKEN",
         "SEMANTIC_SCHOLAR_API_KEY",
+        "DPR_DEFAULT_USE_DEEPXIV",
+        "DPR_DEFAULT_USE_KAGGLE",
     }
     for key in passthrough_keys:
         value = norm_text(secret.get(key))
         if value:
             env[key] = value
     return env
+
+
+def apply_runtime_environment(secret: dict[str, Any] | None) -> list[str]:
+    """Apply only the existing credential allowlist to this service process.
+
+    Unlike ``build_secret_env``, explicit blank values remove stale variables;
+    this makes disabling a provider in the unified UI effective immediately.
+    """
+    if not isinstance(secret, dict):
+        return []
+    allowed = set(build_secret_env({key: "probe" for key in secret}))
+    changed: list[str] = []
+    for key in sorted(allowed):
+        if key not in secret:
+            continue
+        value = norm_text(secret.get(key))
+        if value:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
+        changed.append(key)
+    return changed
 
 
 def quote_env_value(value: str) -> str:
@@ -1089,8 +1113,14 @@ def _run_survey_job(
     deep_read = as_bool(payload.get("deep_read"), True)
     # 默认 Kaggle 快照粗筛为主路（零网络零限流）；DeepXiv 语义检索默认关——
     # 外部服务有 token 限额/波动，需要被引数与最新论文时前端勾选开启
-    use_deepxiv = as_bool(payload.get("use_deepxiv"), False)
-    use_kaggle = as_bool(payload.get("use_kaggle"), False)
+    use_deepxiv = as_bool(
+        payload.get("use_deepxiv"),
+        as_bool(os.getenv("DPR_DEFAULT_USE_DEEPXIV"), False),
+    )
+    use_kaggle = as_bool(
+        payload.get("use_kaggle"),
+        as_bool(os.getenv("DPR_DEFAULT_USE_KAGGLE"), False),
+    )
     # Kaggle 词法粗筛量级：500-30000（默认 1 万，前端三档 3千/1万/3万）
     coarse_top_k = _clamp(payload.get("coarse_top_k"), 500, 30000, 10000)
 
@@ -2331,6 +2361,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._chat_connectivity_test()
         if parsed.path == "/api/local/secret":
             return self._save_local_secret()
+        if parsed.path == "/api/local/runtime-env":
+            return self._apply_runtime_env()
         if parsed.path != "/api/local/workflows/dispatch":
             return self._json({"ok": False, "error": "not found"}, status=404)
         try:
@@ -2454,6 +2486,17 @@ class Handler(SimpleHTTPRequestHandler):
                 "envKeys": env_keys,
                 "savedAt": utc_now(),
             })
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, status=400)
+
+    def _apply_runtime_env(self) -> None:
+        """Receive an allowlisted runtime snapshot from local Connect Hub."""
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            secret = payload.get("secret") if isinstance(payload.get("secret"), dict) else {}
+            keys = apply_runtime_environment(secret)
+            return self._json({"ok": True, "appliedKeys": keys, "savedAt": utc_now()})
         except Exception as exc:
             return self._json({"ok": False, "error": str(exc)}, status=400)
 

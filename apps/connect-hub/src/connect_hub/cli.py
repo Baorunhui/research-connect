@@ -240,6 +240,7 @@ def _build_runtime(
             if daily_paper.configured:
                 try:
                     daily_paper.apply_configuration(daily_configuration(config))
+                    daily_paper.apply_runtime_environment(daily_paper.extra_env)
                 except Exception as exc:
                     logging.getLogger(__name__).warning("could not apply Daily Paper configuration: %s", exc)
             if citationclaw.configured:

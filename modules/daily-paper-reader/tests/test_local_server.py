@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -27,10 +28,32 @@ def test_connect_hub_secret_env_allowlist_includes_external_academic_services():
         "DEEPXIV_BASE_URL": "https://deepxiv.example",
         "DEEPXIV_TOKEN": "deepxiv-token",
         "SEMANTIC_SCHOLAR_API_KEY": "s2-token",
+        "DPR_DEFAULT_USE_DEEPXIV": "1",
+        "DPR_DEFAULT_USE_KAGGLE": "0",
     })
     assert env["DEEPXIV_BASE_URL"] == "https://deepxiv.example"
     assert env["DEEPXIV_TOKEN"] == "deepxiv-token"
     assert env["SEMANTIC_SCHOLAR_API_KEY"] == "s2-token"
+    assert env["DPR_DEFAULT_USE_DEEPXIV"] == "1"
+    assert env["DPR_DEFAULT_USE_KAGGLE"] == "0"
+
+
+def test_runtime_environment_applies_and_clears_allowlisted_values(monkeypatch):
+    from src.local_server import apply_runtime_environment
+
+    monkeypatch.setenv("DEEPXIV_TOKEN", "old-token")
+    changed = apply_runtime_environment({
+        "DEEPXIV_TOKEN": "new-token",
+        "DPR_DEFAULT_USE_DEEPXIV": "1",
+        "UNSAFE_ARBITRARY_ENV": "blocked",
+    })
+    assert "DEEPXIV_TOKEN" in changed
+    assert "UNSAFE_ARBITRARY_ENV" not in changed
+    assert os.environ["DEEPXIV_TOKEN"] == "new-token"
+    assert os.environ["DPR_DEFAULT_USE_DEEPXIV"] == "1"
+
+    apply_runtime_environment({"DEEPXIV_TOKEN": ""})
+    assert "DEEPXIV_TOKEN" not in os.environ
 
 
 def test_runtime_docs_shell_is_created_from_clean_templates(tmp_path, monkeypatch):

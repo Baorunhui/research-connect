@@ -74,6 +74,10 @@ class DailyPaperAdapter:
     def apply_configuration(self, config: Mapping[str, Any]) -> None:
         """Persist configuration collected by the public original UI locally."""
         self._request("POST", "/api/local/config/partial", config)
+
+    def apply_runtime_environment(self, values: Mapping[str, str]) -> None:
+        """Synchronize allowlisted provider values into the local service process."""
+        self._request("POST", "/api/local/runtime-env", {"secret": dict(values)})
         local = config.get("local") if isinstance(config.get("local"), Mapping) else {}
         chat = local.get("chat") if isinstance(local.get("chat"), Mapping) else {}
         api_key = str(chat.get("api_key") or "").strip()

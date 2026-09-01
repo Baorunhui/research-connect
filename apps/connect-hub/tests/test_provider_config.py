@@ -7,12 +7,14 @@ def test_daily_environment_projects_enabled_external_providers():
         "rerank.paper": {"enabled": True, "base_url": "https://rerank", "api_key": "rk", "model": "rm"},
         "academic.deepxiv": {"enabled": True, "base_url": "https://deepxiv", "api_key": "dk"},
         "citation.semantic_scholar": {"enabled": True, "api_key": "s2k"},
-    }}
+    }, "paper_sources": {"deepxiv": {"enabled": True}, "kaggle": {"enabled": False}}}
     env = daily_environment(config)
     assert env["DPR_EMBED_API_KEY"] == "ek"
     assert env["RERANK_API_KEY"] == "rk"
     assert env["DEEPXIV_TOKEN"] == "dk"
     assert env["SEMANTIC_SCHOLAR_API_KEY"] == "s2k"
+    assert env["DPR_DEFAULT_USE_DEEPXIV"] == "1"
+    assert env["DPR_DEFAULT_USE_KAGGLE"] == "0"
 
 
 def test_disabled_providers_do_not_reach_module_runtime():
@@ -29,7 +31,7 @@ def test_disabled_providers_do_not_reach_module_runtime():
         "document.mineru": {"enabled": False, "api_key": "mineru"},
     }
     env = daily_environment({"providers": providers})
-    assert all(value == "" for value in env.values())
+    assert all(value in {"", "0"} for value in env.values())
     citation = citation_configuration({"providers": providers})
     for key in (
         "openai_api_key", "openai_base_url", "openai_model", "light_api_key",

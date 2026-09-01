@@ -131,6 +131,7 @@ def daily_configuration(config: Mapping[str, Any]) -> dict[str, Any]:
 
 def daily_environment(config: Mapping[str, Any]) -> dict[str, str]:
     providers = config.get("providers") if isinstance(config.get("providers"), Mapping) else {}
+    paper_sources = config.get("paper_sources") if isinstance(config.get("paper_sources"), Mapping) else {}
     embedding, rerank, deepxiv, semantic_scholar = (
         _provider(providers, name)
         for name in (
@@ -149,6 +150,10 @@ def daily_environment(config: Mapping[str, Any]) -> dict[str, str]:
         "DEEPXIV_BASE_URL": _active_value(deepxiv, "base_url"),
         "DEEPXIV_TOKEN": _active_value(deepxiv, "api_key"),
         "SEMANTIC_SCHOLAR_API_KEY": _active_value(semantic_scholar, "api_key"),
+        "DPR_DEFAULT_USE_DEEPXIV": (
+            "1" if _enabled(deepxiv) and _source_enabled(paper_sources, "deepxiv") else "0"
+        ),
+        "DPR_DEFAULT_USE_KAGGLE": "1" if _source_enabled(paper_sources, "kaggle") else "0",
     }
 
 
@@ -284,3 +289,8 @@ def _runtime_value(provider: Mapping[str, Any], key: str, fallback: str) -> str:
     if not provider:
         return str(fallback or "").strip()
     return _active_value(provider, key)
+
+
+def _source_enabled(sources: Mapping[str, Any], name: str) -> bool:
+    value = sources.get(name)
+    return isinstance(value, Mapping) and value.get("enabled", False) is True
