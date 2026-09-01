@@ -1,5 +1,33 @@
 # 公网 Report Hub：技术路线与服务器交付说明
 
+## 2026-09-01：动态模块命令策略
+
+Report Hub 不再在服务端硬编码 Daily Paper 或 CitationClaw 的接口名单。
+每个 Connect Hub 安装在注册稳定站点时，会随站点提交一份由版本控制代码定义的
+`command_policy`，内容是允许从该公网网页转发到用户本机的 HTTP 方法和相对
+`/api/` 路径。规则只支持精确路径和末尾 `/*` 前缀匹配，例如：
+
+```json
+[
+  {"method": "GET", "path": "task/status"},
+  {"method": "POST", "path": "profile/run"},
+  {"method": "GET", "path": "results/view/*"}
+]
+```
+
+- 策略保存在 `sites.command_policy_json`，SQLite 启动迁移自动增加该列；
+- 未登记或空策略的站点默认拒绝所有本机模块命令（HTTP 403）；
+- Connect Hub 每次启动都会重新注册原站点并原地替换策略，稳定网页 URL 不变；
+- 以后模块增加网页接口时，只需更新本地能力清单并重启 Connect Hub，不需要重建
+  Report Hub；
+- 统一配置页的读取、保存和 Provider 探测由 Report Hub 原生受控路由处理，不经过
+  本机模块命令策略；
+- 策略只能由服务器管理员 token 或该安装自己的 installation token 更新，公网网页
+  访问者不能修改。
+
+这次升级不保留旧硬编码白名单。Report Hub 容器升级后，应让每个用户重启一次
+Connect Hub；重启前原站点仍可浏览静态内容，但动态按钮会返回 403。
+
 ## 2026-08-31：统一配置与本机命令中继更新
 
 本次更新需要重新构建并滚动重启 Report Hub Docker 容器。无需新增端口、数据库或环境变量；仍使用现有 HTTPS 域名、SQLite 数据卷和服务器管理员 `REPORT_HUB_AGENT_TOKEN`。管理员 token 不再分发给普通用户；每个用户使用单独签发的安装 token，详见 [REPORT_HUB_MULTI_INSTALL.md](REPORT_HUB_MULTI_INSTALL.md)。
@@ -36,7 +64,7 @@
 
 - 一台有公网入口的 Linux 服务器，Python 3.10+ 或 Docker；
 - 一个域名（如 `reports.example.edu.cn`），A 记录指向服务器；
-- 放行 TCP 80/443；测试阶段可临时放行 TCP 8787；
+- 放行 TCP 80/443；测试阶段可临时放行 TCP 58787；
 - 建议至少 1 CPU、1 GB 内存；磁盘容量取决于报告和图片留存，建议从 20 GB 起；
 - 决定备份与清理周期。Python 部署建议每日备份 `apps/report-hub/data/`；Docker 部署备份 `report-hub-data` 命名卷。报告建议保留 90 天以上。
 
@@ -48,10 +76,10 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 .venv/bin/report-hub --init-config
 .venv/bin/report-hub
-curl http://127.0.0.1:8787/healthz
+curl http://127.0.0.1:58787/healthz
 ```
 
-编辑 `.env`：测试时 `REPORT_HUB_PUBLIC_BASE_URL=http://211.86.155.100:8787`；有域名后改成 `https://reports.example.edu.cn`。`.env` 内生成的 `REPORT_HUB_AGENT_TOKEN` 只分发给可信的 Connect Hub 安装者，不提交 Git。
+编辑 `.env`：测试时 `REPORT_HUB_PUBLIC_BASE_URL=http://211.86.155.100:58787`；有域名后改成 `https://reports.example.edu.cn`。`.env` 内生成的 `REPORT_HUB_AGENT_TOKEN` 只分发给可信的 Connect Hub 安装者，不提交 Git。
 
 长期运行可把 `deploy/report-hub.service` 中用户和路径换成实际值后安装到 systemd。
 
@@ -68,7 +96,7 @@ docker compose up -d --build
 
 ## 域名与 HTTPS
 
-安装 Caddy，把 `deploy/Caddyfile` 的域名换成实际域名；Caddy 会自动申请证书并支持 WebSocket 反向代理。正式环境只把 Caddy 的 80/443 暴露公网，Report Hub 的 8787 可只监听内网或防火墙限制访问。
+安装 Caddy，把 `deploy/Caddyfile` 的域名换成实际域名；Caddy 会自动申请证书并支持 WebSocket 反向代理。正式环境只把 Caddy 的 80/443 暴露公网，Report Hub 的 58787 可只监听内网或防火墙限制访问。
 
 ## 验收
 

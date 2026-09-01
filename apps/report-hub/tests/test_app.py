@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import hashlib
 import json
+import sqlite3
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -10,11 +11,36 @@ import base64
 
 from fastapi.testclient import TestClient
 
-from report_hub.app import create_app
+from report_hub.app import _site_command_allowed, create_app
 from report_hub.config import Settings
+from report_hub.storage import Storage
 
 
 TOKEN = "test-token-that-is-longer-than-thirty-two-characters"
+
+
+def test_existing_sites_table_gains_command_policy_column(tmp_path):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    db_path = tmp_path / "report-hub.sqlite3"
+    with sqlite3.connect(db_path) as db:
+        db.execute(
+            "CREATE TABLE sites ("
+            "site_id TEXT PRIMARY KEY, public_token TEXT NOT NULL UNIQUE, "
+            "module_name TEXT NOT NULL, title TEXT NOT NULL, "
+            "report_ready INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, "
+            "updated_at TEXT NOT NULL, owner_install_id TEXT)"
+        )
+        db.execute(
+            "INSERT INTO sites(site_id, public_token, module_name, title, created_at, updated_at) "
+            "VALUES ('old-site', 'old-token', 'citationclaw', 'old', 'now', 'now')"
+        )
+
+    storage = Storage(tmp_path)
+    storage.initialize()
+    site = storage.get_site(site_id="old-site")
+
+    assert site is not None
+    assert site["command_policy_json"] == "[]"
 
 
 def client(tmp_path) -> TestClient:
@@ -423,7 +449,12 @@ def test_public_module_command_round_trip(tmp_path):
     api = client(tmp_path)
     site = api.post(
         "/api/v1/sites", headers=auth(),
-        json={"site_id": "citationclaw-relay", "module_name": "citationclaw", "title": "citation"},
+        json={
+            "site_id": "citationclaw-relay",
+            "module_name": "citationclaw",
+            "title": "citation",
+            "command_policy": [{"method": "GET", "path": "task/status"}],
+        },
     ).json()
     token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
     with ThreadPoolExecutor(max_workers=1) as pool:
@@ -450,7 +481,12 @@ def test_public_citation_profile_command_is_relayed(tmp_path):
     api = client(tmp_path)
     site = api.post(
         "/api/v1/sites", headers=auth(),
-        json={"site_id": "citation-profile-relay", "module_name": "citationclaw", "title": "citation"},
+        json={
+            "site_id": "citation-profile-relay",
+            "module_name": "citationclaw",
+            "title": "citation",
+            "command_policy": [{"method": "POST", "path": "profile/run"}],
+        },
     ).json()
     token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
     payload = {
@@ -486,11 +522,55 @@ def test_public_citation_profile_command_is_relayed(tmp_path):
     assert response.json()["status"] == "success"
 
 
+def test_public_module_command_requires_declared_method_and_path(tmp_path):
+    api = client(tmp_path)
+    site = api.post(
+        "/api/v1/sites",
+        headers=auth(),
+        json={
+            "site_id": "citation-policy",
+            "module_name": "citationclaw",
+            "title": "citation",
+            "command_policy": [
+                {"method": "GET", "path": "results/view/*"},
+                {"method": "POST", "path": "profile/run"},
+            ],
+        },
+    ).json()
+    token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
+
+    assert api.get(f"/s/{token}/api/task/status").status_code == 403
+    assert api.get(f"/s/{token}/api/profile/run").status_code == 403
+    stored = api.app.state.storage.get_site(site_id="citation-policy")
+    assert _site_command_allowed(stored, "GET", "results/view/report.html")
+    assert _site_command_allowed(stored, "POST", "profile/run")
+
+    # Re-registering the same stable site replaces its policy without changing
+    # the public URL. This is how a restarted Connect Hub publishes new routes.
+    updated = api.post(
+        "/api/v1/sites",
+        headers=auth(),
+        json={
+            "site_id": "citation-policy",
+            "module_name": "citationclaw",
+            "title": "citation",
+            "command_policy": [{"method": "GET", "path": "task/status"}],
+        },
+    ).json()
+    assert updated["public_url"] == site["public_url"]
+    assert api.get(f"/s/{token}/api/results/view/report.html").status_code == 403
+
+
 def test_public_daily_paper_command_round_trip_and_allowlist(tmp_path):
     api = client(tmp_path)
     site = api.post(
         "/api/v1/sites", headers=auth(),
-        json={"site_id": "daily-paper-relay", "module_name": "daily-paper", "title": "daily"},
+        json={
+            "site_id": "daily-paper-relay",
+            "module_name": "daily-paper",
+            "title": "daily",
+            "command_policy": [{"method": "POST", "path": "paper/summarize"}],
+        },
     ).json()
     token = site["public_url"].rstrip("/").rsplit("/", 1)[-1]
     with ThreadPoolExecutor(max_workers=1) as pool:
@@ -519,7 +599,7 @@ def test_public_daily_paper_command_round_trip_and_allowlist(tmp_path):
         )
         response = future.result(timeout=5)
     assert response.json()["job_id"] == "sum-test"
-    assert api.get(f"/s/{token}/api/local/secret").status_code == 404
+    assert api.get(f"/s/{token}/api/local/secret").status_code == 403
 
 
 def test_install_tokens_are_isolated_and_revocable(tmp_path):

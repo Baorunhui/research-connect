@@ -8,8 +8,8 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Settings:
     host: str = "0.0.0.0"
-    port: int = 8787
-    public_base_url: str = "http://127.0.0.1:8787"
+    port: int = 58787
+    public_base_url: str = "http://127.0.0.1:58787"
     agent_token: str = ""
     data_dir: Path = Path("data")
     # Daily Paper sites contain historical figures. A normal site can exceed
@@ -22,9 +22,9 @@ class Settings:
     def from_env(cls) -> "Settings":
         return cls(
             host=os.getenv("REPORT_HUB_HOST", "0.0.0.0"),
-            port=int(os.getenv("REPORT_HUB_PORT", "8787")),
+            port=int(os.getenv("REPORT_HUB_PORT", "58787")),
             public_base_url=os.getenv(
-                "REPORT_HUB_PUBLIC_BASE_URL", "http://127.0.0.1:8787"
+                "REPORT_HUB_PUBLIC_BASE_URL", "http://127.0.0.1:58787"
             ).rstrip("/"),
             agent_token=os.getenv("REPORT_HUB_AGENT_TOKEN", ""),
             data_dir=Path(os.getenv("REPORT_HUB_DATA_DIR", "data")).expanduser().resolve(),

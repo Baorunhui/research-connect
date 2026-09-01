@@ -26,6 +26,61 @@ class ReportHubError(RuntimeError):
 SITE_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 
 
+# Public module pages declare only the local API operations they actually use.
+# Report Hub stores this policy per stable site, so adding a module endpoint no
+# longer requires changing or redeploying the public server.
+PUBLIC_MODULE_COMMAND_POLICIES: dict[str, tuple[dict[str, str], ...]] = {
+    "daily-paper": (
+        {"method": "GET", "path": "local/health"},
+        {"method": "GET", "path": "local/runs"},
+        {"method": "GET", "path": "local/runs/*"},
+        {"method": "GET", "path": "chat/config"},
+        {"method": "GET", "path": "paper/summarize"},
+        {"method": "GET", "path": "paper/summarize/*"},
+        {"method": "GET", "path": "survey"},
+        {"method": "GET", "path": "survey/*"},
+        {"method": "POST", "path": "chat"},
+        {"method": "POST", "path": "local/smart-query"},
+        {"method": "POST", "path": "local/workflows/dispatch"},
+        {"method": "POST", "path": "local/runs/*"},
+        {"method": "POST", "path": "paper/summarize"},
+        {"method": "POST", "path": "paper/summarize/*"},
+        {"method": "POST", "path": "survey"},
+        {"method": "POST", "path": "survey/*"},
+    ),
+    "citationclaw": (
+        {"method": "GET", "path": "providers"},
+        {"method": "GET", "path": "presets"},
+        {"method": "GET", "path": "quota/check"},
+        {"method": "GET", "path": "task/status"},
+        {"method": "GET", "path": "results/folders"},
+        {"method": "GET", "path": "results/list"},
+        {"method": "GET", "path": "results/view/*"},
+        {"method": "GET", "path": "results/download/*"},
+        {"method": "POST", "path": "run"},
+        {"method": "POST", "path": "run/from-cache"},
+        {"method": "POST", "path": "scholar/papers"},
+        {"method": "POST", "path": "profile/run"},
+        {"method": "POST", "path": "profile/upload"},
+        {"method": "POST", "path": "task/cancel"},
+        {"method": "POST", "path": "task/year-traverse-respond"},
+        {"method": "POST", "path": "test_openai"},
+        {"method": "POST", "path": "pretest/search_llm"},
+        {"method": "POST", "path": "pretest/light_model"},
+        {"method": "POST", "path": "chat/ui"},
+        {"method": "POST", "path": "chat/report"},
+        {"method": "DELETE", "path": "results/folder/*"},
+    ),
+}
+
+
+def public_module_command_policy(module_name: str) -> list[dict[str, str]]:
+    return [
+        dict(rule)
+        for rule in PUBLIC_MODULE_COMMAND_POLICIES.get(module_name, ())
+    ]
+
+
 class ReportHubClient:
     """Small dependency-free client for the public Report Hub v1 API."""
 
@@ -100,6 +155,7 @@ class ReportHubClient:
                 "site_id": site_id,
                 "module_name": normalized_module,
                 "title": title[:300] or "Research Connect 站点",
+                "command_policy": public_module_command_policy(normalized_module),
             },
         )
         public_url = str(response.get("public_url") or "").strip()

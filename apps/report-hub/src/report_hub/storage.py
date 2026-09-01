@@ -66,6 +66,7 @@ class Storage:
                     public_token TEXT NOT NULL UNIQUE,
                     module_name TEXT NOT NULL,
                     title TEXT NOT NULL,
+                    command_policy_json TEXT NOT NULL DEFAULT '[]',
                     report_ready INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -118,6 +119,9 @@ class Storage:
             )
             self._ensure_column(db, "jobs", "owner_install_id", "TEXT")
             self._ensure_column(db, "sites", "owner_install_id", "TEXT")
+            self._ensure_column(
+                db, "sites", "command_policy_json", "TEXT NOT NULL DEFAULT '[]'"
+            )
 
     def connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.db_path, timeout=15)
@@ -283,15 +287,34 @@ class Storage:
     def create_site(
         self, *, site_id: str, public_token: str, module_name: str, title: str,
         owner_install_id: str | None = None,
+        command_policy: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         now = utc_now()
         with self.connect() as db:
             db.execute(
-                "INSERT INTO sites(site_id, public_token, module_name, title, created_at, updated_at, owner_install_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (site_id, public_token, module_name, title, now, now, owner_install_id),
+                "INSERT INTO sites(site_id, public_token, module_name, title, command_policy_json, "
+                "created_at, updated_at, owner_install_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    site_id,
+                    public_token,
+                    module_name,
+                    title,
+                    json.dumps(command_policy or [], ensure_ascii=False),
+                    now,
+                    now,
+                    owner_install_id,
+                ),
             )
         return self.get_site(site_id=site_id)
+
+    def update_site_command_policy(
+        self, site_id: str, command_policy: list[dict[str, str]]
+    ) -> None:
+        with self.connect() as db:
+            db.execute(
+                "UPDATE sites SET command_policy_json = ?, updated_at = ? WHERE site_id = ?",
+                (json.dumps(command_policy, ensure_ascii=False), utc_now(), site_id),
+            )
 
     def get_site(
         self, *, site_id: str | None = None, public_token: str | None = None

@@ -25,7 +25,7 @@ def test_profile_without_scraper_key_uses_public_s2_fallback():
     expected = [{"title": "Paper A", "citations": 10}]
     scraper._s2_fallback = AsyncMock(return_value=expected)
 
-    papers = asyncio.run(
+    papers = asyncio.get_event_loop().run_until_complete(
         scraper.fetch_all_papers(
             "https://scholar.google.com/citations?user=abc&name=Wenfei+Yang"
         )

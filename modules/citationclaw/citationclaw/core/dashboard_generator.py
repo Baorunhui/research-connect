@@ -2898,6 +2898,10 @@ new Chart(document.getElementById('cTrend'), {{
   var history = [];
   var isOpen = false;
   var isStreaming = false;
+  var publicMatch = String(window.location.pathname || '').match(new RegExp('^(/s/[^/]+)'));
+  var publicApiBase = publicMatch ? publicMatch[1] : '';
+  var logo = document.querySelector('#cc-fab img');
+  if (logo && publicApiBase) logo.src = publicApiBase + '/static/head_logo.png';
 
   /* ── Toggle window ── */
   function ccToggle() {{
@@ -2958,7 +2962,7 @@ new Chart(document.getElementById('cTrend'), {{
 
     var fullText = '';
 
-    fetch('/api/chat/report', {{
+    fetch(publicApiBase + '/api/chat/report', {{
       method: 'POST',
       headers: {{ 'Content-Type': 'application/json' }},
       body: JSON.stringify({{ messages: history, context: CTX }})

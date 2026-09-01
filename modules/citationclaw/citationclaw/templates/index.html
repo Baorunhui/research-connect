@@ -1113,6 +1113,11 @@ function scrollToApiConfig() {
 }
 
 // ── Scholar Profile Import ────────────────────────────────────
+function citationPublicApiUrl(path) {
+    const base = String(window.CCR_PUBLIC_API_BASE || '').replace(/\/$/, '');
+    return base && String(path).startsWith('/') ? base + path : path;
+}
+
 function toggleScholarImport() {
     const body = document.getElementById('scholar-import-body');
     const icon = document.getElementById('scholar-chevron');
@@ -1131,7 +1136,7 @@ async function fetchScholarPapers() {
     // 自动保存当前所有配置（复用主保存函数）
     try { await saveIndexConfig(); } catch(e) { console.error('自动保存配置失败:', e); }
     try {
-        const res = await fetch('/api/scholar/papers', {
+        const res = await fetch(citationPublicApiUrl('/api/scholar/papers'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({profile_url: url})
@@ -1225,7 +1230,7 @@ async function _launchProfilePipeline(endpoint, body, isForm) {
     try { await saveIndexConfig(); } catch(e) { console.error('自动保存配置失败:', e); }
     try {
         const opts = isForm ? { method: 'POST', body } : { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) };
-        const res = await fetch(endpoint, opts);
+        const res = await fetch(citationPublicApiUrl(endpoint), opts);
         const data = await res.json();
         if (data.status === 'success') {
             if (window._onProfileStarted) window._onProfileStarted();
@@ -1376,7 +1381,7 @@ async function _launchProfilePipeline(endpoint, body, isForm) {
     if (sendBtn) sendBtn.disabled = true;
     var fullText = '';
 
-    fetch('/api/chat/ui', {
+    fetch(citationPublicApiUrl('/api/chat/ui'), {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({messages: history})

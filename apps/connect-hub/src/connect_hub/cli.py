@@ -286,6 +286,7 @@ def _build_runtime(
         citation_relay = ModuleCommandRelay(
             report_hub, citation_site_id, settings.citationclaw_endpoint,
             config_sync=lambda: config_manager.sync(force=True),
+            request_timeout_seconds=230,
         )
         daily_relay = ModuleCommandRelay(
             report_hub, daily_site_id, settings.daily_paper_endpoint,

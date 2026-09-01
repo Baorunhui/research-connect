@@ -61,6 +61,7 @@ class SiteCreate(BaseModel):
     site_id: str
     module_name: Literal["daily-paper", "citationclaw", "xhs-agent", "other"]
     title: str = Field(min_length=1, max_length=300)
+    command_policy: list[dict[str, str]] = Field(default_factory=list, max_length=128)
 
 
 class SiteRunUpdate(BaseModel):
@@ -226,12 +227,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             existing = storage.get_site(site_id=body.site_id)
         if existing:
             assert_owner(existing, identity)
+            storage.update_site_command_policy(
+                body.site_id, _validate_command_policy(body.command_policy)
+            )
+            existing = storage.get_site(site_id=body.site_id)
         site = existing or storage.create_site(
             site_id=body.site_id,
             public_token=secrets.token_urlsafe(24),
             module_name=body.module_name,
             title=body.title,
             owner_install_id=identity.install_id,
+            command_policy=_validate_command_policy(body.command_policy),
         )
         return _site_response(site, settings)
 
@@ -679,21 +685,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     async def public_module_command(public_token: str, api_path: str, request: Request) -> Response:
         site = public_site(public_token)
-        module_name = str(site["module_name"] or "")
-        allowed = (
-            module_name == "citationclaw" and _citation_command_allowed(api_path)
-        ) or (
-            module_name == "daily-paper"
-            and _daily_paper_command_allowed(api_path, request.method)
-        )
-        if not allowed:
-            raise HTTPException(status_code=404, detail="module endpoint not found")
+        if not _site_command_allowed(site, request.method, api_path):
+            raise HTTPException(status_code=403, detail="module command is not declared")
         raw = await request.body()
         # A Daily Paper PDF is base64-encoded inside JSON (50 MiB source limit),
         # while all other module commands should remain small.
         request_limit = (
             72 * 1024 * 1024
-            if module_name == "daily-paper" and api_path == "paper/summarize"
+            if str(site.get("module_name") or "") == "daily-paper"
+            and api_path == "paper/summarize"
             else 4 * 1024 * 1024
         )
         if len(raw) > request_limit:
@@ -716,7 +716,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers={"content-type": request.headers.get("content-type", "application/json")},
             body_b64=base64.b64encode(raw).decode("ascii"),
         )
-        deadline = time.monotonic() + 140
+        # Report chat may perform a search-model call followed by a summarizer
+        # call. Keep the relay request bounded, but allow that documented chain
+        # to finish instead of cutting it off at the former 140-second limit.
+        deadline = time.monotonic() + 240
         while time.monotonic() < deadline:
             item = storage.get_site_command(command_id)
             if item and item["status"] in {"completed", "failed"}:
@@ -894,31 +897,56 @@ def _upstream_error(exc: BaseException) -> str:
     return str(exc)[:200]
 
 
-def _citation_command_allowed(path: str) -> bool:
-    exact = {
-        "providers", "presets", "run", "run/from-cache", "task/status", "task/cancel",
-        "task/year-traverse-respond", "quota/check", "test_openai",
-        "pretest/search_llm", "pretest/light_model", "results/list", "results/folders",
-        "scholar/papers", "profile/run", "profile/upload",
-    }
-    return path in exact or path.startswith("results/folder/") or path.startswith("results/download/") or path.startswith("results/view/")
+_COMMAND_METHODS = {"GET", "POST", "DELETE"}
+_COMMAND_PATH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._~!$&'()+,;=:@%/-]{0,255}(?:/\*)?$")
 
 
-def _daily_paper_command_allowed(path: str, method: str) -> bool:
-    """Allow only the original UI's operational endpoints through the agent relay."""
-    verb = str(method or "GET").upper()
-    if verb == "GET":
-        return (
-            path in {"local/health", "local/runs", "chat/config", "paper/summarize", "survey"}
-            or path.startswith("local/runs/")
-            or path.startswith("paper/summarize/")
-            or path.startswith("survey/")
-        )
-    if verb == "POST":
-        return (
-            path in {"chat", "paper/summarize", "survey", "local/workflows/dispatch", "local/smart-query"}
-            or (path.startswith("local/runs/") and path.endswith("/cancel"))
-            or (path.startswith("paper/summarize/") and path.endswith("/cancel"))
-            or (path.startswith("survey/") and path.endswith("/cancel"))
-        )
+def _validate_command_policy(
+    policy: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Normalize a site-owned module command policy.
+
+    Paths are relative to ``/api/`` and support only exact matches or a trailing
+    ``/*`` prefix match.  Keeping the grammar deliberately small prevents a
+    module from registering ambiguous regexes or path traversal patterns.
+    """
+
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for raw in policy:
+        method = str(raw.get("method") or "").strip().upper()
+        path = str(raw.get("path") or "").strip().strip("/")
+        if method not in _COMMAND_METHODS:
+            raise HTTPException(status_code=422, detail=f"invalid command method: {method}")
+        if (
+            not path
+            or ".." in path.split("/")
+            or "\\" in path
+            or not _COMMAND_PATH_RE.fullmatch(path)
+        ):
+            raise HTTPException(status_code=422, detail=f"invalid command path: {path}")
+        key = (method, path)
+        if key not in seen:
+            seen.add(key)
+            normalized.append({"method": method, "path": path})
+    return normalized
+
+
+def _site_command_allowed(site: dict[str, Any], method: str, path: str) -> bool:
+    try:
+        policy = json.loads(str(site.get("command_policy_json") or "[]"))
+    except json.JSONDecodeError:
+        return False
+    verb = str(method or "").upper()
+    target = str(path or "").strip("/")
+    for rule in policy if isinstance(policy, list) else []:
+        if not isinstance(rule, dict) or str(rule.get("method") or "").upper() != verb:
+            continue
+        declared = str(rule.get("path") or "").strip("/")
+        if declared.endswith("/*"):
+            prefix = declared[:-1]
+            if target.startswith(prefix):
+                return True
+        elif target == declared:
+            return True
     return False

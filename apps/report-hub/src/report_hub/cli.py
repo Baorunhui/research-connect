@@ -64,8 +64,8 @@ def initialize_config(path: Path) -> None:
         raise SystemExit(f"Refusing to overwrite existing config: {path}")
     path.write_text(
         "REPORT_HUB_HOST=0.0.0.0\n"
-        "REPORT_HUB_PORT=8787\n"
-        "REPORT_HUB_PUBLIC_BASE_URL=http://211.86.155.100:8787\n"
+        "REPORT_HUB_PORT=58787\n"
+        "REPORT_HUB_PUBLIC_BASE_URL=http://211.86.155.100:58787\n"
         f"REPORT_HUB_AGENT_TOKEN={secrets.token_urlsafe(48)}\n"
         "REPORT_HUB_DATA_DIR=./data\n"
         "REPORT_HUB_MAX_UPLOAD_MB=256\n"

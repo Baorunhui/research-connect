@@ -325,7 +325,7 @@
     refs.candsEl.innerHTML = '';
     refs.applyEl.style.display = 'none';
     try {
-      const resp = await fetch('/api/local/smart-query', {
+      const resp = await fetch(apiUrl('/api/local/smart-query'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intent: intent, tag: refs.tagEl ? refs.tagEl.value.trim() : '' }),
