@@ -141,6 +141,12 @@ def build_secret_env(secret: dict[str, Any] | None) -> dict[str, str]:
         "SILICONFLOW_API_KEY",
         "SILICONFLOW_RERANK_URL",
         "DPR_PUBLIC_SERVICE_API_KEY",
+        "SUPABASE_URL",
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_PAPERS_TABLE",
+        "SUPABASE_BM25_RPC",
+        "SUPABASE_VECTOR_RPC",
+        "SUPABASE_VECTOR_RPC_EXACT",
         "DEEPXIV_API_BASE_URL",
         "DEEPXIV_TOKEN",
         "SEMANTIC_SCHOLAR_API_KEY",
@@ -234,6 +240,13 @@ _EMBED_PROGRESS_RE = re.compile(
     r"Embedding\s*进度[:：]\s*(\d+)\s*/\s*(\d+)\s*\(~?([\d.]+)\s*paper/s\)",
     re.IGNORECASE,
 )
+_DOCS_PROGRESS_RE = re.compile(
+    r"\[PROGRESS\]\s+Step 6 docs:\s*(\d+)\s*/\s*(\d+)"
+    r"\s*\|\s*section=([^|]+)\|\s*status=([^|]+)"
+    r"\s*\|\s*elapsed=([\d.]+)s\s*\|\s*eta=(unknown|[\d.]+s)"
+    r"(?:\s*\|\s*paper=([^|]*))?(?:\s*\|\s*title=(.*))?",
+    re.IGNORECASE,
+)
 _STEP_STATE_VERB = {"started": "开始", "completed": "完成", "skipped": "已跳过", "failed": "失败"}
 
 
@@ -272,6 +285,7 @@ class _StepTracker:
         self._run_id = run_id
         self._current: tuple[str, str] | None = None  # (step_key, 中文名)
         self._embedding_progress_bucket = -1
+        self._docs_progress_current = -1
 
     def observe(self, line: str) -> list[dict[str, Any]]:
         text = line.rstrip("\n")
@@ -308,6 +322,55 @@ class _StepTracker:
                         payload=payload,
                     )
                 )
+            return events
+        docs_match = _DOCS_PROGRESS_RE.search(text)
+        if docs_match:
+            current = int(docs_match.group(1))
+            total = int(docs_match.group(2))
+            if current <= self._docs_progress_current and current < total:
+                return events
+            self._docs_progress_current = current
+            section = docs_match.group(3).strip()
+            status = docs_match.group(4).strip().lower()
+            elapsed = float(docs_match.group(5))
+            eta_raw = docs_match.group(6).strip().lower()
+            paper_id = (docs_match.group(7) or "").strip()
+            title = (docs_match.group(8) or "").strip()
+            percent = (current / total * 100.0) if total > 0 else 0.0
+            rate = current / elapsed if current > 0 and elapsed > 0 else 0.0
+            payload = {
+                "step": "step_6_generate",
+                "step_label": "生成日报文档",
+                "state": "running",
+                "current": current,
+                "total": total,
+                "percent": round(percent, 2),
+                "rate": rate,
+                "section": section,
+                "paper_id": paper_id,
+                "paper_title": title,
+                "paper_status": status,
+            }
+            if eta_raw != "unknown":
+                payload["eta_seconds"] = round(float(eta_raw[:-1]))
+            if current == 0:
+                message = f"准备并发生成 {total} 篇论文文档"
+            elif status == "failed":
+                message = f"第 {current}/{total} 篇处理失败，继续其余论文"
+            else:
+                display = title or paper_id or "论文"
+                message = f"已完成第 {current}/{total} 篇：{display}"
+            events.append(
+                _run_event(
+                    "run.progress",
+                    self._run_id,
+                    stage="step_6_generate",
+                    message=message,
+                    current=current,
+                    total=total,
+                    payload=payload,
+                )
+            )
             return events
         m = _STEP_START_RE.match(text)
         if m:

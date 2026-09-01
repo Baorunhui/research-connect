@@ -157,6 +157,21 @@ def _build_runtime(
         skip_llm_refine=settings.daily_paper_skip_llm_refine,
         project_dir=settings.daily_paper_dir,
     )
+    # Apply the configuration snapshot loaded during bootstrap immediately.
+    # RuntimeConfigManager normally applies remote changes, but its sync is
+    # intentionally change-driven.  A freshly started Daily Paper service has
+    # no in-memory/local copy yet, even when providers.json already contains a
+    # valid snapshot, so relying only on a later "changed" event can create the
+    # first workflow with blank provider fields.
+    if unified_config and daily_paper.configured:
+        try:
+            daily_paper.extra_env.update(daily_environment(unified_config))
+            daily_paper.apply_configuration(daily_configuration(unified_config))
+            daily_paper.apply_runtime_environment(daily_paper.extra_env)
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "could not bootstrap Daily Paper configuration: %s", exc
+            )
     feishu_inbound_dir = DataPaths.for_module("connect-hub").artifacts / "inbound"
     feishu_inbound_dir.mkdir(parents=True, exist_ok=True)
     if daily_paper.configured:

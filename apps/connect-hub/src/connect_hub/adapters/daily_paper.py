@@ -286,7 +286,13 @@ class DailyPaperAdapter:
         run_id = str(run.get("id") or "").strip()
         if not run_id:
             raise DailyPaperUnavailable("Daily Paper workflow response contains no run id")
+        # The configured timeout is an inactivity timeout, not an absolute
+        # wall-clock limit. Step 6 may legitimately take well over 30 minutes
+        # when several papers need Jina/PDF processing and multiple LLM calls.
+        # As long as the module keeps producing log output or progress events,
+        # keep waiting; cancel only after a genuinely silent interval.
         deadline = time.monotonic() + self.timeout_seconds
+        last_log_marker = ""
         seen: set[str] = set()
         reported_diagnostics: set[str] = set()
         while True:
@@ -301,6 +307,10 @@ class DailyPaperAdapter:
             record = self._request("GET", f"/api/local/runs/{run_id}/log", None)
             current = record.get("run") if isinstance(record.get("run"), Mapping) else {}
             log_text = str(record.get("log") or "")
+            log_marker = log_text[-1024:]
+            if log_marker and log_marker != last_log_marker:
+                last_log_marker = log_marker
+                deadline = time.monotonic() + self.timeout_seconds
             self._report_log_diagnostics(
                 log_text, reported_diagnostics, on_progress
             )
@@ -313,6 +323,7 @@ class DailyPaperAdapter:
                 event_id = str(event.get("event_id") or "")
                 if event_id and event_id not in seen:
                     seen.add(event_id)
+                    deadline = time.monotonic() + self.timeout_seconds
                     if on_event is not None:
                         on_event(event)
             if str(current.get("status") or "queued") == "completed":
@@ -346,9 +357,12 @@ class DailyPaperAdapter:
                 self._cancel_local(run_id)
                 raise ConnectJobError(
                     JobErrorCode.JOB_TIMEOUT,
-                    "论文日报超过等待时限，已请求终止模块任务。",
+                    "论文日报长时间没有产生新日志或进度，已请求终止模块任务。",
                     retryable=True,
-                    technical_message=f"Daily Paper workflow {run_id} timed out",
+                    technical_message=(
+                        f"Daily Paper workflow {run_id} was inactive for "
+                        f"{self.timeout_seconds} seconds"
+                    ),
                 )
             time.sleep(self.poll_seconds)
 

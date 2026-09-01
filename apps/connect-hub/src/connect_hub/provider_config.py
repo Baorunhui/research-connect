@@ -132,10 +132,10 @@ def daily_configuration(config: Mapping[str, Any]) -> dict[str, Any]:
 def daily_environment(config: Mapping[str, Any]) -> dict[str, str]:
     providers = config.get("providers") if isinstance(config.get("providers"), Mapping) else {}
     paper_sources = config.get("paper_sources") if isinstance(config.get("paper_sources"), Mapping) else {}
-    embedding, rerank, deepxiv, semantic_scholar = (
+    embedding, rerank, supabase, deepxiv, semantic_scholar = (
         _provider(providers, name)
         for name in (
-            "embedding.paper", "rerank.paper", "academic.deepxiv",
+            "embedding.paper", "rerank.paper", "supabase.arxiv", "academic.deepxiv",
             "citation.semantic_scholar",
         )
     )
@@ -147,6 +147,16 @@ def daily_environment(config: Mapping[str, Any]) -> dict[str, str]:
         "RERANK_API_KEY": _active_value(rerank, "api_key"),
         "PUBLIC_RERANK_API_KEY": _active_value(rerank, "api_key"),
         "RERANK_MODEL": _active_value(rerank, "model"),
+        # These are a runtime projection of the single unified provider, not a
+        # second configuration source. source_config.py applies the allowlisted
+        # values to the per-run config snapshot, which protects CLI/bot runs
+        # from stale or incomplete native config.yaml copies.
+        "SUPABASE_URL": _active_value(supabase, "base_url"),
+        "SUPABASE_ANON_KEY": _active_value(supabase, "anon_key"),
+        "SUPABASE_PAPERS_TABLE": _active_value(supabase, "papers_table"),
+        "SUPABASE_BM25_RPC": _active_value(supabase, "bm25_rpc"),
+        "SUPABASE_VECTOR_RPC": _active_value(supabase, "vector_rpc"),
+        "SUPABASE_VECTOR_RPC_EXACT": _active_value(supabase, "vector_rpc"),
         "DEEPXIV_API_BASE_URL": _active_value(deepxiv, "base_url"),
         "DEEPXIV_TOKEN": _active_value(deepxiv, "api_key"),
         "SEMANTIC_SCHOLAR_API_KEY": _active_value(semantic_scholar, "api_key"),

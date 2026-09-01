@@ -171,7 +171,7 @@ connect-hub serve
 - `FEISHU_REQUIRE_MENTION=true`：群聊必须 @机器人；私聊不受影响。
 - `XHS_AGENT_DIR`：已有 `xhs_agent` 项目路径；由独立子进程调用。
 - `DAILY_PAPER_TRANSPORT/ENDPOINT`：默认 `local_http` / `http://127.0.0.1:8567`。
-- `DAILY_PAPER_TIMEOUT_SECONDS/POLL_SECONDS`：日报长任务的总等待时间和轮询间隔。
+- `DAILY_PAPER_TIMEOUT_SECONDS/POLL_SECONDS`：日报任务无新日志/进度时的等待上限，以及轮询间隔；任务持续产生活动时不会因总运行时间较长而被取消。
 - `CITATIONCLAW_ENDPOINT`：默认 `http://127.0.0.1:8000`。
 - `REPORT_HUB_API_URL/AGENT_TOKEN`：公网托管；Daily Paper 与 CitationClaw 各有一个固定的原版网页地址，模块配置也在该网页填写。部署见 [`../../docs/PUBLIC_SERVER_HANDOFF.md`](../../docs/PUBLIC_SERVER_HANDOFF.md)。
 - `DAILY_PAPER_EMBED_API_URL/API_KEY`：远程 embedding 服务，按任务注入 Daily Paper 子进程；默认不启用本地模型回退。

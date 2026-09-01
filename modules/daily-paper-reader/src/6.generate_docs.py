@@ -3230,6 +3230,31 @@ def main() -> None:
     deep_entries: List[Tuple[str, str, List[Tuple[str, str]]]] = []
     quick_entries: List[Tuple[str, str, List[Tuple[str, str]]]] = []
     docs_concurrency = max(1, int(args.docs_concurrency))
+    docs_progress_started = time.monotonic()
+    docs_progress_completed = 0
+    docs_progress_total = len(deep_list) + len(quick_list)
+
+    def _log_docs_progress(section: str, paper: Dict[str, Any] | None = None, *, succeeded: bool = True) -> None:
+        """Emit a machine-readable Step 6 progress line for the local web UI."""
+        nonlocal docs_progress_completed
+        if paper is not None:
+            docs_progress_completed += 1
+        elapsed = max(0.0, time.monotonic() - docs_progress_started)
+        rate = docs_progress_completed / elapsed if elapsed > 0 and docs_progress_completed > 0 else 0.0
+        eta = (
+            max(0.0, (docs_progress_total - docs_progress_completed) / rate)
+            if rate > 0
+            else None
+        )
+        paper_id = str((paper or {}).get("id") or (paper or {}).get("paper_id") or "").strip()
+        title = str((paper or {}).get("title") or "").replace("|", "／").strip()
+        status = "completed" if succeeded else "failed"
+        eta_text = f"{eta:.1f}s" if eta is not None else "unknown"
+        log(
+            f"[PROGRESS] Step 6 docs: {docs_progress_completed}/{docs_progress_total} "
+            f"| section={section} | status={status} | elapsed={elapsed:.1f}s "
+            f"| eta={eta_text} | paper={paper_id} | title={title[:160]}"
+        )
 
     def _process_section(
         section: str,
@@ -3261,10 +3286,12 @@ def main() -> None:
                     pid, title = future.result()
                 except Exception as e:
                     log(f"[WARN] 生成{section}论文失败：{e}")
-                    continue
-                paper_evidence_by_id[str((pid or "").strip())] = get_paper_sidebar_evidence(paper)
-                section_tags = extract_sidebar_tags(paper)
-                results.append((index, (pid, title, section_tags)))
+                    _log_docs_progress(section, paper, succeeded=False)
+                else:
+                    paper_evidence_by_id[str((pid or "").strip())] = get_paper_sidebar_evidence(paper)
+                    section_tags = extract_sidebar_tags(paper)
+                    results.append((index, (pid, title, section_tags)))
+                    _log_docs_progress(section, paper, succeeded=True)
 
         results.sort(key=lambda item: item[0])
         return [v for _, v in results]
@@ -3288,6 +3315,7 @@ def main() -> None:
             quick_entries.append((pid, title, extract_sidebar_tags(paper)))
         log_substep("6.3", "跳过生成文章（仅更新侧边栏）", "SKIP")
     else:
+        _log_docs_progress("queued")
         log_substep("6.2", "生成精读区文章", "START")
         deep_entries = _process_section("deep", deep_list, sidebar_evidence_by_id)
         log_substep("6.2", "生成精读区文章", "END")

@@ -886,6 +886,33 @@ def test_step_tracker_emits_throttled_embedding_progress():
     assert len(next_bucket) == 1
 
 
+def test_step_tracker_emits_step6_document_progress_with_eta():
+    from src.local_server import _StepTracker
+
+    t = _StepTracker("run-1")
+    started = t.observe(
+        "[2026-09-01 03:10:00] [PROGRESS] Step 6 docs: 0/19 "
+        "| section=queued | status=completed | elapsed=0.0s | eta=unknown | paper= | title=\n"
+    )
+    assert len(started) == 1
+    assert started[0]["current"] == 0
+    assert started[0]["total"] == 19
+    assert "准备并发生成 19 篇" in started[0]["message"]
+
+    progress = t.observe(
+        "[2026-09-01 03:12:00] [PROGRESS] Step 6 docs: 3/19 "
+        "| section=deep | status=completed | elapsed=120.0s | eta=640.0s "
+        "| paper=2608.1v1 | title=A VLM Paper\n"
+    )
+    assert len(progress) == 1
+    event = progress[0]
+    assert event["payload"]["step"] == "step_6_generate"
+    assert event["payload"]["state"] == "running"
+    assert event["payload"]["eta_seconds"] == 640
+    assert event["payload"]["paper_title"] == "A VLM Paper"
+    assert event["payload"]["percent"] > 15
+
+
 def test_run_store_streams_step_events():
     """回归：本地运行子进程 stdout 逐行解析成 run.progress 事件，前端可渲染步骤清单。"""
     import sys
