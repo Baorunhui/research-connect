@@ -2,7 +2,16 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON_BIN="${PYTHON:-python3}"
+if [ -n "${PYTHON:-}" ]; then
+  PYTHON_BIN="$PYTHON"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+else
+  printf 'Python was not found on PATH. Activate a Conda environment or install Python 3.11-3.13.\n' >&2
+  exit 2
+fi
 VENV_DIR="${RESEARCH_CONNECT_VENV:-$ROOT_DIR/.venv}"
 CONSTRAINTS_FILE="$ROOT_DIR/constraints.txt"
 DATA_DIR="${RESEARCH_CONNECT_DATA_DIR:-$HOME/.research-connect/data}"
@@ -38,6 +47,13 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 VENV_PY="$VENV_DIR/bin/python"
+if [ ! -x "$VENV_PY" ]; then
+  printf 'Could not locate Python in environment %s. Set RESEARCH_CONNECT_VENV to a valid environment.\n' "$VENV_DIR" >&2
+  exit 2
+fi
+"$VENV_PY" -c 'import sys; raise SystemExit(0 if (3, 11) <= sys.version_info < (3, 14) else "The existing virtual environment does not use Python 3.11-3.13")'
+printf 'Using Python: %s\n' "$PYTHON_BIN"
+printf 'Installing into environment: %s\n' "$VENV_DIR"
 "$VENV_PY" -m pip install --upgrade pip setuptools wheel
 "$VENV_PY" -m pip install -c "$CONSTRAINTS_FILE" -e "$ROOT_DIR/packages/research-connect-core"
 ROOT_SPEC="$ROOT_DIR"

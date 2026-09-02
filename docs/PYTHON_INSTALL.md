@@ -46,6 +46,8 @@ cd research-connect
 
 脚本会创建 `.venv`，安装全部业务模块和 Playwright Chromium，并在首次安装时创建 `apps/connect-hub/.env`。重复执行不会覆盖已有配置。
 
+脚本会优先使用当前 `PATH` 中的 `python`，因此激活 Conda 后会用该环境的 Python 创建项目专属的 `.venv`，不会把依赖直接装入 Conda 环境。显式设置 `PYTHON` 仍具有最高优先级。
+
 ## 3. Windows 安装
 
 安装 64 位 Python 和 Git。安装 Python 时建议选中 `Add python.exe to PATH`；也可以直接使用 Windows Python Launcher `py`。
@@ -64,7 +66,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -WithDocling
 ```
 
-脚本会自动使用 `py -3` 或 `python`。如机器上有多个 Python，也可以显式指定：
+脚本会优先使用当前 `PATH` 中的 `python`（包括已激活 Conda 环境中的 Python），找不到时才回退到 `py -3`。如机器上有多个 Python，也可以显式指定：
 
 ```powershell
 .\scripts\setup.ps1 -Python "C:\Path\To\Python311\python.exe"

@@ -11,8 +11,12 @@ $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $Venv) { $Venv = Join-Path $RootDir ".venv" }
 $ConstraintsFile = Join-Path $RootDir "constraints.txt"
 if (-not $Python) {
-    if (Get-Command py -ErrorAction SilentlyContinue) { $Python = "py" }
-    else { $Python = "python" }
+    # Prefer the interpreter on PATH. This is important for activated Conda
+    # environments: the global Windows `py` launcher may point at another
+    # (unsupported) Python installation.
+    if (Get-Command python -ErrorAction SilentlyContinue) { $Python = "python" }
+    elseif (Get-Command py -ErrorAction SilentlyContinue) { $Python = "py" }
+    else { throw "Python was not found on PATH. Activate a Conda environment or install Python 3.11-3.13." }
 }
 $PythonPrefix = @()
 if ($Python -eq "py") { $PythonPrefix = @("-3") }
@@ -31,11 +35,19 @@ if (-not $env:PLAYWRIGHT_BROWSERS_PATH) {
 
 & $Python @PythonPrefix '-c' 'import sys; raise SystemExit(not ((3, 11) <= sys.version_info < (3, 14)))'
 if ($LASTEXITCODE -ne 0) {
-    throw "Research Connect requires Python 3.11-3.13. Run py -0p to list installed Python versions."
+    throw "Research Connect requires Python 3.11-3.13. The selected interpreter is '$Python'. Check with: $Python --version"
 }
 if (-not (Test-Path $Venv)) { Invoke-BasePython -Arguments @('-m', 'venv', $Venv) }
 
+# Windows venvs keep their interpreter under Scripts.
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $VenvPython -PathType Leaf)) { throw "Could not locate Python in environment '$Venv'. Use -Venv to specify a valid environment." }
+& $VenvPython '-c' 'import sys; raise SystemExit(not ((3, 11) <= sys.version_info < (3, 14)))'
+if ($LASTEXITCODE -ne 0) {
+    throw "The existing virtual environment '$Venv' does not use Python 3.11-3.13. Remove it and rerun setup."
+}
+Write-Host "Using Python: $Python"
+Write-Host "Installing into environment: $Venv"
 function Invoke-VenvPython {
     param([string[]]$Arguments)
     & $VenvPython @Arguments

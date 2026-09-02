@@ -48,9 +48,22 @@ cd research-connect
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1  -WithDocling
 ```
 
+如果使用 Conda，请先激活目标环境再运行上述命令。Windows 和 Linux 安装脚本
+都会优先使用当前 `PATH` 中的 `python`（即 Conda 环境的 Python），并用它创建项目专属的 `.venv`，
+不会把依赖直接装入 Conda 环境：
+
+```text
+conda activate your-env
+# Linux: ./scripts/setup.sh --with-docling
+# Windows: powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -WithDocling
+```
+
+也可以通过 Linux 的 `PYTHON` / `RESEARCH_CONNECT_VENV` 或 Windows 的
+`-Python` / `-Venv` 显式指定解释器及目标环境。
+
 安装脚本会：
 
-1. 创建仓库根目录下的 `.venv`；
+1. 创建仓库根目录下的 `.venv`（若已激活 Conda，则使用 Conda 的 Python 创建）；
 2. 安装 Connect Hub、Daily Paper、CitationClaw、XHS Agent 和共享运行时；
 3. 安装 Playwright Chromium；
 4. 安装 Docling 模型提取 pdf 图片和表格
