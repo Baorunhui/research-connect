@@ -828,11 +828,6 @@
   async function saveAndRun() {
     const ok = await persist();
     if (!ok) return;
-    if (window.DPR_LOCAL_API_BASE) {
-      setStatus('已保存 ✓，请返回飞书或 CLI 重新发起任务', '#080');
-      setTimeout(close, 1200);
-      return;
-    }
     setStatus('已保存，正在触发日报生成…', '#086');
     try {
       const runner = window.DPRWorkflowRunner;
@@ -840,7 +835,15 @@
         setStatus('未找到流水线触发器（workflows.runner.js 未加载），请刷新后重试。', '#c00');
         return;
       }
-      await runner.runQuickFetchByDays('10');
+      const modeEl = document.getElementById('dpr-settings-fetch-mode');
+      const fetchMode = modeEl ? String(modeEl.value || '').trim() : '';
+      const options = {};
+      if (fetchMode === 'standard' || fetchMode === 'skims') {
+        options.fetchMode = fetchMode;
+      }
+      // 公网站点的 DPR_LOCAL_API_BASE 指向 Report Hub 同源命令中继；它与
+      // localhost 一样可以直接创建本机日报任务，不需要再绕回飞书或 CLI。
+      await runner.runQuickFetchByDays('10', options);
       setStatus('已保存并触发日报生成 ✓，可在运行面板查看进度', '#080');
       setTimeout(close, 1200);
     } catch (err) {

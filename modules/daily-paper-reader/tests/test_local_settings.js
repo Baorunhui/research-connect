@@ -323,6 +323,13 @@ function testSmartQueryProgressIsCappedAndExplainsLongWait() {
   assert.ok(slow.label.includes('60 秒'));
 }
 
+function testSaveAndRunUsesPublicCommandRelay() {
+  const src = fs.readFileSync('app/local-settings.js', 'utf8');
+  assert.ok(!src.includes('请返回飞书或 CLI 重新发起任务'));
+  assert.ok(src.includes("await runner.runQuickFetchByDays('10', options)"));
+  assert.ok(src.includes("options.fetchMode = fetchMode"));
+}
+
 Promise.resolve()
   .then(testBuildLocalPayloadMapsFormToApiShape)
   .then(testBuildLocalPayloadTrimsWhitespaceAndKeepsEmptyKey)
@@ -337,6 +344,7 @@ Promise.resolve()
   .then(testMergeCandidateLinesDedupesAndAppends)
   .then(testRenderCandidateCardsChecksDefaultAndEscapes)
   .then(testSmartQueryProgressIsCappedAndExplainsLongWait)
+  .then(testSaveAndRunUsesPublicCommandRelay)
   .then(() => {
     console.log('local settings tests passed');
   })
