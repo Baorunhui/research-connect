@@ -1,6 +1,6 @@
 # Research Connect
 
-Research Connect 是一套可自行部署的本地优先研究工具。每位用户在自己的 Windows 电脑、Linux 工作站或服务器上运行一份，通过飞书机器人在手机或电脑上调用研究功能。
+Research Connect 是一套可自行部署的本地优先研究工具。每位用户在自己的 Windows 电脑、Linux 工作站或服务器上运行一份，通过飞书机器人在手机或电脑上调用研究功能。专为青椒打造！
 
 当前 Python demo 包含：
 
