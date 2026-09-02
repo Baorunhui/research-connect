@@ -230,7 +230,9 @@ window.DPRWorkflowRunner = (function () {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
-        throw new Error((data && data.error) || `本地调试后端请求失败：HTTP ${res.status}`);
+        const error = new Error((data && data.error) || `本地调试后端请求失败：HTTP ${res.status}`);
+        error.status = res.status;
+        throw error;
       }
       return data;
     } catch (e) {
@@ -365,7 +367,11 @@ window.DPRWorkflowRunner = (function () {
         ? runs.find((run) => String(run && run.id || '') === liveProgressRunId)
         : null;
       const run = active || previous;
-      if (!run) return;
+      if (!run) {
+        liveProgressRunId = '';
+        if (liveProgressEl) liveProgressEl.hidden = true;
+        return;
+      }
       const runId = String(run.id || '');
       if (active && runId !== liveProgressRunId) dismissedLiveRunId = '';
       liveProgressRunId = runId;
@@ -444,12 +450,12 @@ window.DPRWorkflowRunner = (function () {
     scrollWorkflowLogToBottom(shouldFollowLog);
   };
 
-  const refreshLocalRun = async (runId) => {
+  const refreshLocalRun = async (runId, retryCount = 0) => {
     try {
       const data = await localApiFetch(`/api/local/runs/${encodeURIComponent(runId)}/log`);
       const run = data.run || {};
       renderLocalRun(run, data.log || '');
-      if (run.status === 'completed') {
+      if (['completed', 'interrupted', 'cancelled'].indexOf(String(run.status || '').toLowerCase()) >= 0) {
         stopPolling();
         setStatus(
           `本地运行已结束：${run.conclusion || 'completed'}`,
@@ -459,8 +465,14 @@ window.DPRWorkflowRunner = (function () {
         setStatus('本地运行中：每 5 秒自动刷新...', '#1565c0', { waiting: true });
       }
     } catch (e) {
+      if (e && e.status === 404 && retryCount < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        return refreshLocalRun(runId, retryCount + 1);
+      }
       console.error(e);
       setStatus(`刷新本地运行失败：${e.message || e}`, '#c00');
+      stopPolling();
+      loadRecentRuns();
     }
   };
 
@@ -626,7 +638,10 @@ window.DPRWorkflowRunner = (function () {
     const s = String(status || '');
     const c = String(conclusion || '');
     // 用户希望 completed / success 这种冗余展示去掉：优先展示 conclusion，其次 status
-    return c || s || '';
+    const value = c || s || '';
+    if (value === 'interrupted') return '已中断';
+    if (value === 'cancelled') return '已取消';
+    return value;
   };
 
   const formatRunTime = (isoTime) => {
@@ -742,11 +757,15 @@ window.DPRWorkflowRunner = (function () {
         }
         recentEl.innerHTML = runs.map((run) => {
           const status = formatRunBadgeText(run.status || '', run.conclusion || '');
-          return `<button type="button" class="dpr-wf-recent-item" data-run-id="${escapeHtml(run.id || '')}" style="display:block;width:100%;margin:0 0 6px;padding:8px;text-align:left;border:1px solid #eee;border-radius:6px;background:#fff;cursor:pointer;">
-            <strong>本地运行 #${escapeHtml(run.run_number || run.id || '')}</strong>
-            <span style="margin-left:8px;color:#666;">${escapeHtml(status)}</span>
-            <span style="float:right;color:#999;">${escapeHtml(formatRunTime(run.created_at))}</span>
-          </button>`;
+          const isActive = ['queued', 'running', 'in_progress', 'cancelling'].indexOf(String(run.status || '').toLowerCase()) >= 0;
+          return `<div class="dpr-wf-recent-local-row" data-run-row="${escapeHtml(run.id || '')}" style="display:flex;gap:6px;align-items:stretch;margin:0 0 6px;">
+            <button type="button" class="dpr-wf-recent-item" data-run-id="${escapeHtml(run.id || '')}" style="display:block;flex:1;min-width:0;padding:8px;text-align:left;border:1px solid #eee;border-radius:6px;background:#fff;cursor:pointer;">
+              <strong>本地运行 #${escapeHtml(run.run_number || run.id || '')}</strong>
+              <span style="margin-left:8px;color:#666;">${escapeHtml(status)}</span>
+              <span style="float:right;color:#999;">${escapeHtml(formatRunTime(run.created_at))}</span>
+            </button>
+            ${isActive ? '' : `<button type="button" class="dpr-wf-run-delete" data-run-delete="${escapeHtml(run.id || '')}" title="删除这条运行记录及日志" style="padding:0 9px;border:1px solid #fecaca;border-radius:6px;background:#fff;color:#b91c1c;cursor:pointer;">删除</button>`}
+          </div>`;
         }).join('');
         recentEl.querySelectorAll('.dpr-wf-recent-item').forEach((button) => {
           button.addEventListener('click', async () => {
@@ -756,6 +775,32 @@ window.DPRWorkflowRunner = (function () {
             selectedRun = { local: true, runId };
             await refreshLocalRun(runId);
             refreshTimer = setInterval(() => refreshLocalRun(runId), 5000);
+          });
+        });
+        recentEl.querySelectorAll('[data-run-delete]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const runId = button.getAttribute('data-run-delete') || '';
+            if (!runId || !window.confirm('删除这条运行记录及其日志？此操作不可恢复。')) return;
+            button.disabled = true;
+            try {
+              await localApiFetch(`/api/local/runs/${encodeURIComponent(runId)}/delete`, {
+                method: 'POST',
+                body: '{}',
+              });
+              if (selectedRun && selectedRun.local && selectedRun.runId === runId) {
+                selectedRun = null;
+                stopPolling();
+                if (runsEl) runsEl.innerHTML = '<div style="color:#999;">该运行记录已删除。</div>';
+              }
+              if (liveProgressRunId === runId) {
+                liveProgressRunId = '';
+                if (liveProgressEl) liveProgressEl.hidden = true;
+              }
+              await loadRecentRuns();
+            } catch (e) {
+              button.disabled = false;
+              setStatus(`删除运行记录失败：${e.message || e}`, '#c00');
+            }
           });
         });
       } catch (e) {

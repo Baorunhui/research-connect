@@ -10,7 +10,7 @@
   }
 
   function terminal(status) {
-    return ['completed', 'success', 'failed', 'failure', 'cancelled'].indexOf(String(status || '').toLowerCase()) >= 0;
+    return ['completed', 'success', 'failed', 'failure', 'cancelled', 'interrupted'].indexOf(String(status || '').toLowerCase()) >= 0;
   }
 
   function stateMap(events) {
@@ -64,8 +64,11 @@
     var steps = Array.isArray(opts.steps) ? opts.steps : [];
     var failed = status === 'failed' || status === 'failure';
     var cancelled = status === 'cancelled';
+    var interrupted = status === 'interrupted';
     var completed = status === 'completed' || status === 'success';
-    var title = failed
+    var title = interrupted
+      ? (opts.interruptedTitle || '⚠️ 任务已中断')
+      : failed
       ? (opts.failedTitle || '❌ 任务失败')
       : cancelled
         ? (opts.cancelledTitle || '⏹ 任务已取消')

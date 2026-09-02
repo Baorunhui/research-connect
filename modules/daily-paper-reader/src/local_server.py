@@ -10,6 +10,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -430,10 +431,63 @@ def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
 
 
 class RunStore:
-    def __init__(self) -> None:
+    ACTIVE_STATUSES = {"queued", "running", "in_progress", "cancelling"}
+
+    def __init__(self, runs_dir: Path | None = None) -> None:
         self._lock = threading.Lock()
         self._runs: dict[str, dict[str, Any]] = {}
         self._processes: dict[str, subprocess.Popen[str]] = {}
+        self._runs_dir = Path(runs_dir) if runs_dir is not None else RUNS_DIR
+        self._runs_dir.mkdir(parents=True, exist_ok=True)
+        self._load_existing()
+
+    def _metadata_path(self, run_id: str) -> Path:
+        return self._runs_dir / run_id / "run.json"
+
+    def _persist_locked(self, run: dict[str, Any]) -> None:
+        run_id = str(run.get("id") or "").strip()
+        if not run_id:
+            return
+        path = self._metadata_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(".json.tmp")
+        temp.write_text(
+            json.dumps(self._public_run(run), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temp.replace(path)
+
+    def _load_existing(self) -> None:
+        loaded: list[dict[str, Any]] = []
+        for path in self._runs_dir.glob("*/run.json"):
+            try:
+                item = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(item, dict) or str(item.get("id") or "") != path.parent.name:
+                    continue
+                item["secret_env"] = {}
+                item["events"] = item.get("events") if isinstance(item.get("events"), list) else []
+                loaded.append(item)
+            except (OSError, ValueError, TypeError):
+                continue
+        loaded.sort(key=lambda item: str(item.get("created_at") or ""))
+        now = utc_now()
+        for index, run in enumerate(loaded, start=1):
+            run.setdefault("run_number", index)
+            if str(run.get("status") or "").lower() in self.ACTIVE_STATUSES:
+                run["status"] = "completed"
+                run["conclusion"] = "interrupted"
+                run["completed_at"] = now
+                run["updated_at"] = now
+                run["cancel_requested"] = False
+                run["events"].append(
+                    _run_event(
+                        "run.interrupted",
+                        str(run.get("id") or ""),
+                        message="本地服务曾中断，遗留任务已标记为 interrupted",
+                    )
+                )
+            self._runs[str(run["id"])] = run
+            self._persist_locked(run)
 
     def create(
         self,
@@ -446,7 +500,7 @@ class RunStore:
         external_job_id: str = "",
     ) -> dict[str, Any]:
         run_id = uuid.uuid4().hex[:12]
-        run_dir = RUNS_DIR / run_id
+        run_dir = self._runs_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         config_path = ""
         if config:
@@ -459,7 +513,7 @@ class RunStore:
             )
         run = {
             "id": run_id,
-            "run_number": len(self._runs) + 1,
+            "run_number": max((int(item.get("run_number") or 0) for item in self._runs.values()), default=0) + 1,
             "workflow_key": workflow_key,
             "workflow_file": workflow_file,
             "inputs": inputs,
@@ -479,6 +533,7 @@ class RunStore:
         }
         with self._lock:
             self._runs[run_id] = run
+            self._persist_locked(run)
         thread = threading.Thread(target=self._run_process, args=(run_id,), daemon=True)
         thread.start()
         return self._public_run(run)
@@ -518,6 +573,7 @@ class RunStore:
                 return
             run.update(patch)
             run["updated_at"] = utc_now()
+            self._persist_locked(run)
 
     def _emit(self, run_id: str, event: dict[str, Any]) -> None:
         if not event:
@@ -528,6 +584,24 @@ class RunStore:
                 return
             run["events"].append(event)
             run["updated_at"] = utc_now()
+            self._persist_locked(run)
+
+    def delete(self, run_id: str) -> tuple[bool, str]:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if not run:
+                return False, "run not found"
+            proc = self._processes.get(run_id)
+            if str(run.get("status") or "").lower() in self.ACTIVE_STATUSES or (
+                proc is not None and proc.poll() is None
+            ):
+                return False, "run is still active; cancel it before deleting"
+            self._runs.pop(run_id, None)
+        run_dir = self._metadata_path(run_id).parent.resolve()
+        root = self._runs_dir.resolve()
+        if run_dir.parent == root and run_dir.is_dir():
+            shutil.rmtree(run_dir)
+        return True, ""
 
     def cancel(self, run_id: str) -> bool:
         with self._lock:
@@ -2440,6 +2514,14 @@ class Handler(SimpleHTTPRequestHandler):
             if not run_id or not RUN_STORE.cancel(run_id):
                 return self._json({"ok": False, "error": "run not found or already finished"}, status=404)
             return self._json({"ok": True, "run_id": run_id, "status": "cancelled"})
+        if parsed.path.startswith("/api/local/runs/") and parsed.path.rstrip("/").endswith("/delete"):
+            parts = parsed.path.strip("/").split("/")
+            run_id = parts[3] if len(parts) >= 5 else ""
+            ok, error = RUN_STORE.delete(run_id)
+            if not ok:
+                status = 409 if "still active" in error else 404
+                return self._json({"ok": False, "error": error}, status=status)
+            return self._json({"ok": True, "run_id": run_id, "deleted": True})
         if parsed.path == "/api/local/config":
             return self._save_local_config()
         if parsed.path == "/api/local/config/partial":

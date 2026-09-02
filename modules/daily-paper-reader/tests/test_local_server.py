@@ -913,7 +913,7 @@ def test_step_tracker_emits_step6_document_progress_with_eta():
     assert event["payload"]["percent"] > 15
 
 
-def test_run_store_streams_step_events():
+def test_run_store_streams_step_events(tmp_path):
     """回归：本地运行子进程 stdout 逐行解析成 run.progress 事件，前端可渲染步骤清单。"""
     import sys
     import time
@@ -927,7 +927,7 @@ def test_run_store_streams_step_events():
         "print('[INFO] Step 3 - Rerank: python y.py', flush=True)\n"
         "print('done', flush=True)\n"
     )
-    store = ls.RunStore()
+    store = ls.RunStore(tmp_path / "runs")
     run = store.create("daily-now", "daily-paper-reader.yml", {}, [sys.executable, "-c", script])
     run_id = run["id"]
     deadline = time.time() + 20
@@ -954,14 +954,14 @@ def test_run_store_streams_step_events():
     assert steps.index(("step_2_1_bm25", "started")) < steps.index(("step_2_1_bm25", "completed"))
 
 
-def test_run_store_failure_emits_failed_event():
+def test_run_store_failure_emits_failed_event(tmp_path):
     """子进程非零退出 → run.failed 事件 + conclusion=failure。"""
     import sys
     import time
 
     import src.local_server as ls
 
-    store = ls.RunStore()
+    store = ls.RunStore(tmp_path / "runs")
     run = store.create("daily-now", "daily-paper-reader.yml", {}, [sys.executable, "-c", "import sys; sys.exit(3)"])
     run_id = run["id"]
     deadline = time.time() + 20
@@ -975,6 +975,51 @@ def test_run_store_failure_emits_failed_event():
     assert r["conclusion"] == "failure"
     types = [e["event_type"] for e in r["events"]]
     assert types[-1] == "run.failed"
+
+
+def test_run_store_marks_orphaned_run_interrupted_and_can_delete(tmp_path):
+    """服务重启后，磁盘上的活跃状态不能继续冒充正在运行。"""
+    import json
+
+    import src.local_server as ls
+
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / "orphan123"
+    run_dir.mkdir(parents=True)
+    record = {
+        "id": "orphan123",
+        "run_number": 7,
+        "workflow_key": "daily-now",
+        "workflow_file": "daily-paper-reader.yml",
+        "inputs": {},
+        "command": ["python", "src/main.py"],
+        "status": "in_progress",
+        "conclusion": None,
+        "created_at": "2026-09-01T01:00:00+00:00",
+        "updated_at": "2026-09-01T01:01:00+00:00",
+        "started_at": "2026-09-01T01:00:01+00:00",
+        "completed_at": None,
+        "log_path": str(run_dir / "run.log"),
+        "config_path": "",
+        "events": [],
+        "cancel_requested": False,
+    }
+    (run_dir / "run.json").write_text(json.dumps(record), encoding="utf-8")
+    (run_dir / "run.log").write_text("partial output", encoding="utf-8")
+
+    store = ls.RunStore(runs_dir)
+    run = store.get("orphan123")
+    assert run["status"] == "completed"
+    assert run["conclusion"] == "interrupted"
+    assert run["completed_at"]
+    assert run["events"][-1]["event_type"] == "run.interrupted"
+    persisted = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert persisted["conclusion"] == "interrupted"
+
+    ok, error = store.delete("orphan123")
+    assert ok is True
+    assert error == ""
+    assert not run_dir.exists()
 
 
 # --------------------------------------------------------------------------- #
