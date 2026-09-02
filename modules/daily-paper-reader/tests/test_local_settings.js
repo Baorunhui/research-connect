@@ -310,6 +310,19 @@ function testRenderCandidateCardsChecksDefaultAndEscapes() {
   assert.equal(api.renderCandidateCards('queries', []), '');
 }
 
+function testSmartQueryProgressIsCappedAndExplainsLongWait() {
+  const api = loadModule();
+  const start = api.smartQueryProgressState(0);
+  const normal = api.smartQueryProgressState(20);
+  const slow = api.smartQueryProgressState(60);
+  const verySlow = api.smartQueryProgressState(600);
+  assert.ok(start.percent >= 0 && start.percent < normal.percent);
+  assert.ok(normal.percent < slow.percent);
+  assert.equal(verySlow.percent, 92, 'estimated progress must wait for the real response');
+  assert.ok(slow.label.includes('仍在处理'));
+  assert.ok(slow.label.includes('60 秒'));
+}
+
 Promise.resolve()
   .then(testBuildLocalPayloadMapsFormToApiShape)
   .then(testBuildLocalPayloadTrimsWhitespaceAndKeepsEmptyKey)
@@ -323,6 +336,7 @@ Promise.resolve()
   .then(testNormalizeCandidatesDropsEmptyEnAndCaps)
   .then(testMergeCandidateLinesDedupesAndAppends)
   .then(testRenderCandidateCardsChecksDefaultAndEscapes)
+  .then(testSmartQueryProgressIsCappedAndExplainsLongWait)
   .then(() => {
     console.log('local settings tests passed');
   })

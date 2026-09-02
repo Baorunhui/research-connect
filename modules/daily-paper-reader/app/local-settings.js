@@ -233,6 +233,12 @@
       '      <button type="button" class="secret-gate-btn secondary" data-dpr-smart-generate>生成候选</button>' +
       '    </div>' +
       '    <div class="dpr-smart-status" aria-live="polite"></div>' +
+      '    <div class="dpr-smart-progress" data-dpr-smart-progress hidden>' +
+      '      <div class="dpr-smart-progress-track" role="progressbar" aria-label="AI 候选生成等待进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">' +
+      '        <span class="dpr-smart-progress-fill"></span>' +
+      '      </div>' +
+      '      <span class="dpr-smart-progress-label"></span>' +
+      '    </div>' +
       '    <div class="dpr-smart-cands"></div>' +
       '    <button type="button" class="secret-gate-btn primary dpr-smart-apply" data-dpr-smart-apply style="display:none;">应用所选到关键词 / 意图查询</button>' +
       '  </fieldset>' +
@@ -290,6 +296,7 @@
       block,
       intentEl: block.querySelector('.dpr-smart-intent'),
       statusEl: block.querySelector('.dpr-smart-status'),
+      progressEl: block.querySelector('[data-dpr-smart-progress]'),
       candsEl: block.querySelector('.dpr-smart-cands'),
       applyEl: block.querySelector('[data-dpr-smart-apply]'),
       genBtn: block.querySelector('[data-dpr-smart-generate]'),
@@ -310,6 +317,52 @@
     if (applyBtn) handleSmartApply(applyBtn);
   }
 
+  function smartQueryProgressState(elapsedSeconds) {
+    const seconds = Math.max(0, Math.floor(Number(elapsedSeconds) || 0));
+    // 单次 LLM 请求没有可信的服务端阶段。进度只表达“仍在等待”，并在 92% 封顶，
+    // 避免把估算动画伪装成真实完成度。
+    const percent = Math.min(92, Math.round(8 + 84 * (1 - Math.exp(-seconds / 24))));
+    let phase = '正在提交请求';
+    if (seconds >= 3 && seconds < 45) phase = 'LLM 正在解析检索需求';
+    if (seconds >= 45) phase = 'LLM 仍在处理，请继续等待';
+    return { seconds, percent, label: phase + ' · 已等待 ' + seconds + ' 秒' };
+  }
+
+  function startSmartQueryProgress(progressEl) {
+    if (!progressEl) return { finish() {}, stop() {} };
+    const track = progressEl.querySelector('.dpr-smart-progress-track');
+    const fill = progressEl.querySelector('.dpr-smart-progress-fill');
+    const label = progressEl.querySelector('.dpr-smart-progress-label');
+    const startedAt = Date.now();
+    progressEl.hidden = false;
+    progressEl.classList.remove('is-complete', 'is-error');
+
+    const render = () => {
+      const state = smartQueryProgressState((Date.now() - startedAt) / 1000);
+      if (fill) fill.style.width = state.percent + '%';
+      if (track) track.setAttribute('aria-valuenow', String(state.percent));
+      if (label) label.textContent = state.label;
+    };
+    render();
+    const timer = setInterval(render, 1000);
+    const stopTimer = () => clearInterval(timer);
+    return {
+      finish() {
+        stopTimer();
+        const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+        progressEl.classList.add('is-complete');
+        if (fill) fill.style.width = '100%';
+        if (track) track.setAttribute('aria-valuenow', '100');
+        if (label) label.textContent = '生成完成 · 用时 ' + seconds + ' 秒';
+      },
+      stop() {
+        stopTimer();
+        progressEl.classList.add('is-error');
+        if (label) label.textContent = '请求未完成';
+      },
+    };
+  }
+
   async function handleSmartGenerate(btn) {
     const refs = smartBlockRefs(btn);
     if (!refs) return;
@@ -321,9 +374,10 @@
     }
     refs.genBtn.disabled = true;
     refs.statusEl.style.color = '';
-    refs.statusEl.textContent = '正在让 LLM 解析检索需求（约 5-20 秒）...';
+    refs.statusEl.textContent = '正在让 LLM 解析检索需求；耗时会随模型负载变化。';
     refs.candsEl.innerHTML = '';
     refs.applyEl.style.display = 'none';
+    const progress = startSmartQueryProgress(refs.progressEl);
     try {
       const resp = await fetch(apiUrl('/api/local/smart-query'), {
         method: 'POST',
@@ -349,9 +403,11 @@
       if (cands.tag && refs.tagEl && !refs.tagEl.value.trim()) refs.tagEl.value = cands.tag;
       if (cands.description && refs.descEl && !refs.descEl.value.trim()) refs.descEl.value = cands.description;
       refs.applyEl.style.display = '';
+      progress.finish();
       refs.statusEl.textContent = '已生成 ' + cands.keywords.length + ' 个关键词、' + cands.queries.length +
         ' 条意图查询候选；取消勾选不需要的项，再点「应用所选」。';
     } catch (err) {
+      progress.stop();
       refs.statusEl.style.color = '#c00';
       refs.statusEl.textContent = '候选生成失败：' + (err && err.message ? err.message : err);
     } finally {
@@ -804,5 +860,6 @@
     normalizeCandidates,
     mergeCandidateLines,
     renderCandidateCards,
+    smartQueryProgressState,
   };
 });

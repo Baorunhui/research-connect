@@ -9415,6 +9415,44 @@ body.dpr-dark .dpr-sub-profile textarea {
   line-height: 1.45;
   margin: 6px 0 2px;
 }
+.dpr-smart-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0 7px;
+}
+.dpr-smart-progress[hidden] {
+  display: none;
+}
+.dpr-smart-progress-track {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+.dpr-smart-progress-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22c55e, #3b82f6);
+  transition: width 0.8s ease;
+}
+.dpr-smart-progress-label {
+  flex: none;
+  min-width: 182px;
+  font-size: 11.5px;
+  color: #64748b;
+  text-align: right;
+}
+.dpr-smart-progress.is-complete .dpr-smart-progress-fill {
+  background: #16a34a;
+}
+.dpr-smart-progress.is-error .dpr-smart-progress-fill {
+  background: #dc2626;
+}
 .dpr-smart-group {
   margin-top: 6px;
 }
@@ -9474,8 +9512,23 @@ body.dpr-dark .dpr-smart-title {
   color: #86efac;
 }
 body.dpr-dark .dpr-smart-hint,
-body.dpr-dark .dpr-smart-status {
+body.dpr-dark .dpr-smart-status,
+body.dpr-dark .dpr-smart-progress-label {
   color: #94a3b8;
+}
+body.dpr-dark .dpr-smart-progress-track {
+  background: #334155;
+}
+@media (max-width: 640px) {
+  .dpr-smart-progress {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .dpr-smart-progress-label {
+    min-width: 0;
+    text-align: left;
+  }
 }
 body.dpr-dark .dpr-smart-group-title {
   color: #cbd5e1;
