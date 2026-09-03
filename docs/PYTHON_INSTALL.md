@@ -9,10 +9,10 @@
 - Python 3.11～3.13，推荐 3.11；
 - Git；
 - 一个中国版飞书企业自建应用的 App ID 和 App Secret；
-- Report Hub 管理员单独发放的安装 token；
+- Report Hub 管理员提供的邀请码；
 - 一个 OpenAI 兼容 LLM 的 API 端点、模型名和 Key。
 
-每个安装应使用自己的飞书应用和 Report Hub token。不要使用或转发服务器管理员 token，也不要把 `.env` 提交到 Git。
+每个安装应使用自己的飞书应用，并通过邀请码注册自己的 Report Hub token。不要使用或转发服务器管理员 token，也不要把 `.env` 提交到 Git。
 
 ## 2. Linux 安装
 
@@ -94,9 +94,25 @@ LLM_BASE_URL=https://your-openai-compatible-endpoint/v1
 LLM_API_KEY=xxx
 LLM_MODEL=your-model
 
-REPORT_HUB_API_URL=https://report.sinksilk.com:58443
-REPORT_HUB_AGENT_TOKEN=rhi_xxx
 ```
+
+保存后执行一次注册。Linux：
+
+```bash
+.venv/bin/connect-hub --env-file apps/connect-hub/.env register \
+  --server https://report.sinksilk.com:58443 \
+  --invite 'rhi_inv_xxx'
+```
+
+Windows：
+
+```powershell
+.venv\Scripts\connect-hub.exe --env-file apps\connect-hub\.env register `
+  --server https://report.sinksilk.com:58443 `
+  --invite 'rhi_inv_xxx'
+```
+
+命令会验证邀请码和飞书 App ID，并把 `REPORT_HUB_API_URL`、`REPORT_HUB_AGENT_TOKEN` 自动写入 `.env`。token 原文只在注册响应中出现一次，但命令不会打印它。邀请码可以有使用次数和有效期；失效时向管理员索取新邀请码即可。
 
 飞书应用必须添加机器人能力、必要权限、长连接事件和机器人菜单。逐步操作见 [飞书机器人配置教程](FEISHU_BOT_SETUP.md)。
 
@@ -231,7 +247,7 @@ Linux 如果提示缺少系统动态库，可根据 Playwright 输出安装所�
 
 ### Report Hub 返回 401/403
 
-通常表示安装 token 错误、已被轮换，或该 token 正在访问其他安装的资源。向管理员索取本人的安装 token；不要改用管理员 token。
+通常表示安装 token 错误、已被轮换，或该 token 正在访问其他安装的资源。不要改用管理员 token；请让管理员检查安装状态，必要时轮换 token 后重新写入 `.env`。
 
 ### 本地端口被占用
 

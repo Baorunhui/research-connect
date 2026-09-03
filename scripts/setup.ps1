@@ -61,7 +61,6 @@ Invoke-VenvPython -Arguments @('-m', 'pip', 'install', '-c', $ConstraintsFile, '
 Invoke-VenvPython -Arguments @(
     '-m', 'pip', 'install', '--no-deps',
     '-e', (Join-Path $RootDir "apps\connect-hub"),
-    '-e', (Join-Path $RootDir "apps\report-hub"),
     '-e', (Join-Path $RootDir "modules\citationclaw"),
     '-e', (Join-Path $RootDir "modules\xhs-agent")
 )

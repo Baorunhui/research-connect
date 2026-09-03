@@ -173,14 +173,14 @@ connect-hub serve
 - `DAILY_PAPER_TRANSPORT/ENDPOINT`：默认 `local_http` / `http://127.0.0.1:8567`。
 - `DAILY_PAPER_TIMEOUT_SECONDS/POLL_SECONDS`：日报任务无新日志/进度时的等待上限，以及轮询间隔；任务持续产生活动时不会因总运行时间较长而被取消。
 - `CITATIONCLAW_ENDPOINT`：默认 `http://127.0.0.1:8000`。
-- `REPORT_HUB_API_URL/AGENT_TOKEN`：公网托管；Daily Paper 与 CitationClaw 各有一个固定的原版网页地址，模块配置也在该网页填写。部署见 [`../../docs/PUBLIC_SERVER_HANDOFF.md`](../../docs/PUBLIC_SERVER_HANDOFF.md)。
+- `REPORT_HUB_API_URL/AGENT_TOKEN`：邀请码注册后自动写入；公网托管固定网页、运行记录与通用命令邮箱，配置正式副本保存在本机。部署见 [`../../docs/PUBLIC_SERVER_HANDOFF.md`](../../docs/PUBLIC_SERVER_HANDOFF.md)。
 - `DAILY_PAPER_EMBED_API_URL/API_KEY`：远程 embedding 服务，按任务注入 Daily Paper 子进程；默认不启用本地模型回退。
 - `DAILY_PAPER_SKIP_LLM_REFINE=false`：默认保留逐篇 LLM 精筛；后续通过动态分批、并发限流和 429 退避优化耗时。仅诊断时才临时设为 `true`。
 - `DAILY_PAPER_RERANK_*`：每次任务注入的重排服务配置，不改日报仓库自己的 `.env`。默认使用日报项目已有的 `public-zwwen-rerank`；需要私有服务时再填写 API Key。
 - `WEB_SEARCH_PROVIDER=exa_mcp`：启用匿名 Exa Hosted MCP；填 `disabled` 可全局关闭。
 - `WEB_SEARCH_ENDPOINT`：默认只开放只读的 `web_search_exa` 工具。
 
-也可以只启动一个模块（两条命令都先检查公网配置记录；不存在时打印原版配置网页并退出，不测试 API 连通性）：
+也可以只启动一个模块。命令读取本机统一配置并发布原版网页，不要求公网保存一份配置副本：
 
 ```bash
 python -m connect_hub.cli daily-paper

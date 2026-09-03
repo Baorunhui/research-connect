@@ -1,6 +1,6 @@
 # Report Hub
 
-Report Hub 是 Research Connect 的轻量公网配置、任务进度和静态报告托管服务。它不运行论文任务或本地模型，也不持有飞书 Secret；用户选择在公网原版设置页保存的模块 API Key 会进入其 SQLite 数据卷，并只通过 HTTPS 和受保护的 Agent API 同步给本机 Connect Hub。
+Report Hub 是 Research Connect 的通用公网注册、隔离、文件/运行记录托管和命令邮箱。它不运行论文任务或模型，不持有飞书 Secret，不保存 Provider 配置，也不理解 Daily Paper/CitationClaw 的业务结构。
 
 ```bash
 python -m venv .venv
@@ -14,3 +14,11 @@ python -m venv .venv
 模块页面的本机 API 中继采用按站点存储的动态 `command_policy`。策略由拥有该站点
 的 Connect Hub 安装在启动时登记；未登记的操作默认返回 403。模块新增网页操作时
 不需要修改或重建 Report Hub。
+
+创建一个可供 30 个测试安装使用、30 天有效的邀请码：
+
+```bash
+report-hub --issue-invite "demo" --max-uses 30 --expires-in 30d
+```
+
+可用 `--list-invites` 查看使用量，用 `--revoke-invite INVITE_ID` 提前注销。服务器管理员 token 只用于运维，不分发给客户端。

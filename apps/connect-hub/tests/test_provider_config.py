@@ -1,6 +1,21 @@
 import json
 
+from connect_hub.provider_catalog import merged_defaults
 from connect_hub.provider_config import ModuleCommandRelay, citation_configuration, daily_environment
+
+
+def test_blank_public_defaults_are_restored_without_overwriting_custom_service():
+    providers = merged_defaults({
+        "providers": {
+            "supabase.arxiv": {"base_url": "", "anon_key": ""},
+            "embedding.paper": {"base_url": "https://zwwen.online/embed", "api_key": ""},
+            "rerank.paper": {"base_url": "https://private.example/rerank", "api_key": ""},
+        }
+    })["providers"]
+    assert providers["supabase.arxiv"]["anon_key"].startswith("sb_publishable_")
+    assert providers["embedding.paper"]["api_key"]
+    assert providers["rerank.paper"]["base_url"] == "https://private.example/rerank"
+    assert providers["rerank.paper"]["api_key"] == ""
 
 
 def test_daily_environment_projects_enabled_external_providers():

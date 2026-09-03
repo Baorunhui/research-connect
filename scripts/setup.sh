@@ -61,7 +61,6 @@ if [ "$WITH_DEV" = "1" ]; then ROOT_SPEC="$ROOT_DIR[dev]"; fi
 "$VENV_PY" -m pip install -c "$CONSTRAINTS_FILE" -e "$ROOT_SPEC"
 "$VENV_PY" -m pip install --no-deps \
   -e "$ROOT_DIR/apps/connect-hub" \
-  -e "$ROOT_DIR/apps/report-hub" \
   -e "$ROOT_DIR/modules/citationclaw" \
   -e "$ROOT_DIR/modules/xhs-agent"
 

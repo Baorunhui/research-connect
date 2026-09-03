@@ -21,14 +21,14 @@ Research Connect 是一套可自行部署的本地优先研究工具。每位用
 - Python 3.11～3.13（推荐 3.11）和 Git；
 - 可以访问 PyPI、GitHub、飞书和所配置 API 的网络；
 - 自己创建的中国版飞书企业自建应用；
-- Report Hub 管理员私下发放的安装 token；
+- Report Hub 管理员提供的邀请码；
 - 一个 OpenAI 兼容 LLM 的端点、模型名和 API Key。
 - 流程中使用到的第三方服务：Demo 已预置 Daily Paper 上游公开的 arXiv Supabase
   论文池、论文 Embedding 和论文 Reranker；查引用建议用户自行申请 Semantic Scholar Key。
 
 公开服务开箱可用，但共享额度、没有可用性保证；可在 `/config` 中测试或换成自己的兼容服务。默认值、申请/替换教程和安全边界见 [外部论文服务申请与配置](docs/EXTERNAL_SERVICES_SETUP.md)。
 
-每位用户应使用自己的飞书 App ID 和 Report Hub 安装 token。不要把服务器管理员 token 放进用户电脑。
+每位用户应使用自己的飞书 App ID，并通过邀请码注册自己的 Report Hub 安装。不要把服务器管理员 token 放进用户电脑。
 
 ## 1. 下载与安装
 
@@ -72,7 +72,7 @@ conda activate your-env
 ## 2. 配置飞书机器人
 飞书开放平台需要添加机器人能力、权限、长连接事件和固定菜单，完整步骤见 [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)。
 
-## 3. 填写配置
+## 3. 填写配置并注册
 
 编辑 `apps/connect-hub/.env`，至少填写：
 
@@ -84,11 +84,27 @@ LLM_BASE_URL=https://your-openai-compatible-endpoint/v1
 LLM_API_KEY=xxx
 LLM_MODEL=your-model
 
-REPORT_HUB_API_URL=https://report.sinksilk.com:58443
-REPORT_HUB_AGENT_TOKEN=rhi_xxx
 ```
 
-REPORT_HUB_AGENT_TOKEN 由 Report Hub 管理员为每个安装单独签发。LLM 配置首次启动后会导入统一配置中心；以后也可以在飞书 `/config` 返回的 HTTPS 页面修改。
+然后使用管理员提供的邀请码注册。Linux：
+
+```bash
+.venv/bin/connect-hub --env-file apps/connect-hub/.env register \
+  --server https://report.sinksilk.com:58443 \
+  --invite 'rhi_inv_xxx'
+```
+
+Windows PowerShell：
+
+```powershell
+.venv\Scripts\connect-hub.exe --env-file apps\connect-hub\.env register `
+  --server https://report.sinksilk.com:58443 `
+  --invite 'rhi_inv_xxx'
+```
+
+注册成功后，安装 token 和公网地址会自动写入 `.env`，无需管理员逐个生成或传递 token。一个飞书 App ID 只能注册一次；换电脑时应由管理员轮换或注销原安装。
+
+LLM 配置首次启动后会导入本机统一配置；以后也可以在飞书 `/config` 返回的 HTTPS 页面修改。配置和 API Key 的正式副本保存在用户电脑，公网服务器只临时转发页面请求，不保存 Provider 配置。
 
 统一配置中心已为论文池、Embedding 和 Reranker 填入上游公开配置，普通 Demo
 用户无需再申请这三项。公开 Key 会以“已配置”显示而不回显原文；需要独立额度或自建服务时可覆盖并点击“测试可用性”。
@@ -162,14 +178,14 @@ git pull --ff-only
 - SQLite 只保存任务、事件、索引和小型元数据；PDF、JSON 大对象、图片和网页仍保存为文件；
 - `.env`、本地数据库、缓存、PDF、生成结果和模型不会提交 Git；
 - Report Hub 安装 token 只允许操作本安装的资源；服务端只保存 token 哈希；
-- 公网配置读取不会回显 API Key，但拿到配置页随机链接的人可以修改配置，因此链接也应保密；
+- 公网配置读取不会回显 API Key；浏览器提交的配置通过通用命令邮箱转发到本机，因此配置页随机链接仍应保密；
 - 一个飞书 App ID 不应在两台机器上同时运行 Connect Hub。
 
 ## 仓库结构
 
 ```text
-apps/connect-hub/                 飞书、LLM 网关、任务与统一事件中心
-apps/report-hub/                  公网页面、配置和受限命令中继
+apps/connect-hub/                 飞书、LLM 网关、任务、本地配置与客户端网页
+apps/report-hub/                  通用公网文件/运行存储、注册、隔离和命令邮箱
 packages/research-connect-core/   共享 LLM、数据目录、缓存和 CLI 事件运行时
 modules/daily-paper-reader/       论文日报、论文总结与领域综述
 modules/citationclaw/             查引用与引用画像

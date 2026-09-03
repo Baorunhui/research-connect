@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
+import json
 import logging
 import os
 import platform
@@ -14,6 +15,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
+
+from dotenv import dotenv_values
 
 from connect_hub.config import MONOREPO_ROOT, load_settings
 from connect_hub.connectors.feishu import FeishuConnector
@@ -40,6 +43,11 @@ from connect_hub.provider_config import (
     daily_environment,
 )
 from research_connect_core import DataPaths, configure_playwright_browsers
+from connect_hub.provider_catalog import (
+    merge_citation_update,
+    merge_daily_update,
+    merged_defaults,
+)
 
 
 def _build_runtime(
@@ -60,7 +68,10 @@ def _build_runtime(
     citation_site_id = _module_site_id(settings, "citationclaw")
     config_site_id = _module_site_id(settings, "connect-config")
     credential_store = CredentialStore(settings.db_path.parent / "providers.json")
-    unified_config: dict[str, object] = credential_store.load()
+    unified_config: dict[str, object] = merged_defaults(
+        credential_store.load() or bootstrap_config(settings)
+    )
+    credential_store.save(unified_config)
     shortcut_urls: dict[str, str] = {}
     if report_hub is not None and report_hub.configured:
         for shortcut, site_id, module_name, title in (
@@ -80,23 +91,8 @@ def _build_runtime(
                 site_id=config_site_id, module_name="other", title="Research Connect 配置中心"
             )
             shortcut_urls["config"] = report_hub.configuration_url(config_site_url)
-            remote = report_hub.get_site_config(config_site_id)
-            if bool(remote.get("configured")) and isinstance(remote.get("config"), dict):
-                unified_config = dict(remote["config"])
-            else:
-                unified_config = bootstrap_config(settings)
-                report_hub.put_site_config(config_site_id, unified_config)
-            # Reading both legacy module views once lets an upgraded Report Hub
-            # import their former per-site settings into the single installation
-            # record. This is a one-time migration, not a precedence rule.
-            report_hub.get_site_config(daily_site_id)
-            report_hub.get_site_config(citation_site_id)
-            migrated = report_hub.get_site_config(config_site_id)
-            if isinstance(migrated.get("config"), dict):
-                unified_config = dict(migrated["config"])
-            credential_store.save(unified_config)
         except ReportHubError as exc:
-            logging.getLogger(__name__).warning("could not initialize unified configuration: %s", exc)
+            logging.getLogger(__name__).warning("could not initialize configuration site: %s", exc)
     if unified_config:
         settings = apply_to_settings(settings, unified_config)
     gateway = LLMGateway(settings.providers)
@@ -105,7 +101,6 @@ def _build_runtime(
         jobs=JobCoordinator(
             store,
             interrupt_stale=interrupt_stale_jobs,
-            report_hub=report_hub,
         ),
     )
     tools.register(system_status_tool(lambda: tools.names))
@@ -264,11 +259,7 @@ def _build_runtime(
                 except Exception as exc:
                     logging.getLogger(__name__).warning("could not apply CitationClaw configuration: %s", exc)
 
-        config_manager = RuntimeConfigManager(
-            report_hub, config_site_id, credential_store, apply_runtime
-        )
-        # The remote value has already been applied to Settings. Mark it as the
-        # baseline and let the first message push it into running module APIs.
+        config_manager = RuntimeConfigManager(credential_store, apply_runtime)
     service = ChatService(
         gateway,
         store,
@@ -287,6 +278,9 @@ def _build_runtime(
             report_hub, citation_site_id, settings.citationclaw_endpoint,
             config_sync=lambda: config_manager.sync(force=True),
             request_timeout_seconds=230,
+            on_success=lambda command, body: _merge_and_apply_native_config_update(
+                credential_store, config_manager, "citationclaw", command, body
+            ),
         )
         daily_relay = ModuleCommandRelay(
             report_hub, daily_site_id, settings.daily_paper_endpoint,
@@ -294,13 +288,62 @@ def _build_runtime(
             max_response_bytes=80 * 1024 * 1024,
             auto_publish_dir=settings.daily_paper_dir,
             auto_publish_kind="daily-paper",
+            on_success=lambda command, body: _merge_and_apply_native_config_update(
+                credential_store, config_manager, "daily-paper", command, body
+            ),
         )
+        config_relay = ModuleCommandRelay(
+            report_hub,
+            config_site_id,
+            settings.config_api_endpoint,
+            config_sync=lambda: config_manager.sync(force=True),
+            on_success=lambda _command, _body: config_manager.sync(force=True),
+        )
+        config_relay.start()
         citation_relay.start()
         daily_relay.start()
         # The connector owns the service for its whole lifetime; retain the daemon
         # here so it is not garbage-collected while Feishu is running.
-        service.module_command_relays = (citation_relay, daily_relay)
+        service.module_command_relays = (config_relay, citation_relay, daily_relay)
     return settings, gateway, store, service
+
+
+def _merge_native_config_update(
+    store: CredentialStore,
+    module_name: str,
+    command: object,
+    body: bytes,
+) -> None:
+    if not isinstance(command, dict) or not body:
+        return
+    path = str(command.get("path") or "").split("?", 1)[0]
+    expected = "/api/local/config/partial" if module_name == "daily-paper" else "/api/config"
+    if path != expected or str(command.get("method") or "").upper() != "POST":
+        return
+    try:
+        update = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return
+    if not isinstance(update, dict):
+        return
+    current = merged_defaults(store.load())
+    merged = (
+        merge_daily_update(current, update)
+        if module_name == "daily-paper"
+        else merge_citation_update(current, update)
+    )
+    store.save(merged)
+
+
+def _merge_and_apply_native_config_update(
+    store: CredentialStore,
+    manager: RuntimeConfigManager,
+    module_name: str,
+    command: object,
+    body: bytes,
+) -> None:
+    _merge_native_config_update(store, module_name, command, body)
+    manager.sync(force=True)
 
 
 def _configure_logging(level: str) -> None:
@@ -373,6 +416,63 @@ def command_check(env_file: str | Path | None = None) -> int:
     return 0 if not failures else 2
 
 
+def command_register(
+    env_file: str | Path | None,
+    *,
+    server: str,
+    invite: str,
+    device_name: str,
+) -> int:
+    env_path = Path(env_file or MONOREPO_ROOT / "apps" / "connect-hub" / ".env").resolve()
+    values = dotenv_values(env_path)
+    app_id = str(values.get("FEISHU_APP_ID") or os.getenv("FEISHU_APP_ID") or "").strip()
+    if not app_id:
+        print(f"请先在 {env_path} 填写 FEISHU_APP_ID。")
+        return 2
+    try:
+        registered = ReportHubClient.register_installation(
+            server,
+            invite_code=invite,
+            feishu_app_id=app_id,
+            device_name=device_name or platform.node() or "Research Connect",
+        )
+    except ReportHubError as exc:
+        print(f"注册失败：{exc}")
+        return 2
+    _update_env_file(
+        env_path,
+        {
+            "REPORT_HUB_API_URL": str(registered["api_url"]),
+            "REPORT_HUB_AGENT_TOKEN": str(registered["agent_token"]),
+        },
+    )
+    print(f"Report Hub 注册完成：install_id={registered['install_id']}")
+    print(f"连接配置已写入：{env_path}")
+    return 0
+
+
+def _update_env_file(path: Path, updates: dict[str, str]) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    remaining = dict(updates)
+    output: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        key = stripped.split("=", 1)[0].strip() if "=" in stripped and not stripped.startswith("#") else ""
+        if key in remaining:
+            output.append(f"{key}={remaining.pop(key)}")
+        else:
+            output.append(line)
+    if remaining and output and output[-1]:
+        output.append("")
+    output.extend(f"{key}={value}" for key, value in remaining.items())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text("\n".join(output) + "\n", encoding="utf-8")
+    if os.name != "nt":
+        temporary.chmod(0o600)
+    os.replace(temporary, path)
+
+
 def command_chat(env_file: str | Path | None = None) -> int:
     settings, _gateway, _store, service = _build_runtime(env_file=env_file)
     _configure_logging(settings.log_level)
@@ -407,6 +507,26 @@ def command_serve(env_file: str | Path | None = None) -> int:
     _configure_logging(settings.log_level)
     services: list[_LocalService] = []
     try:
+        config_url = urlparse(settings.config_api_endpoint)
+        services.append(
+            _LocalService.start_if_needed(
+                name="connect-config",
+                endpoint=settings.config_api_endpoint,
+                health_path="/api/config/health",
+                command=(
+                    sys.executable,
+                    "-m",
+                    "connect_hub.config_api",
+                    "--host",
+                    config_url.hostname or "127.0.0.1",
+                    "--port",
+                    str(config_url.port or 8791),
+                    "--config-path",
+                    str(settings.db_path.parent / "providers.json"),
+                ),
+                cwd=MONOREPO_ROOT,
+            )
+        )
         if settings.daily_paper_transport == "local_http":
             services.append(
                 _LocalService.start_if_needed(
@@ -472,6 +592,12 @@ def _publish_original_module_sites(settings: object) -> None:
     )
     specs = (
         (
+            "connect-config",
+            "Research Connect 配置中心",
+            MONOREPO_ROOT / "apps" / "report-hub",
+            "connect-config",
+        ),
+        (
             "daily-paper",
             "Daily Paper Reader",
             Path(getattr(settings, "daily_paper_dir")),
@@ -531,14 +657,14 @@ def command_module(module_name: str, env_file: str | Path | None = None) -> int:
             project_dir,
             site_kind=("citationclaw" if module_name == "citationclaw" else "daily-paper"),
         )
-        remote_config = report_hub.get_site_config(site_id)
     except ReportHubError as exc:
         print(f"公网模块页面不可用：{exc}")
         return 2
-    if not bool(remote_config.get("configured")):
-        suffix = "?panel=config" if module_name == "citationclaw" else ""
-        print(f"{title} 尚未配置，请先打开原版网页完成设置：\n{public_url}{suffix}")
-        return 2
+
+    unified_config = merged_defaults(
+        CredentialStore(settings.db_path.parent / "providers.json").load()
+        or bootstrap_config(settings)
+    )
 
     service: _LocalService | None = None
     try:
@@ -558,7 +684,7 @@ def command_module(module_name: str, env_file: str | Path | None = None) -> int:
             adapter = DailyPaperAdapter(
                 transport="local_http", endpoint=settings.daily_paper_endpoint
             )
-            adapter.apply_configuration(dict(remote_config.get("config") or {}))
+            adapter.apply_configuration(daily_configuration(unified_config))
             local_url = settings.daily_paper_endpoint
         else:
             citation_url = urlparse(settings.citationclaw_endpoint)
@@ -579,7 +705,7 @@ def command_module(module_name: str, env_file: str | Path | None = None) -> int:
                 cwd=project_dir,
             )
             adapter = CitationClawAdapter(settings.citationclaw_endpoint)
-            adapter.apply_configuration(dict(remote_config.get("config") or {}))
+            adapter.apply_configuration(citation_configuration(unified_config))
             local_url = settings.citationclaw_endpoint
         print(f"{title} 已启动。\n本机：{local_url}\n公网：{public_url}")
         while True:
@@ -686,6 +812,10 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("serve", help="start local module APIs and the Feishu connector")
     subparsers.add_parser("daily-paper", help="start Daily Paper with public config preflight")
     subparsers.add_parser("citationclaw", help="start CitationClaw with public config preflight")
+    register = subparsers.add_parser("register", help="self-register with a Report Hub invite")
+    register.add_argument("--server", required=True, help="public Report Hub base URL")
+    register.add_argument("--invite", required=True, help="registration invite code")
+    register.add_argument("--device-name", default="", help="label shown to the server administrator")
     args = parser.parse_args(argv)
     if args.command in {"check", "doctor"}:
         return command_check(args.env_file)
@@ -695,6 +825,13 @@ def main(argv: list[str] | None = None) -> int:
         return command_feishu(args.env_file)
     if args.command == "serve":
         return command_serve(args.env_file)
+    if args.command == "register":
+        return command_register(
+            args.env_file,
+            server=args.server,
+            invite=args.invite,
+            device_name=args.device_name,
+        )
     if args.command in {"daily-paper", "citationclaw"}:
         return command_module(args.command, args.env_file)
     return 2

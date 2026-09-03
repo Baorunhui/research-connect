@@ -1,5 +1,7 @@
 # Report Hub Docker 更新单（2026-08-30）
 
+> 历史文档，已归档。当前不兼容升级、邀请码注册和 Docker 命令以 [PUBLIC_SERVER_HANDOFF.md](PUBLIC_SERVER_HANDOFF.md) 为准，不要继续执行本文的旧配置迁移步骤。
+
 这份文档可直接交给 `report.sinksilk.com` 的服务器维护人员。
 
 ## 本次更新目标
@@ -62,7 +64,7 @@ REPORT_HUB_MAX_EXPANDED_MB=1024
 
 Compose 已把持久化目录固定为 `/data`，对应 `report-hub-data` 命名卷，不需要在 `.env` 中另改宿主机路径。
 
-Nginx 应把 `https://report.sinksilk.com:58443` 的全部路径原样反向代理到 Report Hub 的 `58787` 端口，不能只代理 `/healthz` 或 `/api/v1/jobs`。请使用 [nginx-report-hub.conf](../apps/report-hub/deploy/nginx-report-hub.conf) 中的关键设置，尤其是 `client_max_body_size 256m`。论文日报原版站点会保留历史图片，实际压缩包可能超过 50 MiB；Nginx 和 `REPORT_HUB_MAX_UPLOAD_MB` 两层限制必须同时放大。
+Nginx 应把 `https://report.sinksilk.com:58443` 的全部路径原样反向代理到 Report Hub 的 `58787` 端口，不能只代理 `/healthz`。请使用 [nginx-report-hub.conf](../apps/report-hub/deploy/nginx-report-hub.conf) 中的关键设置，尤其是 `client_max_body_size 256m`。论文日报原版站点会保留历史图片，实际压缩包可能超过 50 MiB；Nginx 和 `REPORT_HUB_MAX_UPLOAD_MB` 两层限制必须同时放大。
 
 修改 Nginx 后执行：
 

@@ -5,7 +5,7 @@
 - [x] 建立单仓库并导入 Connect Hub、Daily Paper、CitationClaw 和 XHS Agent 源码快照。
 - [x] 排除虚拟环境、运行数据、缓存、生成结果和真实密钥。
 - [ ] 把 Connect Hub 长任务调用改成真正的异步 submit，禁止飞书工作线程等待任务结束。
-- [x] 实现只读公共任务页：创建任务即得到 URL，支持移动端。
+- [x] 早期实现只读公共任务页；发行版已由模块稳定网页和飞书进度播报替代。
 - [ ] 实现 Hub WebSocket：快照恢复、增量事件、心跳和重连。
 - [x] 实现独立 Report Hub v1：固定链接、SQLite、WebSocket、静态报告上传。
 - [ ] 公网失败时继续通过飞书汇报，并在完成后发送可长期保存的附件。

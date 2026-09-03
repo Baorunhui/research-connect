@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import html
 import base64
 import hashlib
 import io
@@ -12,12 +11,10 @@ import urllib.request
 import uuid
 import zipfile
 from datetime import date
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlparse
-
-from connect_hub.contracts import JobEvent
-
 
 class ReportHubError(RuntimeError):
     """A public Report Hub request failed."""
@@ -32,6 +29,7 @@ SITE_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 PUBLIC_MODULE_COMMAND_POLICIES: dict[str, tuple[dict[str, str], ...]] = {
     "daily-paper": (
         {"method": "GET", "path": "local/health"},
+        {"method": "GET", "path": "local/config/structured"},
         {"method": "GET", "path": "local/runs"},
         {"method": "GET", "path": "local/runs/*"},
         {"method": "GET", "path": "local/runtime/runs"},
@@ -44,6 +42,9 @@ PUBLIC_MODULE_COMMAND_POLICIES: dict[str, tuple[dict[str, str], ...]] = {
         {"method": "GET", "path": "survey/*"},
         {"method": "POST", "path": "chat"},
         {"method": "POST", "path": "local/smart-query"},
+        {"method": "POST", "path": "local/config/partial"},
+        {"method": "POST", "path": "local/chat/models"},
+        {"method": "POST", "path": "local/chat/test"},
         {"method": "POST", "path": "local/workflows/dispatch"},
         {"method": "POST", "path": "local/runs/*"},
         {"method": "POST", "path": "local/runtime/runs/*"},
@@ -54,6 +55,7 @@ PUBLIC_MODULE_COMMAND_POLICIES: dict[str, tuple[dict[str, str], ...]] = {
     ),
     "citationclaw": (
         {"method": "GET", "path": "providers"},
+        {"method": "GET", "path": "config"},
         {"method": "GET", "path": "presets"},
         {"method": "GET", "path": "quota/check"},
         {"method": "GET", "path": "task/status"},
@@ -62,6 +64,7 @@ PUBLIC_MODULE_COMMAND_POLICIES: dict[str, tuple[dict[str, str], ...]] = {
         {"method": "GET", "path": "results/view/*"},
         {"method": "GET", "path": "results/download/*"},
         {"method": "POST", "path": "run"},
+        {"method": "POST", "path": "config"},
         {"method": "POST", "path": "run/from-cache"},
         {"method": "POST", "path": "scholar/papers"},
         {"method": "POST", "path": "profile/run"},
@@ -74,6 +77,12 @@ PUBLIC_MODULE_COMMAND_POLICIES: dict[str, tuple[dict[str, str], ...]] = {
         {"method": "POST", "path": "chat/ui"},
         {"method": "POST", "path": "chat/report"},
         {"method": "DELETE", "path": "results/folder/*"},
+    ),
+    "other": (
+        {"method": "GET", "path": "config/catalog"},
+        {"method": "GET", "path": "config/value"},
+        {"method": "POST", "path": "config/value"},
+        {"method": "POST", "path": "config/probe/*"},
     ),
 }
 
@@ -97,56 +106,45 @@ class ReportHubClient:
     def configured(self) -> bool:
         return bool(self.api_url and self.agent_token)
 
-    def create_job(self, *, job_id: str, module_name: str, title: str) -> str:
-        normalized_module = module_name if module_name in {
-            "daily-paper", "citationclaw", "xhs-agent", "other"
-        } else "other"
-        response = self._json_request(
-            "POST",
-            "/api/v1/jobs",
-            {
-                "job_id": job_id,
-                "module_name": normalized_module,
-                "title": title[:300] or "Research Connect 任务",
+    @staticmethod
+    def register_installation(
+        api_url: str,
+        *,
+        invite_code: str,
+        feishu_app_id: str,
+        device_name: str,
+        timeout_seconds: int = 15,
+    ) -> Mapping[str, Any]:
+        endpoint = api_url.strip().rstrip("/") + "/api/v1/installations/register"
+        request = urllib.request.Request(
+            endpoint,
+            data=json.dumps(
+                {
+                    "invite_code": invite_code.strip(),
+                    "feishu_app_id": feishu_app_id.strip(),
+                    "device_name": device_name.strip() or "Research Connect",
+                },
+                ensure_ascii=False,
+            ).encode("utf-8"),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "research-connect/0.2",
             },
-        )
-        public_url = str(response.get("public_url") or "").strip()
-        if not public_url:
-            raise ReportHubError("REPORT_PUBLISH_FAILED: create response has no public_url")
-        return public_url
-
-    def send_event(self, event: JobEvent) -> None:
-        event_type = _public_event_type(event.event_type)
-        if not event_type:
-            return
-        message = event.message.strip() or event_type
-        self._json_request(
-            "POST",
-            f"/api/v1/jobs/{event.job_id}/events",
-            {
-                "event_id": event.event_id,
-                "event_type": event_type,
-                "stage": event.stage or None,
-                "message": message[:2000],
-                "current": event.current,
-                "total": event.total,
-                "payload": dict(event.payload),
-            },
-        )
-
-    def upload_report(self, job_id: str, source: str | Path) -> str:
-        archive = build_report_archive(Path(source))
-        response = self._request(
-            "PUT",
-            f"/api/v1/jobs/{job_id}/report",
-            archive,
-            content_type="application/zip",
         )
         try:
-            payload = json.loads(response.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ReportHubError("REPORT_PUBLISH_FAILED: invalid upload response") from exc
-        return str(payload.get("public_url") or "").strip()
+            with urllib.request.urlopen(request, timeout=max(2, timeout_seconds)) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read(500).decode("utf-8", errors="replace")
+            raise ReportHubError(
+                f"REPORT_HUB_REGISTRATION_FAILED: status={exc.code} detail={detail}"
+            ) from exc
+        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+            raise ReportHubError(f"REPORT_HUB_REGISTRATION_FAILED: {exc}") from exc
+        if not isinstance(result, Mapping) or not str(result.get("agent_token") or ""):
+            raise ReportHubError("REPORT_HUB_REGISTRATION_FAILED: invalid response")
+        return result
 
     def ensure_site(self, *, site_id: str, module_name: str, title: str) -> tuple[str, bool]:
         normalized_module = module_name if module_name in {
@@ -173,6 +171,8 @@ class ReportHubClient:
         archive = (
             build_citationclaw_site_archive(Path(project_dir))
             if site_kind == "citationclaw"
+            else build_config_site_archive()
+            if site_kind == "connect-config"
             else build_daily_paper_site_archive(Path(project_dir))
         )
         if len(archive) > SITE_UPLOAD_CHUNK_BYTES:
@@ -237,12 +237,6 @@ class ReportHubClient:
             {"run": dict(run), "log": log_text[-100_000:]},
         )
 
-    def get_site_config(self, site_id: str) -> Mapping[str, Any]:
-        return self._json_request("GET", f"/api/v1/sites/{site_id}/config", None)
-
-    def put_site_config(self, site_id: str, config: Mapping[str, Any]) -> None:
-        self._json_request("PUT", f"/api/v1/sites/{site_id}/config", {"config": dict(config)})
-
     def next_site_command(self, site_id: str) -> Mapping[str, Any] | None:
         response = self._json_request("GET", f"/api/v1/sites/{site_id}/commands/next", None)
         command = response.get("command")
@@ -260,13 +254,9 @@ class ReportHubClient:
         )
 
     def configuration_url(self, site_public_url: str) -> str:
-        """Turn a stable-site bearer URL into its unified configuration URL."""
+        """The configuration center is an ordinary client-published stable site."""
 
-        parsed = urlparse(site_public_url)
-        parts = [part for part in parsed.path.split("/") if part]
-        if len(parts) < 2 or parts[-2] != "s":
-            raise ReportHubError("REPORT_PUBLISH_FAILED: invalid stable site URL")
-        return f"{parsed.scheme}://{parsed.netloc}/configure/{parts[-1]}/"
+        return site_public_url.rstrip("/") + "/"
 
     def _json_request(
         self, method: str, path: str, payload: Mapping[str, Any] | None
@@ -315,38 +305,14 @@ class ReportHubClient:
             raise ReportHubError(f"REPORT_HUB_UNAVAILABLE: {exc}") from exc
 
 
-def build_report_archive(source: Path) -> bytes:
-    """Build a Report Hub archive with an index.html at its root."""
-    source = source.resolve()
-    if not source.exists():
-        raise ReportHubError(f"REPORT_ARTIFACT_MISSING: {source}")
+def build_config_site_archive() -> bytes:
+    """Package the client-owned configuration UI as a stable public site."""
+    source = files("connect_hub").joinpath("static/config.html")
+    html_text = source.read_text(encoding="utf-8")
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        if source.is_dir():
-            index = source / "index.html"
-            if not index.is_file():
-                raise ReportHubError(f"REPORT_ARTIFACT_INVALID: {source} has no index.html")
-            for path in sorted(source.rglob("*")):
-                if path.is_file() and not path.is_symlink():
-                    archive.write(path, path.relative_to(source).as_posix())
-        elif source.suffix.lower() in {".html", ".htm"}:
-            archive.write(source, "index.html")
-            _add_sibling_assets(archive, source)
-        elif source.suffix.lower() in {".md", ".txt"}:
-            body = html.escape(source.read_text(encoding="utf-8", errors="replace"))
-            document = (
-                "<!doctype html><meta charset='utf-8'><meta name='viewport' "
-                "content='width=device-width,initial-scale=1'><title>Research Connect</title>"
-                "<style>body{max-width:920px;margin:auto;padding:20px;font:16px/1.65 system-ui;}"
-                "pre{white-space:pre-wrap;word-break:break-word}</style><pre>"
-                + body
-                + "</pre>"
-            )
-            archive.writestr("index.html", document.encode("utf-8"))
-        else:
-            raise ReportHubError(f"REPORT_ARTIFACT_INVALID: unsupported report {source.name}")
+        archive.writestr("index.html", html_text.encode("utf-8"))
     return buffer.getvalue()
-
 
 def build_daily_paper_site_archive(project_dir: Path) -> bytes:
     """Package Daily Paper's real Docsify site, excluding Python/source/cache files."""
@@ -442,26 +408,3 @@ def build_citationclaw_site_archive(project_dir: Path) -> bytes:
                 if path.is_file() and not path.is_symlink():
                     archive.write(path, f"docs-assets/{path.relative_to(docs_assets).as_posix()}")
     return buffer.getvalue()
-
-
-def _add_sibling_assets(archive: zipfile.ZipFile, source: Path) -> None:
-    """Include small relative assets next to a generated standalone HTML report."""
-    for path in sorted(source.parent.iterdir()):
-        if path == source or path.is_symlink() or not path.is_file():
-            continue
-        media = mimetypes.guess_type(path.name)[0] or ""
-        if media.startswith(("image/", "text/")) or path.suffix.lower() in {".css", ".js"}:
-            archive.write(path, path.name)
-
-
-def _public_event_type(event_type: str) -> str:
-    return {
-        "job.accepted": "job.started",
-        "job.started": "job.started",
-        "job.progress": "job.progress",
-        "job.message": "job.message",
-        "job.completed": "job.completed",
-        "job.failed": "job.failed",
-        "job.cancelled": "job.cancelled",
-        "job.interrupted": "job.failed",
-    }.get(event_type, "")

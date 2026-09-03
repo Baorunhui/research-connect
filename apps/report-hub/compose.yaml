@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     env_file: ${REPORT_HUB_ENV_FILE:-.env}
     ports:
-      - "${REPORT_HUB_PORT:-58787}:${REPORT_HUB_PORT:-58787}"
+      - "${REPORT_HUB_PUBLIC_PORT:-58787}:58787"
     volumes:
       - report-hub-data:/data
     environment:

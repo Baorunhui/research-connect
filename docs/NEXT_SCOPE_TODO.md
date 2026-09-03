@@ -10,7 +10,7 @@
 - [x] Linux/Windows 子进程树取消已实现，模块轮询持续检查 Hub 取消标志。
 - [x] 把 Daily Paper 已有的“论文总结”异步接口（`/api/paper/summarize`）注册为飞书固定工具，接入统一任务、进度、取消、产物与固定日报站点刷新；支持论文 URL 和飞书 PDF 上传。
 - [x] 把 Daily Paper 已有的“论文综述”异步接口（`/api/survey`）注册为飞书固定工具，定义主题、候选数、回溯范围、粗筛量与种子论文等稳定参数，并接入统一任务生命周期和联网主题富化。
-- [x] 增加统一配置预检：飞书与 Python CLI 只检查公网配置记录是否存在；不存在时返回模块原版公网网页。配置保存后由本机 Connect Hub 在任务启动前同步，不探测 LLM/API 连通性。
+- [x] 统一配置改为本机唯一来源；飞书、CLI 和原版网页共用本机 `providers.json`，Provider 探测只由用户主动触发。
 
 ## P0：符合轻量部署原则
 
@@ -31,10 +31,10 @@
 
 ### Demo 版已完成（2026-08-31）
 
-- [x] Report Hub 提供统一 HTTPS 配置中心，按实际功能流水线展示 Provider 用途、启用状态和论文源选择。
+- [x] Connect Hub 发布统一 HTTPS 配置中心，按实际功能流水线展示 Provider 用途、启用状态和论文源选择。
 - [x] 公网读取接口只返回配置状态与空白密钥；密钥留空保存表示保留旧值。
 - [x] 每个 Provider 提供用户主动点击的最小可用性探测，不在任务预检时自动消耗额度。
-- [x] Connect Hub 启动时导入现有配置，运行时从 Report Hub 拉取，并写入权限为 `0600` 的本机 `providers.json` 缓存。
+- [x] Connect Hub 启动时导入现有配置，并以权限为 `0600` 的本机 `providers.json` 作为唯一配置源。
 - [x] 飞书增加 `/config`（兼容 `/settings`、`/配置`），同一飞书用户首次使用时只提醒一次配置入口。
 - [x] 统一配置可下发给 LLM Gateway、Daily Paper 和 CitationClaw；Daily Paper 的局部配置接口已允许更新 `source_backends`/`supabase`。
 - [x] 三个公网界面改为同一条安装级配置：统一配置页、Daily Paper 原版设置页、CitationClaw 原版设置页的共同字段实时一致，不设置覆盖顺序。
@@ -46,9 +46,9 @@
 
 ### 后续强化项
 
-Demo 运行期已经以 Report Hub 安装级记录为唯一来源；模块 YAML/JSON 是本机运行镜像，`.env` 只负责首次启动和基础连接。后续发行版仍需把秘密存储与白名单传递进一步收紧：
+Demo 运行期已经以本机安装级记录为唯一来源；模块 YAML/JSON 是本机运行镜像，`.env` 只负责首次启动和基础连接。后续发行版仍需把秘密存储与白名单传递进一步收紧：
 
-- [x] 由 Connect Hub/Report Hub 提供统一 Provider catalog 和 CredentialStore，业务投影使用稳定 provider ID。
+- [x] 由 Connect Hub 提供统一 Provider catalog 和 CredentialStore，业务投影使用稳定 provider ID。
 - [ ] 第一版采用跨平台私有文件保存秘密（建议 `~/.research-connect/config/secrets.json`，Linux 权限 `0600`，Windows 限当前用户），SQLite 只保存 provider 元数据、`secret_ref` 和“是否已配置”，不保存明文 key。后续可选接 OS Keyring，但不把它作为部署前置条件。
 - [x] `.env` 作为首次安装/旧配置导入入口；运行时采用安装级配置，并对旧模块站点配置执行一次性迁移。
 - [ ] 定义稳定的凭据引用，例如 `llm.primary`、`llm.fallback`、`embedding.paper`、`rerank.paper`、`supabase.arxiv`、`citation.semantic_scholar`、`citation.scraperapi`、`feishu.bot`、`report_hub.agent`。

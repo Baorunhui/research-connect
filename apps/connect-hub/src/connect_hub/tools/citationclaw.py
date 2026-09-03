@@ -34,26 +34,14 @@ def citationclaw_tool(
                     stable_public_url = report_hub.upload_site(
                         site_id, project_dir, site_kind="citationclaw"
                     )
-                remote_config = report_hub.get_site_config(site_id)
             except ReportHubError as exc:
                 raise ConnectJobError(
                     JobErrorCode.PROVIDER_UNAVAILABLE,
-                    "暂时无法读取查引用配置，请稍后重试。",
+                    "暂时无法准备查引用网页，请稍后重试。",
                     stage="configuration",
                     retryable=True,
                     technical_message=str(exc),
                 ) from exc
-            if not bool(remote_config.get("configured")):
-                raise ConnectJobError(
-                    JobErrorCode.CONFIG_REQUIRED,
-                    "查引用尚未配置。请先打开原版网页的设置页完成配置，再重新发起任务：\n"
-                    + stable_public_url
-                    + "?panel=config",
-                    stage="configuration",
-                )
-            config_payload = remote_config.get("config")
-            if isinstance(config_payload, Mapping):
-                adapter.apply_configuration(config_payload)
             context.report_progress(
                 f"CitationClaw 原版网页已就绪：\n{stable_public_url}", stage="publish"
             )
@@ -100,7 +88,7 @@ def citationclaw_tool(
         name="lookup_citations",
         description=(
             "查询一篇或多篇论文的引用者、知名学者引用和引用语境，并生成 CitationClaw 网页报告。"
-            "仅在用户明确要求查引用、引用画像或 citation analysis 时调用。默认创建公网任务页。"
+            "仅在用户明确要求查引用、引用画像或 citation analysis 时调用。结果写入 CitationClaw 稳定网页。"
         ),
         parameters={
             "type": "object",

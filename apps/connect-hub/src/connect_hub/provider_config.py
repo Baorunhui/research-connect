@@ -17,7 +17,7 @@ from connect_hub.reporting import ReportHubClient
 
 
 class CredentialStore:
-    """Small local cache; Report Hub remains the demo configuration source."""
+    """The local authoritative store for unified provider and module settings."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -190,8 +190,8 @@ def citation_configuration(config: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class RuntimeConfigManager:
-    def __init__(self, client: ReportHubClient, site_id: str, store: CredentialStore, apply: Callable[[Mapping[str, Any]], None]) -> None:
-        self.client, self.site_id, self.store, self.apply = client, site_id, store, apply
+    def __init__(self, store: CredentialStore, apply: Callable[[Mapping[str, Any]], None]) -> None:
+        self.store, self.apply = store, apply
         self._lock, self._last_check, self._serialized = threading.Lock(), 0.0, ""
 
     def sync(self, *, force: bool = False) -> bool:
@@ -199,12 +199,10 @@ class RuntimeConfigManager:
             if not force and time.monotonic() - self._last_check < 3:
                 return False
             self._last_check = time.monotonic()
-            response = self.client.get_site_config(self.site_id)
-            config = response.get("config") if isinstance(response.get("config"), Mapping) else {}
+            config = self.store.load()
             serialized = json.dumps(config, ensure_ascii=False, sort_keys=True)
             if not config or serialized == self._serialized:
                 return False
-            self.store.save(config)
             self.apply(config)
             self._serialized = serialized
             return True
@@ -220,6 +218,7 @@ class ModuleCommandRelay:
         auto_publish_dir: str | Path | None = None,
         auto_publish_kind: str = "daily-paper",
         publish_poll_seconds: float = 5.0,
+        on_success: Callable[[Mapping[str, Any], bytes], None] | None = None,
     ) -> None:
         self.client = client
         self.site_id = site_id
@@ -231,6 +230,7 @@ class ModuleCommandRelay:
         self.auto_publish_dir = Path(auto_publish_dir).resolve() if auto_publish_dir else None
         self.auto_publish_kind = auto_publish_kind
         self.publish_poll_seconds = max(1.0, float(publish_poll_seconds))
+        self.on_success = on_success
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._publish_lock = threading.Lock()
@@ -286,6 +286,8 @@ class ModuleCommandRelay:
                 self.site_id, command_id, status_code=status,
                 headers=response_headers, body=response_body,
             )
+            if 200 <= status < 300 and self.on_success is not None:
+                self.on_success(command, body)
             self._watch_dispatched_run(command, status, response_body)
         except Exception as exc:
             self.client.complete_site_command(

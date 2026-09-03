@@ -2,87 +2,60 @@
 
 ## 目标
 
-领域模块在用户本机运行，Report Hub 在公网服务器上保存任务进度和最终静态报告。创建任务时就会返回永久任务链接；飞书应立即发送该链接，不等待任务结束。
+Report Hub 只提供安装注册、稳定站点、运行快照、文件托管和受限命令邮箱。任务生命周期和进度事件保存在用户本机 Connect Hub，并由飞书文字消息或模块原版网页展示。
 
-客户端只配置两个值：
+客户端先使用邀请码注册，注册命令自动写入：
 
 ```env
 REPORT_HUB_API_URL=https://reports.example.com
-REPORT_HUB_AGENT_TOKEN=<由服务器管理员为这个安装单独签发>
+REPORT_HUB_AGENT_TOKEN=<注册接口一次性签发>
 ```
 
-所有写接口使用 `Authorization: Bearer <token>`。公开任务页只凭不可猜测的 URL token 读取，不提供取消或配置功能。
+所有 Agent 写接口使用 `Authorization: Bearer <token>`。普通安装 token 只能操作该安装拥有的站点；服务器管理员 token 可以全局运维但不得分发。
 
-## 固定模块站点（Daily Paper）
+## 稳定站点
 
-Daily Paper 不使用下面的单任务壳页面。Connect Hub 以稳定的安装实例 ID 调用
-`POST /api/v1/sites`，随后将项目原生的 `index.html`、`app/`、`docs/` 上传到
-`PUT /api/v1/sites/{site_id}/report`。服务返回的 `/s/{public_token}/` 在以后任务中保持不变。
+Connect Hub 为配置中心、Daily Paper 和 CitationClaw 分别调用 `POST /api/v1/sites`。Report Hub 返回高熵 `/s/{public_token}/` URL；同一 `site_id` 重复注册会沿用原 URL，并更新本地客户端声明的 `command_policy`。
 
-多人共用公网服务器时不得共享服务器管理员 token。管理员使用 `report-hub --issue-install LABEL` 为每个安装签发独立 token，服务端按安装隔离站点、任务、配置和命令队列。详见 [Report Hub 多安装接入](REPORT_HUB_MULTI_INSTALL.md)。
+客户端将包含根目录 `index.html` 的 ZIP 上传到：
 
-运行期间，Connect Hub 调用 `PUT /api/v1/sites/{site_id}/runs/{run_id}` 镜像无密钥的
-run 快照和日志。原生前端通过下面两个公开只读接口显示进度与历史：
+```http
+PUT /api/v1/sites/{site_id}/report
+Authorization: Bearer ...
+Content-Type: application/zip
+```
+
+大站点使用 `/api/v1/sites/{site_id}/uploads/{upload_id}/parts/{part_number}` 分片上传。服务端校验大小、校验和、路径穿越和符号链接，全部分片完成后原子替换站点。
+
+## 运行快照
+
+Daily Paper 可将无密钥的运行元数据和日志镜像到：
+
+```http
+PUT /api/v1/sites/{site_id}/runs/{run_id}
+```
+
+原版网页通过以下公开接口读取：
 
 - `GET /s/{public_token}/api/local/runs`
 - `GET /s/{public_token}/api/local/runs/{run_id}/log`
 
-公网接口不提供 dispatch、cancel 或配置写入能力。
+这只是模块稳定站点的历史/进度数据，不是独立公网任务页。飞书仍直接接收本机 Connect Hub 的结构化事件播报。
 
-## 调用顺序
+## 通用命令邮箱
 
-1. `POST /api/v1/jobs` 创建任务，取得 `public_url`；重复提交相同 `job_id` 返回原链接。
-2. Connect Hub 立即把 `public_url` 发到飞书。
-3. 模块运行时调用 `POST /api/v1/jobs/{job_id}/events`。
-4. 报告完成后，将含根目录 `index.html` 的 ZIP 调用 `PUT /api/v1/jobs/{job_id}/report` 上传。
-5. 原 `public_url` 自动显示最终报告；用户电脑关机不影响访问。
+每个站点注册一组只允许精确路径或末尾 `/*` 前缀的 `command_policy`。浏览器请求 `/s/{public_token}/api/...` 时，Report Hub 校验策略并放入 `site_commands`；用户本机 Connect Hub 主动拉取、调用 `127.0.0.1` 模块 API，再回传响应。
 
-## 创建任务
+Report Hub 不理解具体模块业务、不连接用户内网，也不保存 Provider 配置。新增网页按钮或模块 API 时，由新版客户端重新上传站点和策略即可。
 
-```http
-POST /api/v1/jobs
-Authorization: Bearer ...
-Content-Type: application/json
+## 注册协议
 
-{
-  "job_id": "dp-20260829-abcd",
-  "module_name": "daily-paper",
-  "title": "3DVG 方向论文日报"
-}
+管理员先创建限时限次邀请码：
+
+```bash
+report-hub --issue-invite demo --max-uses 30 --expires-in 30d
 ```
 
-`module_name` 第一版取值：`daily-paper`、`citationclaw`、`xhs-agent`、`other`。
+客户端调用公开的 `POST /api/v1/installations/register`，提交邀请码、飞书 App ID 和设备备注。服务端验证邀请状态、次数、有效期和 App ID 唯一性，返回一次性安装 token；数据库只保存哈希。
 
-## 上报事件
-
-```json
-{
-  "event_id": "dp-20260829-abcd-search-1",
-  "event_type": "job.progress",
-  "stage": "search",
-  "message": "正在检索最近 30 天论文",
-  "current": 1,
-  "total": 6,
-  "payload": {}
-}
-```
-
-事件类型固定为：`job.started`、`job.progress`、`job.message`、`job.completed`、`job.failed`、`job.cancelled`。`event_id` 用于网络重试去重；同一任务重复 ID 只接受一次。
-
-失败事件把统一错误码放入 `payload.error_code`。取消仍由飞书 → 本机 Connect Hub 执行，公网任务页没有远程控制能力。
-
-## 静态报告约束
-
-- ZIP 根目录必须有 `index.html`；HTML、CSS、JS、图片可放子目录并使用相对链接。
-- 第一版默认压缩包不超过 50 MB、解压后不超过 250 MB。
-- 报告需要适配手机宽度。
-- 报告不能依赖用户本机 `127.0.0.1` API；需要长期保留的数据应在任务完成时导出进 ZIP。
-- 本机才能提供的动态操作应显示为不可用或回到飞书发命令，不能让页面整体失效。
-
-## WebSocket
-
-浏览器连接 `/ws/public/jobs/{public_token}` 获取快照和增量事件。断线重连后会重新取得数据库快照。首版服务必须单进程运行，因为 WebSocket 广播器在进程内；若未来横向扩容再引入外部广播层。
-
-## v1 稳定边界
-
-`/api/v1` 路径、上述字段和事件类型是 Connect Hub 与两个领域模块的兼容边界。可以增加可选字段，不直接修改或删除现有字段；破坏性升级使用 `/api/v2`。
+详细命令见 [Report Hub 多安装接入](REPORT_HUB_MULTI_INSTALL.md)。

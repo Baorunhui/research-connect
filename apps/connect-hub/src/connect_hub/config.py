@@ -83,6 +83,7 @@ class Settings:
     report_hub_api_url: str
     report_hub_agent_token: str
     report_hub_timeout_seconds: int
+    config_api_endpoint: str
 
     @property
     def feishu_configured(self) -> bool:
@@ -223,4 +224,7 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         report_hub_api_url=str(os.getenv("REPORT_HUB_API_URL") or "").strip().rstrip("/"),
         report_hub_agent_token=str(os.getenv("REPORT_HUB_AGENT_TOKEN") or "").strip(),
         report_hub_timeout_seconds=_as_int("REPORT_HUB_TIMEOUT_SECONDS", 10, minimum=2),
+        config_api_endpoint=str(
+            os.getenv("CONNECT_CONFIG_ENDPOINT") or "http://127.0.0.1:8791"
+        ).strip().rstrip("/"),
     )
