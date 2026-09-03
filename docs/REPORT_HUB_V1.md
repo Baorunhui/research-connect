@@ -11,7 +11,7 @@ REPORT_HUB_API_URL=https://reports.example.com
 REPORT_HUB_AGENT_TOKEN=<注册接口一次性签发>
 ```
 
-所有 Agent 写接口使用 `Authorization: Bearer <token>`。普通安装 token 只能操作该安装拥有的站点；服务器管理员 token 可以全局运维但不得分发。
+所有 Agent 写接口使用 `Authorization: Bearer <token>`。这里只接受安装 token，且只能操作该安装拥有的站点；服务器管理员通过本机 CLI 运维，不存在全局 HTTP token。
 
 ## 稳定站点
 
@@ -59,3 +59,13 @@ report-hub --issue-invite demo --max-uses 30 --expires-in 30d
 客户端调用公开的 `POST /api/v1/installations/register`，提交邀请码、飞书 App ID 和设备备注。服务端验证邀请状态、次数、有效期和 App ID 唯一性，返回一次性安装 token；数据库只保存哈希。
 
 详细命令见 [Report Hub 多安装接入](REPORT_HUB_MULTI_INSTALL.md)。
+
+## 安装数据管理
+
+安装 token 可以调用：
+
+- `GET /api/v1/installations/current/storage`：列出自己的站点、运行数量和磁盘占用；
+- `DELETE /api/v1/installations/current/sites/{site_id}`：删除自己的一个站点；
+- `DELETE /api/v1/installations/current/data`：清空自己的全部公网内容，但保留安装 token。
+
+跨安装操作返回 403。管理员按 `install_id` 清理或彻底删除用户时使用 `report-hub --clear-install-data` / `--delete-install` CLI。

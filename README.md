@@ -28,7 +28,7 @@ Research Connect 是一套可自行部署的本地优先研究工具。每位用
 
 公开服务开箱可用，但共享额度、没有可用性保证；可在 `/config` 中测试或换成自己的兼容服务。默认值、申请/替换教程和安全边界见 [外部论文服务申请与配置](docs/EXTERNAL_SERVICES_SETUP.md)。
 
-每位用户应使用自己的飞书 App ID，并通过邀请码注册自己的 Report Hub 安装。不要把服务器管理员 token 放进用户电脑。
+每位用户应使用自己的飞书 App ID，并通过邀请码注册自己的 Report Hub 安装。公网服务器不配置全局管理员 HTTP token；服务器运维通过 Docker 内的 `report-hub` CLI 完成。
 
 ## 1. 下载与安装
 
@@ -103,6 +103,16 @@ Windows PowerShell：
 ```
 
 注册成功后，安装 token 和公网地址会自动写入 `.env`，无需管理员逐个生成或传递 token。一个飞书 App ID 只能注册一次；换电脑时应由管理员轮换或注销原安装。
+
+这里写入客户端 `.env` 的 `REPORT_HUB_AGENT_TOKEN` 是该用户自己的安装 token，不是服务器管理员密钥。用户可以查看或清理自己在公网服务器保存的内容：
+
+```bash
+.venv/bin/connect-hub --env-file apps/connect-hub/.env remote-data list
+.venv/bin/connect-hub --env-file apps/connect-hub/.env remote-data delete-site SITE_ID
+.venv/bin/connect-hub --env-file apps/connect-hub/.env remote-data clear --yes
+```
+
+Windows 将 `.venv/bin/connect-hub` 换成 `.venv\Scripts\connect-hub.exe`。
 
 LLM 配置首次启动后会导入本机统一配置；以后也可以在飞书 `/config` 返回的 HTTPS 页面修改。配置和 API Key 的正式副本保存在用户电脑，公网服务器只临时转发页面请求，不保存 Provider 配置。
 

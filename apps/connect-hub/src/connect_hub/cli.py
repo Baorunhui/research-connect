@@ -451,6 +451,56 @@ def command_register(
     return 0
 
 
+def command_remote_data(
+    env_file: str | Path | None, *, action: str, site_id: str, confirmed: bool
+) -> int:
+    settings = load_settings(env_file)
+    client = ReportHubClient(
+        settings.report_hub_api_url,
+        settings.report_hub_agent_token,
+        timeout_seconds=settings.report_hub_timeout_seconds,
+    )
+    if not client.configured:
+        print("未配置 Report Hub；请先使用邀请码执行 register。")
+        return 2
+    try:
+        if action == "list":
+            summary = client.storage_summary()
+            print(
+                f"install_id={summary.get('install_id')}  "
+                f"sites={summary.get('site_count', 0)}  "
+                f"bytes={summary.get('total_bytes', 0)}"
+            )
+            for site in summary.get("sites", []):
+                if not isinstance(site, dict):
+                    continue
+                print(
+                    f"{site.get('site_id')}\t{site.get('module_name')}\t"
+                    f"{site.get('size_bytes', 0)} bytes\truns={site.get('run_count', 0)}\t"
+                    f"{site.get('title')}"
+                )
+            return 0
+        if action == "delete-site":
+            if not site_id:
+                print("delete-site 需要 SITE_ID。")
+                return 2
+            result = client.delete_remote_site(site_id)
+            print(f"已删除远端站点：{result.get('site_id') or site_id}")
+            return 0
+        if not confirmed:
+            print("clear 会删除当前安装的全部公网内容；确认后请加 --yes。")
+            return 2
+        result = client.clear_remote_data()
+        print(
+            f"已清空当前安装的公网内容：删除 {result.get('deleted_sites', 0)} 个站点；"
+            "安装 token 仍有效，重启服务后会重新发布页面。"
+        )
+        return 0
+    except ReportHubError as exc:
+        print(f"远端数据操作失败：{exc}")
+        return 2
+
+
 def _update_env_file(path: Path, updates: dict[str, str]) -> None:
     lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
     remaining = dict(updates)
@@ -816,6 +866,12 @@ def main(argv: list[str] | None = None) -> int:
     register.add_argument("--server", required=True, help="public Report Hub base URL")
     register.add_argument("--invite", required=True, help="registration invite code")
     register.add_argument("--device-name", default="", help="label shown to the server administrator")
+    remote_data = subparsers.add_parser(
+        "remote-data", help="list or delete this installation's Report Hub data"
+    )
+    remote_data.add_argument("action", choices=("list", "delete-site", "clear"))
+    remote_data.add_argument("site_id", nargs="?", default="")
+    remote_data.add_argument("--yes", action="store_true", help="confirm clearing all remote data")
     args = parser.parse_args(argv)
     if args.command in {"check", "doctor"}:
         return command_check(args.env_file)
@@ -831,6 +887,13 @@ def main(argv: list[str] | None = None) -> int:
             server=args.server,
             invite=args.invite,
             device_name=args.device_name,
+        )
+    if args.command == "remote-data":
+        return command_remote_data(
+            args.env_file,
+            action=args.action,
+            site_id=args.site_id,
+            confirmed=args.yes,
         )
     if args.command in {"daily-paper", "citationclaw"}:
         return command_module(args.command, args.env_file)

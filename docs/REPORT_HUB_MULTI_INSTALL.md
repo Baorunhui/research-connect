@@ -8,7 +8,6 @@
 
 | 凭证 | 持有人 | 用途 |
 |---|---|---|
-| 管理员 token | 仅服务器管理员 | 全局运维和紧急验收，不得分发 |
 | 邀请码 | 一批测试用户 | 在有效期和次数内创建安装 |
 | 安装 token | 每个 Connect Hub 安装 | 操作本安装的站点、文件、运行记录和命令 |
 | 网页随机链接 | 对应用户 | 浏览和操作该安装发布的页面 |
@@ -73,9 +72,28 @@ docker compose exec report-hub report-hub --rotate-install INSTALL_ID
 
 # 停用安装
 docker compose exec report-hub report-hub --revoke-install INSTALL_ID
+
+# 查看指定安装占用的站点和空间
+docker compose exec report-hub report-hub --show-install-data INSTALL_ID
+
+# 清空站点与文件，但保留安装和 token
+docker compose exec report-hub report-hub --clear-install-data INSTALL_ID --yes
+
+# 删除全部数据和安装记录，token 立即永久失效
+docker compose exec report-hub report-hub --delete-install INSTALL_ID --yes
 ```
 
 手工 `--issue-install` 仍保留为管理员应急入口，正常新增用户应使用邀请码注册。
+
+普通用户也可在自己的电脑执行：
+
+```bash
+connect-hub --env-file apps/connect-hub/.env remote-data list
+connect-hub --env-file apps/connect-hub/.env remote-data delete-site SITE_ID
+connect-hub --env-file apps/connect-hub/.env remote-data clear --yes
+```
+
+这些命令只使用当前安装 token，只能看到和删除本安装的数据。`clear` 保留 token，重新启动 Connect Hub 后会重新发布三个稳定页面。
 
 ## 配置与隔离
 
@@ -83,7 +101,7 @@ docker compose exec report-hub report-hub --revoke-install INSTALL_ID
 - `/config` 页面由本地 Connect Hub 打包上传，Provider 目录、探测和模块配置转换也在本机执行。
 - 用户从手机保存配置时，请求会短暂经过 Report Hub 命令邮箱，但不会写入公网配置表；返回内容会脱敏。
 - 安装 token 只能操作本安装拥有的站点、运行快照和命令，跨安装访问返回 403。
-- 管理员 token 可以操作全部资源，必须只保存在服务器 `.env`。
+- 公网 HTTP API 只接受安装 token，不提供管理员绕过。管理员管理操作只在服务器 shell/Docker CLI 中开放。
 - 网页链接是 bearer link，拿到链接即可访问对应页面，仍需当作私密链接保存。
 
 当前设计适合少量可信 demo 用户。若以后开放公共注册，再增加账号登录、速率限制、磁盘配额和审计后台。

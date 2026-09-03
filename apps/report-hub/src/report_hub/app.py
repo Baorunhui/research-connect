@@ -53,8 +53,7 @@ class InstallationRegistration(BaseModel):
 
 @dataclass(frozen=True)
 class AgentIdentity:
-    install_id: str | None
-    is_admin: bool = False
+    install_id: str
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -71,17 +70,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not authorization or not authorization.startswith(prefix):
             raise HTTPException(status_code=401, detail="invalid agent token")
         token = authorization[len(prefix):].strip()
-        if secrets.compare_digest(token, settings.agent_token):
-            return AgentIdentity(install_id=None, is_admin=True)
         installation = storage.authenticate_installation(token)
         if not installation:
             raise HTTPException(status_code=401, detail="invalid agent token")
         return AgentIdentity(install_id=str(installation["install_id"]))
 
     def assert_owner(record: dict[str, Any], identity: AgentIdentity) -> None:
-        if identity.is_admin:
-            return
-        if not identity.install_id or record.get("owner_install_id") != identity.install_id:
+        if record.get("owner_install_id") != identity.install_id:
             raise HTTPException(status_code=403, detail="resource belongs to another installation")
 
     def resolve_site(site_id: str, identity: AgentIdentity) -> dict[str, Any]:
@@ -125,9 +120,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not JOB_ID_PATTERN.fullmatch(body.site_id):
             raise HTTPException(status_code=422, detail="invalid site_id")
         existing = storage.get_site(site_id=body.site_id)
-        if existing and existing.get("owner_install_id") is None and identity.install_id:
-            storage.claim_unowned_site(body.site_id, identity.install_id)
-            existing = storage.get_site(site_id=body.site_id)
         if existing:
             assert_owner(existing, identity)
             storage.update_site_command_policy(
@@ -143,6 +135,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             command_policy=_validate_command_policy(body.command_policy),
         )
         return _site_response(site, settings)
+
+    @app.get("/api/v1/installations/current/storage")
+    def current_installation_storage(
+        identity: AgentIdentity = Depends(require_agent),
+    ) -> dict[str, Any]:
+        return storage.installation_storage_summary(identity.install_id)
+
+    @app.delete("/api/v1/installations/current/sites/{site_id}")
+    def delete_current_installation_site(
+        site_id: str, identity: AgentIdentity = Depends(require_agent),
+    ) -> dict[str, Any]:
+        site = resolve_site(site_id, identity)
+        storage.delete_site(str(site["site_id"]), owner_install_id=identity.install_id)
+        return {"deleted": True, "site_id": site_id}
+
+    @app.delete("/api/v1/installations/current/data")
+    def clear_current_installation_data(
+        identity: AgentIdentity = Depends(require_agent),
+    ) -> dict[str, Any]:
+        result = storage.clear_installation_data(identity.install_id)
+        return {"deleted": True, **result}
 
     @app.put("/api/v1/sites/{site_id}/report")
     async def upload_site(site_id: str, request: Request, identity: AgentIdentity = Depends(require_agent)) -> dict[str, Any]:

@@ -12,7 +12,7 @@
 - Report Hub 管理员提供的邀请码；
 - 一个 OpenAI 兼容 LLM 的 API 端点、模型名和 Key。
 
-每个安装应使用自己的飞书应用，并通过邀请码注册自己的 Report Hub token。不要使用或转发服务器管理员 token，也不要把 `.env` 提交到 Git。
+每个安装应使用自己的飞书应用，并通过邀请码注册自己的 Report Hub 安装 token。不要转发该 token，也不要把 `.env` 提交到 Git。公网服务器没有全局管理员 HTTP token。
 
 ## 2. Linux 安装
 
@@ -247,7 +247,7 @@ Linux 如果提示缺少系统动态库，可根据 Playwright 输出安装所�
 
 ### Report Hub 返回 401/403
 
-通常表示安装 token 错误、已被轮换，或该 token 正在访问其他安装的资源。不要改用管理员 token；请让管理员检查安装状态，必要时轮换 token 后重新写入 `.env`。
+通常表示安装 token 错误、已被轮换，或该 token 正在访问其他安装的资源。请让管理员检查安装状态，必要时轮换 token 后重新写入 `.env`。
 
 ### 本地端口被占用
 

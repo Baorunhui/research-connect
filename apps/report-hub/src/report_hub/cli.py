@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -19,11 +18,15 @@ def main() -> None:
     admin.add_argument("--list-installs", action="store_true")
     admin.add_argument("--revoke-install", metavar="INSTALL_ID")
     admin.add_argument("--rotate-install", metavar="INSTALL_ID")
+    admin.add_argument("--show-install-data", metavar="INSTALL_ID")
+    admin.add_argument("--clear-install-data", metavar="INSTALL_ID")
+    admin.add_argument("--delete-install", metavar="INSTALL_ID")
     admin.add_argument("--issue-invite", metavar="LABEL")
     admin.add_argument("--list-invites", action="store_true")
     admin.add_argument("--revoke-invite", metavar="INVITE_ID")
     parser.add_argument("--max-uses", type=int, default=1)
     parser.add_argument("--expires-in", default="7d")
+    parser.add_argument("--yes", action="store_true", help="confirm destructive operation")
     args = parser.parse_args()
     env_path = Path(args.env_file)
     if args.init_config:
@@ -40,6 +43,9 @@ def main() -> None:
         args.list_installs,
         args.revoke_install,
         args.rotate_install,
+        args.show_install_data,
+        args.clear_install_data,
+        args.delete_install,
         args.issue_invite,
         args.list_invites,
         args.revoke_invite,
@@ -69,6 +75,37 @@ def main() -> None:
             print(f"REPORT_HUB_API_URL={settings.public_base_url}")
             print(f"REPORT_HUB_AGENT_TOKEN={token}")
             print("The previous token is invalid. This replacement is shown once.")
+        elif args.show_install_data:
+            try:
+                summary = storage.installation_storage_summary(args.show_install_data)
+            except ValueError as exc:
+                raise SystemExit("Installation not found") from exc
+            print(
+                f"install_id={summary['install_id']}\tlabel={summary['label']}\t"
+                f"sites={summary['site_count']}\tbytes={summary['total_bytes']}"
+            )
+            for site in summary["sites"]:
+                print(
+                    f"{site['site_id']}\t{site['module_name']}\t{site['size_bytes']} bytes\t"
+                    f"runs={site['run_count']}\t{site['title']}"
+                )
+        elif args.clear_install_data:
+            _require_yes(args.yes, "--clear-install-data")
+            try:
+                result = storage.clear_installation_data(args.clear_install_data)
+            except ValueError as exc:
+                raise SystemExit("Installation not found") from exc
+            print(
+                f"Cleared {result['deleted_sites']} site(s) for installation "
+                f"{args.clear_install_data}; its token remains valid"
+            )
+        elif args.delete_install:
+            _require_yes(args.yes, "--delete-install")
+            if not storage.delete_installation(args.delete_install):
+                raise SystemExit("Installation not found")
+            print(
+                f"Deleted installation {args.delete_install}, all owned data, and its token"
+            )
         elif args.issue_invite:
             if args.max_uses < 1:
                 raise SystemExit("--max-uses must be at least 1")
@@ -115,7 +152,6 @@ def initialize_config(path: Path) -> None:
         "REPORT_HUB_HOST=0.0.0.0\n"
         "REPORT_HUB_PORT=58787\n"
         "REPORT_HUB_PUBLIC_BASE_URL=https://report.sinksilk.com:58443\n"
-        f"REPORT_HUB_AGENT_TOKEN={secrets.token_urlsafe(48)}\n"
         "REPORT_HUB_DATA_DIR=./data\n"
         "REPORT_HUB_MAX_UPLOAD_MB=256\n"
         "REPORT_HUB_MAX_EXPANDED_MB=1024\n",
@@ -125,7 +161,12 @@ def initialize_config(path: Path) -> None:
         path.chmod(0o600)
     except OSError:
         pass
-    print(f"Created {path}. The generated agent token was not printed.")
+    print(f"Created {path}.")
+
+
+def _require_yes(confirmed: bool, operation: str) -> None:
+    if not confirmed:
+        raise SystemExit(f"{operation} is destructive; repeat with --yes")
 
 
 def _expiry(value: str) -> str:

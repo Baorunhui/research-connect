@@ -165,6 +165,21 @@ class ReportHubClient:
             raise ReportHubError("REPORT_PUBLISH_FAILED: site response has no public_url")
         return public_url, bool(response.get("report_ready"))
 
+    def storage_summary(self) -> Mapping[str, Any]:
+        return self._json_request(
+            "GET", "/api/v1/installations/current/storage", None
+        )
+
+    def delete_remote_site(self, site_id: str) -> Mapping[str, Any]:
+        return self._json_request(
+            "DELETE", f"/api/v1/installations/current/sites/{site_id}", None
+        )
+
+    def clear_remote_data(self) -> Mapping[str, Any]:
+        return self._json_request(
+            "DELETE", "/api/v1/installations/current/data", None
+        )
+
     def upload_site(
         self, site_id: str, project_dir: str | Path, *, site_kind: str = "daily-paper"
     ) -> str:

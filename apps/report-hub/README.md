@@ -21,4 +21,4 @@ python -m venv .venv
 report-hub --issue-invite "demo" --max-uses 30 --expires-in 30d
 ```
 
-可用 `--list-invites` 查看使用量，用 `--revoke-invite INVITE_ID` 提前注销。服务器管理员 token 只用于运维，不分发给客户端。
+可用 `--list-invites` 查看使用量，用 `--revoke-invite INVITE_ID` 提前注销。公网 HTTP API 不设置管理员 token；管理员通过 `--show-install-data`、`--clear-install-data` 和 `--delete-install` 等本机 CLI 管理用户数据。

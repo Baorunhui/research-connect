@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import secrets
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -257,6 +258,115 @@ class Storage:
             )
         return token
 
+    def installation_storage_summary(self, install_id: str) -> dict[str, Any]:
+        installation = self.get_installation(install_id)
+        if not installation:
+            raise ValueError("installation_not_found")
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT s.*, "
+                "(SELECT COUNT(*) FROM site_runs r WHERE r.site_id = s.site_id) AS run_count, "
+                "(SELECT COUNT(*) FROM site_commands c WHERE c.site_id = s.site_id) AS command_count "
+                "FROM sites s WHERE s.owner_install_id = ? ORDER BY s.created_at",
+                (install_id,),
+            ).fetchall()
+        sites: list[dict[str, Any]] = []
+        total_bytes = 0
+        for row in rows:
+            item = dict(row)
+            site_id = str(item["site_id"])
+            size_bytes = self._tree_size(self.site_dir / site_id)
+            upload_bytes = self._tree_size(self.data_dir / "site_uploads" / site_id)
+            total_bytes += size_bytes + upload_bytes
+            sites.append(
+                {
+                    "site_id": site_id,
+                    "module_name": item["module_name"],
+                    "title": item["title"],
+                    "report_ready": bool(item["report_ready"]),
+                    "size_bytes": size_bytes,
+                    "upload_bytes": upload_bytes,
+                    "run_count": int(item["run_count"]),
+                    "command_count": int(item["command_count"]),
+                    "created_at": item["created_at"],
+                    "updated_at": item["updated_at"],
+                }
+            )
+        return {
+            "install_id": installation["install_id"],
+            "label": installation["label"],
+            "enabled": bool(installation["enabled"]),
+            "site_count": len(sites),
+            "total_bytes": total_bytes,
+            "sites": sites,
+        }
+
+    def delete_site(self, site_id: str, *, owner_install_id: str | None = None) -> bool:
+        site = self.get_site(site_id=site_id)
+        if not site:
+            return False
+        if owner_install_id is not None and site.get("owner_install_id") != owner_install_id:
+            return False
+        self._remove_tree(self.site_dir / site_id, parent=self.site_dir)
+        uploads_dir = self.data_dir / "site_uploads"
+        self._remove_tree(uploads_dir / site_id, parent=uploads_dir)
+        with self.connect() as db:
+            cursor = db.execute(
+                "DELETE FROM sites WHERE site_id = ?"
+                + (" AND owner_install_id = ?" if owner_install_id is not None else ""),
+                (site_id, owner_install_id) if owner_install_id is not None else (site_id,),
+            )
+        return cursor.rowcount > 0
+
+    def clear_installation_data(self, install_id: str) -> dict[str, Any]:
+        if not self.get_installation(install_id):
+            raise ValueError("installation_not_found")
+        with self.connect() as db:
+            site_ids = [
+                str(row["site_id"])
+                for row in db.execute(
+                    "SELECT site_id FROM sites WHERE owner_install_id = ?", (install_id,)
+                ).fetchall()
+            ]
+        deleted = sum(
+            1 for site_id in site_ids
+            if self.delete_site(site_id, owner_install_id=install_id)
+        )
+        return {"install_id": install_id, "deleted_sites": deleted}
+
+    def delete_installation(self, install_id: str) -> bool:
+        if not self.get_installation(install_id):
+            return False
+        self.clear_installation_data(install_id)
+        with self.connect() as db:
+            cursor = db.execute(
+                "DELETE FROM installations WHERE install_id = ?", (install_id,)
+            )
+        return cursor.rowcount > 0
+
+    @staticmethod
+    def _tree_size(path: Path) -> int:
+        if not path.exists():
+            return 0
+        if path.is_file():
+            return path.stat().st_size
+        return sum(
+            item.stat().st_size
+            for item in path.rglob("*")
+            if item.is_file() and not item.is_symlink()
+        )
+
+    @staticmethod
+    def _remove_tree(path: Path, *, parent: Path) -> None:
+        resolved_parent = parent.resolve()
+        resolved_path = path.resolve()
+        if resolved_path.parent != resolved_parent:
+            raise ValueError("unsafe_storage_path")
+        if resolved_path.is_symlink() or resolved_path.is_file():
+            resolved_path.unlink(missing_ok=True)
+        elif resolved_path.is_dir():
+            shutil.rmtree(resolved_path)
+
     def create_site(
         self, *, site_id: str, public_token: str, module_name: str, title: str,
         owner_install_id: str | None = None,
@@ -303,15 +413,6 @@ class Storage:
                 "UPDATE sites SET report_ready = 1, updated_at = ? WHERE site_id = ?",
                 (utc_now(), site_id),
             )
-
-    def claim_unowned_site(self, site_id: str, install_id: str) -> bool:
-        with self.connect() as db:
-            cursor = db.execute(
-                "UPDATE sites SET owner_install_id = ?, updated_at = ? "
-                "WHERE site_id = ? AND owner_install_id IS NULL",
-                (install_id, utc_now(), site_id),
-            )
-        return cursor.rowcount > 0
 
     def enqueue_site_command(
         self, *, command_id: str, site_id: str, method: str, path: str,

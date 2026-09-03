@@ -47,14 +47,16 @@ def test_existing_sites_table_gains_command_policy_column(tmp_path):
 def client(tmp_path) -> TestClient:
     settings = Settings(
         public_base_url="https://reports.example.test",
-        agent_token=TOKEN,
         data_dir=tmp_path,
     )
-    return TestClient(create_app(settings))
+    api = TestClient(create_app(settings))
+    _installation, token = api.app.state.storage.issue_installation("test client")
+    api.headers.update({"Authorization": f"Bearer {token}"})
+    return api
 
 
 def auth() -> dict[str, str]:
-    return {"Authorization": f"Bearer {TOKEN}"}
+    return {}
 
 
 def install_auth(token: str) -> dict[str, str]:
@@ -72,6 +74,7 @@ def test_agent_api_requires_token(tmp_path):
     api = client(tmp_path)
     response = api.post(
         "/api/v1/sites",
+        headers={"Authorization": ""},
         json={"site_id": "unauthorized", "module_name": "other", "title": "unauthorized"},
     )
     assert response.status_code == 401
@@ -370,8 +373,8 @@ def test_install_tokens_are_isolated_and_revocable(tmp_path):
         "/api/v1/sites/daily-paper-alice/commands/next", headers=install_auth(second_token)
     ).status_code == 403
     assert api.get(
-        "/api/v1/sites/daily-paper-alice/commands/next", headers=auth()
-    ).status_code == 200
+        "/api/v1/sites/daily-paper-alice/commands/next", headers=install_auth(TOKEN)
+    ).status_code == 401
     collision = api.post(
         "/api/v1/sites", headers=install_auth(second_token),
         json={"site_id": "daily-paper-alice", "module_name": "daily-paper", "title": "Bob"},
@@ -389,16 +392,83 @@ def test_install_tokens_are_isolated_and_revocable(tmp_path):
     assert second["install_id"] != first["install_id"]
 
 
-def test_first_install_token_adopts_legacy_unowned_site(tmp_path):
+def test_unowned_legacy_site_cannot_be_adopted(tmp_path):
     api = client(tmp_path)
-    api.post(
-        "/api/v1/sites", headers=auth(),
-        json={"site_id": "daily-paper-legacy", "module_name": "daily-paper", "title": "legacy"},
+    api.app.state.storage.create_site(
+        site_id="daily-paper-legacy",
+        public_token="legacy-public-token",
+        module_name="daily-paper",
+        title="legacy",
     )
-    installation, token = api.app.state.storage.issue_installation("legacy owner")
+    _installation, token = api.app.state.storage.issue_installation("legacy owner")
     adopted = api.post(
         "/api/v1/sites", headers=install_auth(token),
         json={"site_id": "daily-paper-legacy", "module_name": "daily-paper", "title": "legacy"},
     )
-    assert adopted.status_code == 201
-    assert api.app.state.storage.get_site(site_id="daily-paper-legacy")["owner_install_id"] == installation["install_id"]
+    assert adopted.status_code == 403
+    assert api.app.state.storage.get_site(site_id="daily-paper-legacy")["owner_install_id"] is None
+
+
+def test_installation_can_list_delete_and_clear_own_storage(tmp_path):
+    api = client(tmp_path)
+    installation, token = api.app.state.storage.issue_installation("Alice")
+    other, other_token = api.app.state.storage.issue_installation("Bob")
+    for site_id, auth_token in (("alice-one", token), ("alice-two", token), ("bob-one", other_token)):
+        created = api.post(
+            "/api/v1/sites",
+            headers=install_auth(auth_token),
+            json={"site_id": site_id, "module_name": "other", "title": site_id},
+        )
+        assert created.status_code == 201
+        assert api.put(
+            f"/api/v1/sites/{site_id}/report",
+            headers=install_auth(auth_token),
+            content=report_zip(content=site_id.encode()),
+        ).status_code == 200
+
+    summary = api.get(
+        "/api/v1/installations/current/storage", headers=install_auth(token)
+    )
+    assert summary.status_code == 200
+    assert summary.json()["install_id"] == installation["install_id"]
+    assert summary.json()["site_count"] == 2
+    assert summary.json()["total_bytes"] > 0
+
+    assert api.delete(
+        "/api/v1/installations/current/sites/bob-one", headers=install_auth(token)
+    ).status_code == 403
+    deleted = api.delete(
+        "/api/v1/installations/current/sites/alice-one", headers=install_auth(token)
+    )
+    assert deleted.status_code == 200
+    assert not (tmp_path / "sites" / "alice-one").exists()
+
+    cleared = api.delete(
+        "/api/v1/installations/current/data", headers=install_auth(token)
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["deleted_sites"] == 1
+    assert api.app.state.storage.authenticate_installation(token) is not None
+    assert api.app.state.storage.get_site(site_id="bob-one")["owner_install_id"] == other["install_id"]
+
+
+def test_admin_storage_deletion_removes_data_and_token(tmp_path):
+    storage = Storage(tmp_path)
+    storage.initialize()
+    installation, token = storage.issue_installation("delete me")
+    storage.create_site(
+        site_id="delete-me",
+        public_token="delete-public",
+        module_name="other",
+        title="delete",
+        owner_install_id=installation["install_id"],
+    )
+    site_dir = tmp_path / "sites" / "delete-me"
+    site_dir.mkdir(parents=True)
+    (site_dir / "index.html").write_text("delete", encoding="utf-8")
+
+    assert storage.delete_installation(installation["install_id"])
+    assert storage.authenticate_installation(token) is None
+    assert storage.get_installation(installation["install_id"]) is None
+    assert storage.get_site(site_id="delete-me") is None
+    assert not site_dir.exists()

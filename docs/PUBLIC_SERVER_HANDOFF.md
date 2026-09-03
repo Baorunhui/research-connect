@@ -22,13 +22,12 @@ Report Hub 只保留以下通用职责：
 REPORT_HUB_HOST=0.0.0.0
 REPORT_HUB_PORT=58787
 REPORT_HUB_PUBLIC_BASE_URL=https://report.sinksilk.com:58443
-REPORT_HUB_AGENT_TOKEN=至少32字符的服务器管理员密钥
 REPORT_HUB_DATA_DIR=/data
 REPORT_HUB_MAX_UPLOAD_MB=256
 REPORT_HUB_MAX_EXPANDED_MB=1024
 ```
 
-`REPORT_HUB_AGENT_TOKEN` 只供服务器运维，不分发给普通用户。Caddy/Nginx 将公网 `58443` 反向代理到容器 `58787`。
+公网服务不配置管理员 HTTP token，也不存在跨安装的 HTTP 管理入口。服务器管理员通过容器内 CLI 直接管理 SQLite 和数据目录。Caddy/Nginx 将公网 `58443` 反向代理到容器 `58787`。
 
 ## 一次性更新
 
@@ -64,6 +63,9 @@ docker compose exec report-hub report-hub --revoke-invite INVITE_ID
 docker compose exec report-hub report-hub --list-installs
 docker compose exec report-hub report-hub --revoke-install INSTALL_ID
 docker compose exec report-hub report-hub --rotate-install INSTALL_ID
+docker compose exec report-hub report-hub --show-install-data INSTALL_ID
+docker compose exec report-hub report-hub --clear-install-data INSTALL_ID --yes
+docker compose exec report-hub report-hub --delete-install INSTALL_ID --yes
 ```
 
 邀请码注销后，已注册安装不受影响。安装注销后，该安装 token 立即不能再写入或读取受保护资源。
@@ -86,10 +88,11 @@ Windows 使用 `.venv\Scripts\connect-hub.exe`。注册成功后 token 自动写
 2. 邀请码能按最大次数注册，列表中的 `used_count` 正确增加。
 3. 同一飞书 App ID 不能重复注册。
 4. 注销邀请码后，新注册被拒绝；既有安装仍可访问。
-5. 两个安装创建的站点和任务彼此返回 403。
+5. 两个安装创建的站点和任务彼此返回 403；不存在服务器管理员 token 的 HTTP 绕过。
 6. 用户启动 Connect Hub 后，`/config`、`/paper_reader`、`/citationclaw` 返回各自稳定页面。
 7. 更新用户本机配置页面后重新启动，公网稳定 URL 内容更新且响应带 `no-cache`。
 8. 配置保存、Provider 探测和模块操作通过命令邮箱在用户本机执行。
+9. 用户可用 `connect-hub remote-data` 管理自己的远端内容；管理员 CLI 可按安装清空数据或彻底删除安装。
 
 ## 运维边界
 
