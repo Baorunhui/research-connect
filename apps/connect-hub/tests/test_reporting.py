@@ -53,6 +53,8 @@ def test_public_policies_cover_all_original_web_ui_relay_operations():
         ("GET", "local/health"),
         ("GET", "local/runs"),
         ("GET", "local/runs/*"),
+        ("GET", "local/runtime/runs"),
+        ("GET", "local/runtime/runs/*"),
         ("GET", "chat/config"),
         ("GET", "paper/summarize"),
         ("GET", "paper/summarize/*"),
@@ -61,6 +63,7 @@ def test_public_policies_cover_all_original_web_ui_relay_operations():
         ("POST", "chat"),
         ("POST", "local/smart-query"),
         ("POST", "local/workflows/dispatch"),
+        ("POST", "local/runtime/runs/*"),
         ("POST", "paper/summarize"),
         ("POST", "survey"),
     }.issubset(daily)

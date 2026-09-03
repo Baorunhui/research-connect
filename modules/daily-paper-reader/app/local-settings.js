@@ -192,6 +192,20 @@
     };
   }
 
+  // “应用所选”代表采用本轮 LLM 结果：清空旧内容后，仅写入当前勾选项。
+  function replaceCandidateLines(candidates, key) {
+    const seen = new Set();
+    const values = [];
+    (Array.isArray(candidates) ? candidates : []).forEach((candidate) => {
+      const value = String(candidate && candidate[key] || '').trim();
+      const normalized = value.toLowerCase();
+      if (!value || seen.has(normalized)) return;
+      seen.add(normalized);
+      values.push(value);
+    });
+    return { text: values.join('\n'), count: values.length };
+  }
+
   // 候选卡片列表 HTML（英中成对，默认全选）；kind 用于区分关键词/意图查询两组勾选。
   function renderCandidateCards(kind, items) {
     return (Array.isArray(items) ? items : []).map((c) =>
@@ -428,15 +442,13 @@
       refs.statusEl.textContent = '没有勾选任何候选。';
       return;
     }
-    const kwResult = refs.kwEl ? mergeCandidateLines(refs.kwEl.value, kwCands, 'en') : { added: 0, skipped: 0 };
-    const qResult = refs.qEl ? mergeCandidateLines(refs.qEl.value, qCands, 'en') : { added: 0, skipped: 0 };
+    const kwResult = replaceCandidateLines(kwCands, 'en');
+    const qResult = replaceCandidateLines(qCands, 'en');
     if (refs.kwEl) refs.kwEl.value = kwResult.text;
     if (refs.qEl) refs.qEl.value = qResult.text;
-    const skipped = (kwResult.skipped || 0) + (qResult.skipped || 0);
     refs.statusEl.style.color = '#080';
-    refs.statusEl.textContent = '已应用：新增 ' + kwResult.added + ' 个关键词、' + qResult.added + ' 条意图查询' +
-      (skipped > 0 ? '；重复跳过 ' + skipped + ' 条' : '') +
-      '。点「保存」写回 config.yaml 后，下次运行生效。';
+    refs.statusEl.textContent = '已覆盖写入 ' + kwResult.count + ' 个关键词、' + qResult.count +
+      ' 条意图查询。点「保存」写回 config.yaml 后，下次运行生效。';
     refs.candsEl.innerHTML = '';
     refs.applyEl.style.display = 'none';
   }
@@ -862,6 +874,7 @@
     validateSubscriptionsPayload,
     normalizeCandidates,
     mergeCandidateLines,
+    replaceCandidateLines,
     renderCandidateCards,
     smartQueryProgressState,
   };

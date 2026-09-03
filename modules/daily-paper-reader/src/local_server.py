@@ -2461,6 +2461,17 @@ class Handler(SimpleHTTPRequestHandler):
             })
         if parsed.path == "/api/local/runs":
             return self._json({"ok": True, "runs": RUN_STORE.list()})
+        if parsed.path == "/api/local/runtime/runs":
+            return self._json({"ok": True, "runs": RUN_STORE.list()})
+        if parsed.path.startswith("/api/local/runtime/runs/"):
+            parts = parsed.path.strip("/").split("/")
+            run_id = parts[4] if len(parts) >= 5 else ""
+            run = RUN_STORE.get(run_id)
+            if not run:
+                return self._json({"ok": False, "error": "run not found"}, status=404)
+            if len(parts) >= 6 and parts[5] == "log":
+                return self._json({"ok": True, "run": run, "log": RUN_STORE.log(run_id)})
+            return self._json({"ok": True, "run": run})
         if parsed.path.startswith("/api/local/runs/"):
             parts = parsed.path.strip("/").split("/")
             run_id = parts[3] if len(parts) >= 4 else ""
@@ -2514,9 +2525,23 @@ class Handler(SimpleHTTPRequestHandler):
             if not run_id or not RUN_STORE.cancel(run_id):
                 return self._json({"ok": False, "error": "run not found or already finished"}, status=404)
             return self._json({"ok": True, "run_id": run_id, "status": "cancelled"})
+        if parsed.path.startswith("/api/local/runtime/runs/") and parsed.path.rstrip("/").endswith("/cancel"):
+            parts = parsed.path.strip("/").split("/")
+            run_id = parts[4] if len(parts) >= 6 else ""
+            if not run_id or not RUN_STORE.cancel(run_id):
+                return self._json({"ok": False, "error": "run not found or already finished"}, status=404)
+            return self._json({"ok": True, "run_id": run_id, "status": "cancelled"})
         if parsed.path.startswith("/api/local/runs/") and parsed.path.rstrip("/").endswith("/delete"):
             parts = parsed.path.strip("/").split("/")
             run_id = parts[3] if len(parts) >= 5 else ""
+            ok, error = RUN_STORE.delete(run_id)
+            if not ok:
+                status = 409 if "still active" in error else 404
+                return self._json({"ok": False, "error": error}, status=status)
+            return self._json({"ok": True, "run_id": run_id, "deleted": True})
+        if parsed.path.startswith("/api/local/runtime/runs/") and parsed.path.rstrip("/").endswith("/delete"):
+            parts = parsed.path.strip("/").split("/")
+            run_id = parts[4] if len(parts) >= 6 else ""
             ok, error = RUN_STORE.delete(run_id)
             if not ok:
                 status = 409 if "still active" in error else 404

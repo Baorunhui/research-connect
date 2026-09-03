@@ -300,6 +300,17 @@ function testMergeCandidateLinesDedupesAndAppends() {
   assert.equal(empty.added, 1);
 }
 
+function testReplaceCandidateLinesOverwritesOldContent() {
+  const api = loadModule();
+  const result = api.replaceCandidateLines(
+    [{ en: 'New Query' }, { en: 'new query' }, { en: 'Second Query' }],
+    'en',
+  );
+  assert.equal(result.text, 'New Query\nSecond Query');
+  assert.equal(result.count, 2);
+  assert.ok(!result.text.includes('old query'));
+}
+
 // 候选卡片：默认勾选、kind 标记、HTML 转义防注入。
 function testRenderCandidateCardsChecksDefaultAndEscapes() {
   const api = loadModule();
@@ -342,6 +353,7 @@ Promise.resolve()
   .then(testTagOnlyProfileAllowed)
   .then(testNormalizeCandidatesDropsEmptyEnAndCaps)
   .then(testMergeCandidateLinesDedupesAndAppends)
+  .then(testReplaceCandidateLinesOverwritesOldContent)
   .then(testRenderCandidateCardsChecksDefaultAndEscapes)
   .then(testSmartQueryProgressIsCappedAndExplainsLongWait)
   .then(testSaveAndRunUsesPublicCommandRelay)

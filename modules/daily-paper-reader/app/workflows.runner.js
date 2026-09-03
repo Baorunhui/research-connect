@@ -72,6 +72,9 @@ window.DPRWorkflowRunner = (function () {
       },
     },
   };
+  // 公网页面的旧 /api/local/runs 路径被 Report Hub 的历史快照路由占用。
+  // runtime 路径会经命令中继直接访问当前机器上的 Local Server。
+  const LOCAL_RUNS_API = '/api/local/runtime/runs';
 
   let overlay = null;
   let panel = null;
@@ -357,7 +360,7 @@ window.DPRWorkflowRunner = (function () {
   const refreshLiveProgress = async () => {
     if (!isLocalDebugPage() || !window.DPRTaskProgress) return;
     try {
-      const data = await localApiFetch('/api/local/runs');
+      const data = await localApiFetch(LOCAL_RUNS_API);
       const runs = Array.isArray(data.runs) ? data.runs : [];
       const active = runs.find((run) => {
         const status = String(run && run.status || '').toLowerCase();
@@ -452,7 +455,7 @@ window.DPRWorkflowRunner = (function () {
 
   const refreshLocalRun = async (runId, retryCount = 0) => {
     try {
-      const data = await localApiFetch(`/api/local/runs/${encodeURIComponent(runId)}/log`);
+      const data = await localApiFetch(`${LOCAL_RUNS_API}/${encodeURIComponent(runId)}/log`);
       const run = data.run || {};
       renderLocalRun(run, data.log || '');
       if (['completed', 'interrupted', 'cancelled'].indexOf(String(run.status || '').toLowerCase()) >= 0) {
@@ -748,7 +751,7 @@ window.DPRWorkflowRunner = (function () {
     if (isLocalDebugPage()) {
       try {
         recentEl.classList.add('is-loading');
-        const data = await localApiFetch('/api/local/runs');
+        const data = await localApiFetch(LOCAL_RUNS_API);
         const runs = Array.isArray(data.runs) ? data.runs.slice(0, 12) : [];
         recentEl.classList.remove('is-loading');
         if (!runs.length) {
@@ -783,7 +786,7 @@ window.DPRWorkflowRunner = (function () {
             if (!runId || !window.confirm('删除这条运行记录及其日志？此操作不可恢复。')) return;
             button.disabled = true;
             try {
-              await localApiFetch(`/api/local/runs/${encodeURIComponent(runId)}/delete`, {
+              await localApiFetch(`${LOCAL_RUNS_API}/${encodeURIComponent(runId)}/delete`, {
                 method: 'POST',
                 body: '{}',
               });
