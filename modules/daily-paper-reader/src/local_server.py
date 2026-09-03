@@ -251,6 +251,10 @@ _DOCS_PROGRESS_RE = re.compile(
 _STEP_STATE_VERB = {"started": "开始", "completed": "完成", "skipped": "已跳过", "failed": "失败"}
 
 
+def _new_event_id() -> str:
+    return "evt-" + uuid.uuid4().hex[:16]
+
+
 def _run_event(event_type: str, run_id: str, *, stage: str = "", message: str = "",
                current: int | None = None, total: int | None = None,
                payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -735,10 +739,6 @@ RUN_STORE = RunStore()
 # 事件类型遵循 connect.job.v1：job.accepted/started/progress/artifact/completed/failed。
 # 进度事件带 stage/current/total，前端据此渲染分阶段进度。
 # --------------------------------------------------------------------------- #
-def _new_event_id() -> str:
-    return "evt-" + uuid.uuid4().hex[:16]
-
-
 def _job_event(event_type: str, job_id: str, *, stage: str = "", message: str = "",
                current: int | None = None, total: int | None = None,
                payload: dict[str, Any] | None = None) -> dict[str, Any]:

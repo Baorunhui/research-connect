@@ -826,6 +826,14 @@ def test_persist_summarize_uses_real_source_and_venue(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------- #
 # 日报流水线步骤进度事件（RunStore / _StepTracker）
 # --------------------------------------------------------------------------- #
+def test_run_event_factory_is_defined_before_global_store_initialization():
+    """有遗留 active run 时，全局 RunStore 初始化会立刻创建 interrupted 事件。"""
+    from pathlib import Path
+
+    source = Path("src/local_server.py").read_text(encoding="utf-8")
+    assert source.index("def _new_event_id") < source.index("RUN_STORE = RunStore()")
+
+
 def test_step_tracker_parses_step_markers():
     """[INFO] Step X - 标签: 命令 锚点 → run.progress 事件；新步骤开始时补发上一步 completed。"""
     from src.local_server import _StepTracker
