@@ -36,6 +36,7 @@ PUBLIC_MODULE_COMMAND_POLICIES: dict[str, tuple[dict[str, str], ...]] = {
         {"method": "GET", "path": "local/runs/*"},
         {"method": "GET", "path": "local/runtime/runs"},
         {"method": "GET", "path": "local/runtime/runs/*"},
+        {"method": "GET", "path": "local/runtime/docs/*"},
         {"method": "GET", "path": "chat/config"},
         {"method": "GET", "path": "paper/summarize"},
         {"method": "GET", "path": "paper/summarize/*"},

@@ -3234,7 +3234,14 @@ def main() -> None:
     docs_progress_completed = 0
     docs_progress_total = len(deep_list) + len(quick_list)
 
-    def _log_docs_progress(section: str, paper: Dict[str, Any] | None = None, *, succeeded: bool = True) -> None:
+    def _log_docs_progress(
+        section: str,
+        paper: Dict[str, Any] | None = None,
+        *,
+        succeeded: bool = True,
+        generated_route: str = "",
+        generated_title: str = "",
+    ) -> None:
         """Emit a machine-readable Step 6 progress line for the local web UI."""
         nonlocal docs_progress_completed
         if paper is not None:
@@ -3246,8 +3253,13 @@ def main() -> None:
             if rate > 0
             else None
         )
-        paper_id = str((paper or {}).get("id") or (paper or {}).get("paper_id") or "").strip()
-        title = str((paper or {}).get("title") or "").replace("|", "／").strip()
+        paper_id = str(
+            generated_route
+            or (paper or {}).get("id")
+            or (paper or {}).get("paper_id")
+            or ""
+        ).strip()
+        title = str(generated_title or (paper or {}).get("title") or "").replace("|", "／").strip()
         status = "completed" if succeeded else "failed"
         eta_text = f"{eta:.1f}s" if eta is not None else "unknown"
         log(
@@ -3291,7 +3303,13 @@ def main() -> None:
                     paper_evidence_by_id[str((pid or "").strip())] = get_paper_sidebar_evidence(paper)
                     section_tags = extract_sidebar_tags(paper)
                     results.append((index, (pid, title, section_tags)))
-                    _log_docs_progress(section, paper, succeeded=True)
+                    _log_docs_progress(
+                        section,
+                        paper,
+                        succeeded=True,
+                        generated_route=pid,
+                        generated_title=title,
+                    )
 
         results.sort(key=lambda item: item[0])
         return [v for _, v in results]

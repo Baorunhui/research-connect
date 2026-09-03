@@ -7,6 +7,7 @@ import argparse
 import base64
 import hashlib
 import json
+import mimetypes
 import os
 import re
 import signal
@@ -20,7 +21,7 @@ from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from research_connect_core.llm import RetryPolicy, create_openai_client
 
 try:
@@ -2463,6 +2464,25 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "runs": RUN_STORE.list()})
         if parsed.path == "/api/local/runtime/runs":
             return self._json({"ok": True, "runs": RUN_STORE.list()})
+        if parsed.path.startswith("/api/local/runtime/docs/"):
+            relative = unquote(parsed.path.removeprefix("/api/local/runtime/docs/")).lstrip("/")
+            docs_root = (ROOT_DIR / "docs").resolve()
+            target = (docs_root / relative).resolve()
+            if (
+                (docs_root not in target.parents and target != docs_root)
+                or not target.is_file()
+            ):
+                return self._json({"ok": False, "error": "document not found"}, status=404)
+            data = target.read_bytes()
+            content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+            if target.suffix.lower() in {".md", ".markdown"}:
+                content_type = "text/markdown; charset=utf-8"
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if parsed.path.startswith("/api/local/runtime/runs/"):
             parts = parsed.path.strip("/").split("/")
             run_id = parts[4] if len(parts) >= 5 else ""

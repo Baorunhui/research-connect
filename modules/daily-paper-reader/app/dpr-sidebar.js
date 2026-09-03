@@ -1860,7 +1860,93 @@
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
     sidebarCollapsed: false,
     titleOverflowFrame: 0,
+    liveRunId: '',
   };
+
+  function livePaperDateKey(route) {
+    var value = String(route || '').replace(/^#?\//, '');
+    var range = value.match(/^(\d{8}-\d{8})\//);
+    if (range) return range[1];
+    var day = value.match(/^(\d{6})\/(\d{2})\//);
+    return day ? day[1] + day[2] : '';
+  }
+
+  function removeLivePapers() {
+    (state.model.daily || []).forEach(function (day) {
+      day.papers = (day.papers || []).filter(function (paper) { return !paper._live; });
+    });
+    state.model.daily = (state.model.daily || []).filter(function (day) {
+      return !day._live || (day.papers || []).length > 0;
+    });
+  }
+
+  // Step 6 每完成一篇就把已经落盘的论文增量放进侧栏。
+  // 正式的 docs/_sidebar.md 仍是最终数据源；这里仅补齐任务运行期间的实时体验。
+  function syncLivePapers(run) {
+    if (!run || !state.model) return false;
+    var runId = String(run.id || '');
+    if (!runId) return false;
+    if (state.liveRunId && state.liveRunId !== runId) removeLivePapers();
+    state.liveRunId = runId;
+
+    var existing = {};
+    flattenDailyPapers(state.model).forEach(function (record) {
+      existing[paperIdentity(record.paper)] = true;
+    });
+    var changed = false;
+    var firstDateKey = '';
+    (Array.isArray(run.events) ? run.events : []).forEach(function (ev) {
+      var payload = (ev && ev.payload) || {};
+      if (ev.event_type !== 'run.progress' || payload.step !== 'step_6_generate') return;
+      if (String(payload.paper_status || '').toLowerCase() !== 'completed') return;
+      var route = String(payload.paper_id || '').replace(/^#?\//, '').trim();
+      var title = String(payload.paper_title || '').trim();
+      var dateKey = livePaperDateKey(route);
+      var href = normalizeRouteHref('api/local/runtime/docs/' + route);
+      if (!route || !title || !dateKey || existing[route]) return;
+
+      var day = null;
+      (state.model.daily || []).some(function (candidate) {
+        if (candidate.dateKey !== dateKey) return false;
+        day = candidate;
+        return true;
+      });
+      if (!day) {
+        day = {
+          dateKey: dateKey,
+          dateLabel: formatDateLabel(dateKey),
+          reportHref: dayReportHrefFromKey(dateKey),
+          papers: [],
+          _live: true,
+        };
+        state.model.daily.push(day);
+      }
+      day.papers.push({
+        id: route,
+        href: href,
+        title: title,
+        section: payload.section === 'quick' ? 'quick' : 'deep',
+        tags: [{ kind: 'query', label: '实时完成' }],
+        _live: true,
+      });
+      day.papers = sortPapersByTimeDesc(day.papers || [], dateKey);
+      existing[route] = true;
+      firstDateKey = firstDateKey || dateKey;
+      changed = true;
+    });
+    if (!changed) return false;
+
+    state.model.daily.sort(function (a, b) {
+      return timestampFromDateLike(b && b.dateKey) - timestampFromDateLike(a && a.dateKey);
+    });
+    state.expandedGroups.daily = true;
+    state.activeDailyDate = firstDateKey;
+    state.activeDailyMonth = monthKeyFromDateKey(firstDateKey);
+    state.activeDailyTag = '__all__';
+    expandCurrentDailyAxisSection(ReadState.getAll());
+    if (state.bodyEl) renderBody();
+    return true;
+  }
 
   function loadPersistedFilter() {
     try {
@@ -3559,6 +3645,7 @@
 
   var DPRSidebarApi = {
     refresh: function () { return loadAndRender(); },
+    syncLivePapers: syncLivePapers,
     syncActive: syncActive,
     notifyReadStateChanged: function () { rerenderSidebarBody(rerenderOptionsForReadStateEvent()); },
     getReadState: function () { return ReadState.getAll(); },

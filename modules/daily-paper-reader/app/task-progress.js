@@ -48,7 +48,16 @@
     var parts = [];
     if (current != null && total != null) parts.push(current + '/' + total);
     if (payload.percent != null) parts.push(Number(payload.percent).toFixed(1) + '%');
-    if (payload.rate != null) parts.push(Number(payload.rate).toFixed(2) + ' 篇/秒');
+    if (payload.rate != null) {
+      var rate = Number(payload.rate);
+      if (isFinite(rate) && rate > 0) {
+        var secondsPerPaper = 1 / rate;
+        var secondsText = secondsPerPaper >= 10
+          ? String(Math.round(secondsPerPaper))
+          : secondsPerPaper.toFixed(1).replace(/\.0$/, '');
+        parts.push(secondsText + ' 秒/篇');
+      }
+    }
     if (payload.eta_seconds != null && Number(payload.eta_seconds) >= 0) {
       var seconds = Math.round(Number(payload.eta_seconds));
       parts.push('预计剩余 ' + (seconds >= 60 ? Math.ceil(seconds / 60) + ' 分钟' : seconds + ' 秒'));
@@ -124,5 +133,5 @@
     else container.scrollTop = previousScroll;
   }
 
-  window.DPRTaskProgress = { render: render, calculatePercent: calculatePercent };
+  window.DPRTaskProgress = { render: render, calculatePercent: calculatePercent, formatSuffix: formatSuffix };
 })();

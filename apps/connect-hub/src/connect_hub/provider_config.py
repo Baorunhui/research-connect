@@ -217,6 +217,9 @@ class ModuleCommandRelay:
         self, client: ReportHubClient, site_id: str, local_endpoint: str,
         *, config_sync: Callable[[], object] | None = None, poll_seconds: float = 0.75,
         request_timeout_seconds: int = 130, max_response_bytes: int = 8 * 1024 * 1024,
+        auto_publish_dir: str | Path | None = None,
+        auto_publish_kind: str = "daily-paper",
+        publish_poll_seconds: float = 5.0,
     ) -> None:
         self.client = client
         self.site_id = site_id
@@ -225,8 +228,13 @@ class ModuleCommandRelay:
         self.poll_seconds = max(0.25, poll_seconds)
         self.request_timeout_seconds = max(10, int(request_timeout_seconds))
         self.max_response_bytes = max(1024 * 1024, int(max_response_bytes))
+        self.auto_publish_dir = Path(auto_publish_dir).resolve() if auto_publish_dir else None
+        self.auto_publish_kind = auto_publish_kind
+        self.publish_poll_seconds = max(1.0, float(publish_poll_seconds))
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._publish_lock = threading.Lock()
+        self._publish_runs: set[str] = set()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -278,11 +286,84 @@ class ModuleCommandRelay:
                 self.site_id, command_id, status_code=status,
                 headers=response_headers, body=response_body,
             )
+            self._watch_dispatched_run(command, status, response_body)
         except Exception as exc:
             self.client.complete_site_command(
                 self.site_id, command_id, status_code=502, headers={"content-type": "application/json"},
                 body=b"", error_message=str(exc)[:500],
             )
+
+    def _watch_dispatched_run(
+        self, command: Mapping[str, Any], status: int, response_body: bytes
+    ) -> None:
+        """Publish a fresh site snapshot after a public-page workflow succeeds.
+
+        The watcher starts only for a successful workflow dispatch, so no
+        permanent run polling is introduced and it keeps working after the
+        browser tab is closed.
+        """
+        if self.auto_publish_dir is None or status < 200 or status >= 300:
+            return
+        if str(command.get("path") or "").split("?", 1)[0] != "/api/local/workflows/dispatch":
+            return
+        try:
+            payload = json.loads(response_body.decode("utf-8"))
+            run = payload.get("run") if isinstance(payload, Mapping) else None
+            run_id = str(run.get("id") or "") if isinstance(run, Mapping) else ""
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not run_id:
+            return
+        with self._publish_lock:
+            if run_id in self._publish_runs:
+                return
+            self._publish_runs.add(run_id)
+        threading.Thread(
+            target=self._wait_and_publish,
+            args=(run_id,),
+            name=f"site-publish-{run_id}",
+            daemon=True,
+        ).start()
+
+    def _wait_and_publish(self, run_id: str) -> None:
+        log = logging.getLogger(__name__)
+        try:
+            while not self._stop.is_set():
+                request = urllib.request.Request(
+                    f"{self.local_endpoint}/api/local/runtime/runs/{run_id}",
+                    method="GET",
+                )
+                try:
+                    with urllib.request.urlopen(request, timeout=15) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                except (OSError, urllib.error.URLError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    log.debug("waiting for local run %s before publishing: %s", run_id, exc)
+                    self._stop.wait(self.publish_poll_seconds)
+                    continue
+                run = payload.get("run") if isinstance(payload, Mapping) else None
+                status = str(run.get("status") or "").lower() if isinstance(run, Mapping) else ""
+                conclusion = str(run.get("conclusion") or "").lower() if isinstance(run, Mapping) else ""
+                if status not in {"completed", "cancelled", "interrupted", "failed"}:
+                    self._stop.wait(self.publish_poll_seconds)
+                    continue
+                if status == "completed" and conclusion == "success":
+                    public_url = self.client.upload_site(
+                        self.site_id,
+                        self.auto_publish_dir,
+                        site_kind=self.auto_publish_kind,
+                    )
+                    log.info("published completed local run %s at %s", run_id, public_url)
+                else:
+                    log.info(
+                        "skipped site publish for local run %s (%s/%s)",
+                        run_id, status, conclusion,
+                    )
+                return
+        except Exception as exc:
+            log.warning("could not publish completed local run %s: %s", run_id, exc)
+        finally:
+            with self._publish_lock:
+                self._publish_runs.discard(run_id)
 
 
 def _provider(providers: Mapping[str, Any], name: str) -> Mapping[str, Any]:

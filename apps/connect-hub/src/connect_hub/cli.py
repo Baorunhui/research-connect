@@ -292,6 +292,8 @@ def _build_runtime(
             report_hub, daily_site_id, settings.daily_paper_endpoint,
             config_sync=lambda: config_manager.sync(force=True),
             max_response_bytes=80 * 1024 * 1024,
+            auto_publish_dir=settings.daily_paper_dir,
+            auto_publish_kind="daily-paper",
         )
         citation_relay.start()
         daily_relay.start()

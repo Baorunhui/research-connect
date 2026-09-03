@@ -910,7 +910,7 @@ def test_step_tracker_emits_step6_document_progress_with_eta():
     progress = t.observe(
         "[2026-09-01 03:12:00] [PROGRESS] Step 6 docs: 3/19 "
         "| section=deep | status=completed | elapsed=120.0s | eta=640.0s "
-        "| paper=2608.1v1 | title=A VLM Paper\n"
+        "| paper=20260823-20260901/2608.1v1-a-vlm-paper | title=A VLM Paper\n"
     )
     assert len(progress) == 1
     event = progress[0]
@@ -918,6 +918,7 @@ def test_step_tracker_emits_step6_document_progress_with_eta():
     assert event["payload"]["state"] == "running"
     assert event["payload"]["eta_seconds"] == 640
     assert event["payload"]["paper_title"] == "A VLM Paper"
+    assert event["payload"]["paper_id"] == "20260823-20260901/2608.1v1-a-vlm-paper"
     assert event["payload"]["percent"] > 15
 
 

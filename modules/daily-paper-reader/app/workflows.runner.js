@@ -75,6 +75,7 @@ window.DPRWorkflowRunner = (function () {
   // 公网页面的旧 /api/local/runs 路径被 Report Hub 的历史快照路由占用。
   // runtime 路径会经命令中继直接访问当前机器上的 Local Server。
   const LOCAL_RUNS_API = '/api/local/runtime/runs';
+  const LIVE_PROGRESS_REFRESH_MS = 5000;
 
   let overlay = null;
   let panel = null;
@@ -90,6 +91,19 @@ window.DPRWorkflowRunner = (function () {
   let liveProgressTimer = null;
   let liveProgressRunId = '';
   let dismissedLiveRunId = '';
+
+  const syncSidebarFromStep6 = (run) => {
+    const hasCompletedPaper = (run && Array.isArray(run.events) ? run.events : []).some((ev) => {
+      const payload = (ev && ev.payload) || {};
+      return ev && ev.event_type === 'run.progress' &&
+        payload.step === 'step_6_generate' &&
+        payload.paper_id &&
+        String(payload.paper_status || '').toLowerCase() === 'completed';
+    });
+    if (hasCompletedPaper && window.DPRSidebar && typeof window.DPRSidebar.syncLivePapers === 'function') {
+      window.DPRSidebar.syncLivePapers(run);
+    }
+  };
 
   const escapeHtml = (str) => {
     if (!str) return '';
@@ -375,6 +389,7 @@ window.DPRWorkflowRunner = (function () {
         if (liveProgressEl) liveProgressEl.hidden = true;
         return;
       }
+      syncSidebarFromStep6(run);
       const runId = String(run.id || '');
       if (active && runId !== liveProgressRunId) dismissedLiveRunId = '';
       liveProgressRunId = runId;
@@ -399,7 +414,7 @@ window.DPRWorkflowRunner = (function () {
   const startLiveProgressWatcher = () => {
     if (!isLocalDebugPage() || liveProgressTimer) return;
     refreshLiveProgress();
-    liveProgressTimer = setInterval(refreshLiveProgress, 2000);
+    liveProgressTimer = setInterval(refreshLiveProgress, LIVE_PROGRESS_REFRESH_MS);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) refreshLiveProgress();
     });
@@ -457,6 +472,7 @@ window.DPRWorkflowRunner = (function () {
     try {
       const data = await localApiFetch(`${LOCAL_RUNS_API}/${encodeURIComponent(runId)}/log`);
       const run = data.run || {};
+      syncSidebarFromStep6(run);
       renderLocalRun(run, data.log || '');
       if (['completed', 'interrupted', 'cancelled'].indexOf(String(run.status || '').toLowerCase()) >= 0) {
         stopPolling();
