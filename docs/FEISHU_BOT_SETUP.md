@@ -209,6 +209,7 @@ Windows PowerShell：
    - “读论文”：返回 Paper Reader 网页；
    - “查引用”：返回 CitationClaw 网页；
    - “使用帮助”：返回斜杠命令说明。
+6. 发送 `/storage`，确认机器人能列出当前安装的公网网页和空间占用，并显示 `1/2/3/0` 管理选项。
 
 ![机器人首次对话和统一配置中心链接](./fig/feishu-setup/16-first-chat-redacted.png)
 

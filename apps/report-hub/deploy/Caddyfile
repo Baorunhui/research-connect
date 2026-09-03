@@ -1,4 +1,4 @@
-reports.example.com {
+https://reports.example.com:58443 {
     encode zstd gzip
     reverse_proxy 127.0.0.1:58787
 }

@@ -37,7 +37,7 @@ Linux：
 ```bash
 git clone https://github.com/Baorunhui/research-connect.git
 cd research-connect
-./scripts/setup.sh  --with-docling
+./scripts/setup.sh --with-docling
 ```
 
 Windows PowerShell：
@@ -45,8 +45,18 @@ Windows PowerShell：
 ```powershell
 git clone https://github.com/Baorunhui/research-connect.git
 cd research-connect
-powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1  -WithDocling
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -WithDocling
 ```
+
+安装选项：
+
+| Linux | Windows | 作用 |
+|---|---|---|
+| `--with-docling` | `-WithDocling` | 安装 Docling、pypdfium2 和 PDF 图表提取依赖 |
+| `--skip-browser` | `-SkipBrowser` | 不安装 Playwright Chromium |
+| `--dev` | `-Dev` | 安装 pytest 等开发依赖 |
+
+Docling 支持 CPU，并会在环境可用时使用 GPU；首次使用可能下载模型。不需要 PDF 深度解析时可以去掉 Docling 参数。
 
 如果使用 Conda，请先激活目标环境再运行上述命令。Windows 和 Linux 安装脚本
 都会优先使用当前 `PATH` 中的 `python`（即 Conda 环境的 Python），并用它创建项目专属的 `.venv`，
@@ -66,7 +76,7 @@ conda activate your-env
 1. 创建仓库根目录下的 `.venv`（若已激活 Conda，则使用 Conda 的 Python 创建）；
 2. 安装 Connect Hub、Daily Paper、CitationClaw、XHS Agent 和共享运行时；
 3. 安装 Playwright Chromium；
-4. 安装 Docling 模型提取 pdf 图片和表格
+4. 按选项安装 Docling，用于提取 PDF 图片和表格；
 5. 首次运行时创建本机配置 `apps/connect-hub/.env`。
 
 ## 2. 配置飞书机器人
@@ -187,7 +197,7 @@ git pull --ff-only
 
 ## 数据与安全
 
-- 默认数据根：`~/.research-connect/data`；可用 `RESEARCH_CONNECT_DATA_DIR` 修改；
+- 默认数据根：Linux 为 `~/.research-connect/data`，Windows 为 `%USERPROFILE%\.research-connect\data`；可用 `RESEARCH_CONNECT_DATA_DIR` 修改；
 - SQLite 只保存任务、事件、索引和小型元数据；PDF、JSON 大对象、图片和网页仍保存为文件；
 - `.env`、本地数据库、缓存、PDF、生成结果和模型不会提交 Git；
 - Report Hub 安装 token 只允许操作本安装的资源；服务端只保存 token 哈希；
@@ -207,4 +217,11 @@ scripts/                          Windows/Linux 安装、检查和启动入口
 docs/                             部署、协议和开发文档
 ```
 
-进一步阅读：[作品设计说明书](docs/DESIGN_DOCUMENT.md)、[Python 安装与故障排查](docs/PYTHON_INSTALL.md)、[飞书配置](docs/FEISHU_BOT_SETUP.md)、[多安装公网接入](docs/REPORT_HUB_MULTI_INSTALL.md)、[自托管架构](docs/SELF_HOSTING_ARCHITECTURE.md) 和 [下一阶段待办](docs/NEXT_SCOPE_TODO.md)。
+## 文档导航
+
+- [常见问题](docs/FAQ.md)：安装、注册、飞书、网页、论文任务和数据排查；
+- [外部论文服务申请与配置](docs/EXTERNAL_SERVICES_SETUP.md)：LLM、论文源、Embedding、Reranker 和引用服务；
+- [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)：飞书开放平台逐步配置；
+- [Report Hub 公网服务器部署与运维](docs/PUBLIC_SERVER_ADMIN_GUIDE.md)：公网管理员专用；
+- [作品设计说明书](docs/DESIGN_DOCUMENT.md)：设计思路、架构、模块和技术难点；
+- [下一阶段待办](docs/NEXT_SCOPE_TODO.md)：唯一的后续开发清单。

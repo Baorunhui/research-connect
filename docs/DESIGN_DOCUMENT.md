@@ -203,7 +203,7 @@ Connect Hub 是用户电脑上唯一的总控入口，主要包含：
 
 - 使用飞书 WebSocket 长连接，不需要公网回调地址；
 - 接收文本、菜单事件和 PDF 附件；
-- 支持 `/config`、`/paper_reader`、`/citationclaw`、`/jobs`、`/job`、`/cancel` 等命令；
+- 支持 `/config`、`/paper_reader`、`/citationclaw`、`/jobs`、`/job`、`/cancel`、`/storage` 等命令；
 - 将任务进度、结果文件和固定网页地址发送回原会话。
 
 #### 对话理解与工具调用
@@ -543,3 +543,14 @@ Docker 发行暂缓，待业务接口和配置结构进一步稳定后再封装�
 Research Connect 的设计重点不是追求一个可以无限自主行动的 Agent，而是建立一套个人能够实际部署、理解、调试和长期使用的 AI 工具框架。
 
 它通过本地优先计算、受约束 LLM 编排、统一任务协议、原版网页复用、反向公网命令中继和轻量数据层，把多个独立研究工具整合为一个可从飞书随时调用、可在手机查看、可解释任务过程并能逐步扩展的完整作品。
+
+## 附录：模块来源
+
+仓库使用源码快照而非 Git submodule。同步上游时应单独提交并记录差异，不复制上游 `.git`、虚拟环境、密钥、数据库、缓存和运行结果。
+
+| 目录 | 来源 | 初始导入版本 |
+|---|---|---|
+| `apps/connect-hub` | 本项目 Connect Hub 工作区 | 2026-08-29 快照 |
+| `modules/xhs-agent` | 本项目 XHS Agent 工作区 | 2026-08-29 快照 |
+| `modules/daily-paper-reader` | Daily Paper Reader 上游 | `a5a6541aaa766949a836f2e57bce23d9dd10bad8` |
+| `modules/citationclaw` | 用户提供的 CitationClaw 归档 | 2026-08-29 快照 |
