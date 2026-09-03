@@ -41,7 +41,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "secret_fields": ["api_key"],
     },
     "supabase.arxiv": {
-        "label": "arXiv Supabase 论文池",
+        "label": "arXiv Supabase 近期论文池",
         "kind": "supabase",
         "description": "保存近期 arXiv 元数据和向量，提供 BM25 与向量召回；Demo 已预置上游公开只读论文池。",
         "fields": ["enabled", "base_url", "anon_key", "papers_table", "bm25_rpc", "vector_rpc"],
@@ -68,13 +68,6 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "fields": ["enabled", "base_url", "api_key"],
         "secret_fields": ["api_key"],
     },
-    "citation.scraperapi": {
-        "label": "ScraperAPI",
-        "kind": "scraperapi",
-        "description": "帮助 CitationClaw 稳定抓取 Google Scholar 被引列表和学者主页。",
-        "fields": ["enabled", "api_key"],
-        "secret_fields": ["api_key"],
-    },
     "citation.search_llm": {
         "label": "CitationClaw Search LLM",
         "kind": "llm",
@@ -85,9 +78,10 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     "citation.semantic_scholar": {
         "label": "Semantic Scholar",
         "kind": "semantic_scholar",
-        "description": "补充引用关系、论文和作者元数据，并提高 PDF 定位成功率。",
+        "description": "论文、作者和引用关系主来源；默认启用并可匿名访问，填写 API Key 可获得更稳定的配额。",
         "fields": ["enabled", "api_key"],
         "secret_fields": ["api_key"],
+        "credential_optional": True,
     },
     "citation.openalex": {
         "label": "OpenAlex",
@@ -115,66 +109,81 @@ PROVIDERS: dict[str, dict[str, Any]] = {
 
 PIPELINES = [
     {
-        "id": "connect",
-        "title": "飞书机器人与指令理解",
+        "id": "connect", "title": "飞书机器人", "subtitle": "从自然语言到固定工具调用",
         "steps": [
-            ["llm.primary", "理解用户意图并决定调用哪个固定工具"],
-            ["web.exa", "遇到近期或含糊主题时联网搜索"],
-            ["fetch.jina", "读取搜索结果中选中的网页正文"],
+            {"label": "理解指令", "description": "识别任务、补全参数并决定固定工具。", "providers": ["llm.primary"]},
+            {"label": "联网富化", "description": "主题含糊或依赖近期信息时搜索相关概念。", "providers": ["web.exa"], "optional": True},
+            {"label": "读取网页", "description": "把选中的网页转换为便于模型阅读的文本。", "providers": ["fetch.jina"], "optional": True},
+            {"label": "调用工具", "description": "调用日报、总结、综述、小红书等受控工具。", "local": True},
         ],
     },
     {
-        "id": "daily",
-        "title": "论文日报",
+        "id": "daily", "title": "论文日报", "subtitle": "召回、排序、精筛与逐篇阅读",
         "steps": [
-            ["llm.primary", "扩充检索意图和关键词"],
-            ["supabase.arxiv", "执行 BM25 关键词召回"],
-            ["embedding.paper", "编码查询并执行向量语义召回"],
-            ["rerank.paper", "对 RRF 候选池做相关性重排"],
-            ["llm.primary", "精筛、摘要和日报写作"],
-            ["fetch.jina", "按需读取论文结构化正文"],
+            {"label": "查询规划", "description": "把研究需求扩展成关键词与语义查询。", "providers": ["llm.primary"]},
+            {"parallel": [
+                {"label": "BM25 召回", "description": "从近期论文池按关键词召回候选。", "sources": ["arxiv"]},
+                {"label": "语义召回", "description": "编码查询向量并从论文池寻找语义近邻。", "providers": ["embedding.paper"], "sources": ["arxiv"]},
+            ], "parallel_label": "并行双路"},
+            {"label": "RRF 融合", "description": "在本机融合关键词与向量两路排名。", "local": True},
+            {"label": "专用重排", "description": "用论文 Reranker 重排融合候选。", "providers": ["rerank.paper"]},
+            {"label": "LLM 精筛", "description": "批量相关性评分并生成中英文摘要。", "providers": ["llm.primary"]},
+            {"label": "阅读与成文", "description": "读取正文、用 Docling 处理图表并生成日报页面。", "providers": ["llm.primary", "fetch.jina"], "sources": ["arxiv_direct"]},
         ],
     },
     {
-        "id": "summary",
-        "title": "单篇论文总结",
+        "id": "summary", "title": "单篇论文总结", "subtitle": "链接或 PDF 到结构化论文页",
         "steps": [
-            ["fetch.jina", "尝试读取论文网页或 PDF 文本"],
-            ["llm.primary", "生成速览、精读内容和图表解释"],
-        ],
-        "note": "arXiv 元数据/PDF 免费直连；图表提取使用本地 Docling，不需要 API Key。",
-    },
-    {
-        "id": "survey",
-        "title": "领域综述",
-        "steps": [
-            ["llm.primary", "规划英文查询并定义任务范式"],
-            ["supabase.arxiv", "召回时间窗内候选论文"],
-            ["embedding.paper", "执行语义召回"],
-            ["academic.deepxiv", "可选补充新论文和被引信息"],
-            ["rerank.paper", "精选最终逐篇分析的论文"],
-            ["llm.primary", "逐篇抽取、聚类、写作和审校"],
-        ],
-        "note": "Kaggle 本地大索引已默认关闭，不进入 demo 部署。",
-    },
-    {
-        "id": "citation",
-        "title": "查引用 CitationClaw",
-        "steps": [
-            ["citation.scraperapi", "抓取 Google Scholar 被引列表"],
-            ["citation.search_llm", "联网搜索作者、机构与学术头衔"],
-            ["citation.semantic_scholar", "补充引用、作者和 PDF 元数据"],
-            ["citation.openalex", "补充作者及机构信息"],
-            ["citation.wos", "可选结构化权威元数据"],
-            ["llm.primary", "作者分析、引用语境总结和报告生成"],
-            ["document.mineru", "可选的大文件解析备用路线"],
+            {"label": "识别论文", "description": "解析 arXiv 链接、网页地址或用户上传的 PDF。", "sources": ["arxiv_direct"], "local": True},
+            {"label": "提取正文", "description": "优先 Jina 读取公开页面，失败时本机解析 PDF。", "providers": ["fetch.jina"], "optional": True},
+            {"label": "Docling 图表", "description": "在本机提取 PDF 结构、图片和表格。", "local": True},
+            {"label": "总结与写作", "description": "生成速览、精读内容与图表解释。", "providers": ["llm.primary"]},
+            {"label": "写入论文页", "description": "保存 Markdown 并注册到原版论文站点。", "local": True},
         ],
     },
     {
-        "id": "xhs",
-        "title": "小红书贴文",
-        "steps": [["llm.primary", "生成页面结构、文案和排版数据"]],
+        "id": "survey", "title": "领域综述", "subtitle": "多源召回到带引用的领域报告",
+        "steps": [
+            {"label": "查询规划", "description": "定义任务范式并生成英文检索查询组。", "providers": ["llm.primary"]},
+            {"label": "多源召回", "description": "合并近期论文池、DeepXiv 与可选 Kaggle 历史快照。", "sources": ["arxiv"], "optional_sources": ["deepxiv", "kaggle"]},
+            {"label": "语义粗排", "description": "对候选编码并缩小到可重排规模。", "providers": ["embedding.paper"]},
+            {"label": "专用重排", "description": "精选进入逐篇结构化分析的论文。", "providers": ["rerank.paper"]},
+            {"label": "全文深读", "description": "下载核心论文并提取正文，Jina 失败时本机解析。", "providers": ["fetch.jina"], "sources": ["arxiv_direct"], "optional": True},
+            {"label": "聚类与写作", "description": "逐簇分析、生成大纲、分节写作并审校。", "providers": ["llm.primary"]},
+            {"label": "生成综述页", "description": "校验引用、保存报告并注册侧栏。", "local": True},
+        ],
     },
+    {
+        "id": "citation", "title": "查引用 CitationClaw", "subtitle": "引用关系、作者信息与综合报告",
+        "steps": [
+            {"label": "确定目标", "description": "接收论文、作者主页或上传的结果文件。", "local": True},
+            {"label": "论文与引用", "description": "获取作者论文、施引文献和引用关系。", "sources": ["semantic_scholar"]},
+            {"label": "作者元数据", "description": "从 OpenAlex 补充作者、机构与论文信息。", "sources": ["openalex"], "optional": True},
+            {"label": "权威元数据", "description": "用 Web of Science 补充结构化信息。", "sources": ["wos"], "optional": True},
+            {"label": "联网查证", "description": "搜索作者头衔、机构和外部证据。", "providers": ["citation.search_llm"], "optional": True},
+            {"label": "解析全文", "description": "本地解析失败时使用 MinerU Cloud。", "providers": ["document.mineru"], "fallback": True, "optional": True},
+            {"label": "分析与报告", "description": "分析引用语境并生成可视化报告。", "providers": ["llm.primary"]},
+        ],
+    },
+    {
+        "id": "xhs", "title": "小红书贴文", "subtitle": "轻量文案与页面渲染",
+        "steps": [
+            {"label": "理解素材", "description": "提取主题、受众、目标与页面风格。", "providers": ["llm.primary"]},
+            {"label": "生成文案", "description": "生成标题、正文和多页卡片结构。", "providers": ["llm.primary"]},
+            {"label": "本地渲染", "description": "用浏览器在本机渲染并导出图片。", "local": True},
+        ],
+    },
+]
+
+
+PAPER_SOURCES = [
+    {"id": "arxiv", "label": "arXiv Supabase 近期论文池", "description": "日报与综述的 BM25、向量召回主数据源。", "provider": "supabase.arxiv"},
+    {"id": "arxiv_direct", "label": "arXiv 官方接口 / 在线 PDF", "description": "免密钥联网访问 arXiv API 和公开 PDF；下载后会缓存在本机，也支持用户另行上传本地 PDF。", "always_ready": True},
+    {"id": "deepxiv", "label": "DeepXiv 补充源", "description": "综述可选的新论文、语义召回和被引信息。", "provider": "academic.deepxiv"},
+    {"id": "semantic_scholar", "label": "Semantic Scholar", "description": "CitationClaw 的论文、作者和引用关系主来源。", "provider": "citation.semantic_scholar"},
+    {"id": "openalex", "label": "OpenAlex", "description": "免密钥补充作者、机构和论文元数据。", "provider": "citation.openalex"},
+    {"id": "wos", "label": "Web of Science", "description": "可选的结构化权威论文数据源。", "provider": "citation.wos"},
+    {"id": "kaggle", "label": "Kaggle arXiv 本地快照", "description": "约 4GB 的历史论文索引，Demo 默认不部署。", "disabled_hint": True},
 ]
 
 
@@ -212,14 +221,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "base_url": "https://data.rag.ac.cn",
             "api_key": "",
         },
-        "citation.scraperapi": {"enabled": False, "api_key": ""},
         "citation.search_llm": {
             "enabled": False,
             "base_url": "https://api.gpt.ge/v1/",
             "model": "gemini-3-flash-preview-search",
             "api_key": "",
         },
-        "citation.semantic_scholar": {"enabled": False, "api_key": ""},
+        "citation.semantic_scholar": {"enabled": True, "api_key": ""},
         "citation.openalex": {"enabled": True, "email": ""},
         "citation.wos": {"enabled": False, "api_key": ""},
         "document.mineru": {
@@ -259,7 +267,7 @@ def catalog_payload() -> dict[str, Any]:
     providers = []
     for provider_id, definition in PROVIDERS.items():
         providers.append({"id": provider_id, **definition})
-    return {"providers": providers, "pipelines": PIPELINES}
+    return {"providers": providers, "paper_sources": PAPER_SOURCES, "pipelines": PIPELINES}
 
 
 def merged_defaults(config: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -528,7 +536,14 @@ def probe_provider(provider_id: str, config: Mapping[str, Any]) -> dict[str, Any
             base = _safe_public_url(str(provider.get("base_url") or ""))
             key = _required(provider, "api_key")
             response = _request_json(_join_openai(base, "models"), headers=_bearer(key), timeout=20)
-            count = len(response.get("data") or []) if isinstance(response, dict) else 0
+            models = sorted({
+                str(item.get("id") or "").strip()
+                for item in ((response.get("data") or []) if isinstance(response, dict) else [])
+                if isinstance(item, Mapping) and str(item.get("id") or "").strip()
+            })
+            count = len(models)
+            if not models:
+                raise ValueError("端点返回了空模型列表")
             message = f"模型列表连接成功，共返回 {count} 个模型"
         elif kind == "embedding":
             base = _safe_public_url(str(provider.get("base_url") or ""))
@@ -593,7 +608,9 @@ def probe_provider(provider_id: str, config: Mapping[str, Any]) -> dict[str, Any
                     raise ValueError("Exa MCP 返回空响应")
             message = "Exa MCP 握手成功"
         elif kind == "jina":
-            base = _safe_public_url(str(provider.get("base_url") or ""))
+            base = _safe_public_url(
+                str(provider.get("base_url") or ""), trusted_hosts={"r.jina.ai"}
+            )
             request = urllib.request.Request(
                 base.rstrip("/") + "/https://example.com",
                 headers={"Accept": "text/plain", "User-Agent": "research-connect-config/0.1"},
@@ -608,12 +625,15 @@ def probe_provider(provider_id: str, config: Mapping[str, Any]) -> dict[str, Any
             with urllib.request.urlopen(request, timeout=20) as response:
                 response.read(64)
             message = "服务地址可以访问"
-        return {
+        result = {
             "ok": True,
             "status": "ready",
             "latency_ms": int((time.monotonic() - started) * 1000),
             "message": message,
         }
+        if kind == "llm":
+            result["models"] = models
+        return result
     except (ValueError, urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
         if isinstance(exc, urllib.error.HTTPError):
             detail = exc.read(300).decode("utf-8", errors="replace")
@@ -644,11 +664,13 @@ def _join_openai(base: str, suffix: str) -> str:
     return root + "/" + suffix if root.endswith("/v1") else root + "/v1/" + suffix
 
 
-def _safe_public_url(raw: str) -> str:
+def _safe_public_url(raw: str, *, trusted_hosts: set[str] | None = None) -> str:
     text = raw.strip()
     parsed = urllib.parse.urlparse(text)
     if parsed.scheme != "https" or not parsed.hostname:
         raise ValueError("探测地址必须是公网 HTTPS URL")
+    if parsed.hostname.lower() in {host.lower() for host in (trusted_hosts or set())}:
+        return text
     try:
         addresses = {item[4][0] for item in socket.getaddrinfo(parsed.hostname, parsed.port or 443)}
     except socket.gaierror as exc:
