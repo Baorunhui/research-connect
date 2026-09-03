@@ -91,7 +91,8 @@ LLM_MODEL=your-model
 ```bash
 .venv/bin/connect-hub --env-file apps/connect-hub/.env register \
   --server https://report.sinksilk.com:58443 \
-  --invite 'rhi_inv_xxx'
+  --invite 'rhi_inv_xxx' \
+  --username '你的名字'
 ```
 
 Windows PowerShell：
@@ -99,7 +100,8 @@ Windows PowerShell：
 ```powershell
 .venv\Scripts\connect-hub.exe --env-file apps\connect-hub\.env register `
   --server https://report.sinksilk.com:58443 `
-  --invite 'rhi_inv_xxx'
+  --invite 'rhi_inv_xxx' `
+  --username '你的名字'
 ```
 
 注册成功后，安装 token 和公网地址会自动写入 `.env`，无需管理员逐个生成或传递 token。一个飞书 App ID 只能注册一次；换电脑时应由管理员轮换或注销原安装。
@@ -156,6 +158,7 @@ Windows PowerShell：
 /citationclaw    打开查引用原版网页
 /jobs            查看最近任务
 /cancel          取消当前任务
+/storage         查看或删除本安装保存在公网服务器上的内容
 /help            查看帮助
 ```
 

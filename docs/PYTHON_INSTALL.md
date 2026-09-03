@@ -101,7 +101,8 @@ LLM_MODEL=your-model
 ```bash
 .venv/bin/connect-hub --env-file apps/connect-hub/.env register \
   --server https://report.sinksilk.com:58443 \
-  --invite 'rhi_inv_xxx'
+  --invite 'rhi_inv_xxx' \
+  --username '你的名字'
 ```
 
 Windows：
@@ -109,10 +110,11 @@ Windows：
 ```powershell
 .venv\Scripts\connect-hub.exe --env-file apps\connect-hub\.env register `
   --server https://report.sinksilk.com:58443 `
-  --invite 'rhi_inv_xxx'
+  --invite 'rhi_inv_xxx' `
+  --username '你的名字'
 ```
 
-命令会验证邀请码和飞书 App ID，并把 `REPORT_HUB_API_URL`、`REPORT_HUB_AGENT_TOKEN` 自动写入 `.env`。token 原文只在注册响应中出现一次，但命令不会打印它。邀请码可以有使用次数和有效期；失效时向管理员索取新邀请码即可。
+命令会验证邀请码和飞书 App ID，并把 `REPORT_HUB_API_URL`、`REPORT_HUB_AGENT_TOKEN` 自动写入 `.env`。`--username` 会显示在管理员的安装列表中，支持中英文且允许重名。token 原文只在注册响应中出现一次，但命令不会打印它。邀请码可以有使用次数和有效期；失效时向管理员索取新邀请码即可。
 
 飞书应用必须添加机器人能力、必要权限、长连接事件和机器人菜单。逐步操作见 [飞书机器人配置教程](FEISHU_BOT_SETUP.md)。
 

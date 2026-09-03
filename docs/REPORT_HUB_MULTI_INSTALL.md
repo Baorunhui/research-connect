@@ -46,7 +46,8 @@ Linux：
 ```bash
 .venv/bin/connect-hub --env-file apps/connect-hub/.env register \
   --server https://report.sinksilk.com:58443 \
-  --invite 'rhi_inv_xxx'
+  --invite 'rhi_inv_xxx' \
+  --username '你的名字'
 ```
 
 Windows PowerShell：
@@ -54,17 +55,18 @@ Windows PowerShell：
 ```powershell
 .venv\Scripts\connect-hub.exe --env-file apps\connect-hub\.env register `
   --server https://report.sinksilk.com:58443 `
-  --invite 'rhi_inv_xxx'
+  --invite 'rhi_inv_xxx' `
+  --username '你的名字'
 ```
 
-注册成功后，命令会把公网地址和安装 token 原子写入 `.env`，不会在终端回显完整 token。随后运行 `doctor` 和 `start` 即可。
+注册成功后，命令会把公网地址和安装 token 原子写入 `.env`，不会在终端回显完整 token。用户名支持中英文和重复名称，管理员通过 `INSTALL_ID + 注册时间 + 用户名` 区分安装。随后运行 `doctor` 和 `start` 即可。
 
 同一个飞书 App ID 只能注册一次，避免多人误用同一个机器人后混入同一安装。每位测试用户必须创建自己的飞书应用。
 
 ## 安装运维
 
 ```bash
-# 查看安装，不显示 token
+# 查看全部安装，不显示 token；输出 INSTALL_ID、状态、注册时间和用户名
 docker compose exec report-hub report-hub --list-installs
 
 # 怀疑泄漏时轮换；旧 token 立即失效，站点与历史文件保留
@@ -94,6 +96,8 @@ connect-hub --env-file apps/connect-hub/.env remote-data clear --yes
 ```
 
 这些命令只使用当前安装 token，只能看到和删除本安装的数据。`clear` 保留 token，重新启动 Connect Hub 后会重新发布三个稳定页面。
+
+飞书中也可以发送 `/storage`，再按提示回复 `1/2/3` 查看站点、删除指定站点或清空全部公网内容。清空全部内容需要再次回复“确认清空”。
 
 ## 配置与隔离
 

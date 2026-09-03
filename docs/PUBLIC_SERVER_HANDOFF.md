@@ -68,6 +68,8 @@ docker compose exec report-hub report-hub --clear-install-data INSTALL_ID --yes
 docker compose exec report-hub report-hub --delete-install INSTALL_ID --yes
 ```
 
+`--list-installs` 输出全部 `INSTALL_ID`、启用状态、注册时间和注册用户名。用户名由用户注册时填写，支持中英文和重名；运维时以唯一的 `INSTALL_ID` 为准。
+
 邀请码注销后，已注册安装不受影响。安装注销后，该安装 token 立即不能再写入或读取受保护资源。
 
 ## 用户注册验收
@@ -77,7 +79,8 @@ docker compose exec report-hub report-hub --delete-install INSTALL_ID --yes
 ```bash
 .venv/bin/connect-hub --env-file apps/connect-hub/.env register \
   --server https://report.sinksilk.com:58443 \
-  --invite '管理员提供的邀请码'
+  --invite '管理员提供的邀请码' \
+  --username '用户自定义名称'
 ```
 
 Windows 使用 `.venv\Scripts\connect-hub.exe`。注册成功后 token 自动写入 `.env`。同一个飞书 App ID 重复注册应返回 409；过期、耗尽或已注销的邀请码应返回 403。

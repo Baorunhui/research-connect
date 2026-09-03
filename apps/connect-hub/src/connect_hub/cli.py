@@ -268,6 +268,7 @@ def _build_runtime(
         tools=tools,
         shortcut_urls=shortcut_urls,
         config_sync=(config_manager.sync if config_manager is not None else None),
+        remote_storage=report_hub,
     )
     if config_manager is not None:
         try:
@@ -421,7 +422,7 @@ def command_register(
     *,
     server: str,
     invite: str,
-    device_name: str,
+    username: str,
 ) -> int:
     env_path = Path(env_file or MONOREPO_ROOT / "apps" / "connect-hub" / ".env").resolve()
     values = dotenv_values(env_path)
@@ -434,7 +435,7 @@ def command_register(
             server,
             invite_code=invite,
             feishu_app_id=app_id,
-            device_name=device_name or platform.node() or "Research Connect",
+            username=username,
         )
     except ReportHubError as exc:
         print(f"注册失败：{exc}")
@@ -865,7 +866,10 @@ def main(argv: list[str] | None = None) -> int:
     register = subparsers.add_parser("register", help="self-register with a Report Hub invite")
     register.add_argument("--server", required=True, help="public Report Hub base URL")
     register.add_argument("--invite", required=True, help="registration invite code")
-    register.add_argument("--device-name", default="", help="label shown to the server administrator")
+    register.add_argument(
+        "--username", required=True,
+        help="display name shown to the server administrator; duplicates are allowed",
+    )
     remote_data = subparsers.add_parser(
         "remote-data", help="list or delete this installation's Report Hub data"
     )
@@ -886,7 +890,7 @@ def main(argv: list[str] | None = None) -> int:
             args.env_file,
             server=args.server,
             invite=args.invite,
-            device_name=args.device_name,
+            username=args.username,
         )
     if args.command == "remote-data":
         return command_remote_data(

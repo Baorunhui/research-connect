@@ -48,7 +48,7 @@ class SiteCommandComplete(BaseModel):
 class InstallationRegistration(BaseModel):
     invite_code: str = Field(min_length=16, max_length=300)
     feishu_app_id: str = Field(min_length=6, max_length=120)
-    device_name: str = Field(default="Research Connect", max_length=120)
+    username: str = Field(min_length=1, max_length=120)
 
 
 @dataclass(frozen=True)
@@ -99,11 +99,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app_id = body.feishu_app_id.strip()
         if not app_id.startswith("cli_") or not re.fullmatch(r"cli_[A-Za-z0-9_-]+", app_id):
             raise HTTPException(status_code=422, detail="invalid_feishu_app_id")
+        username = body.username.strip()
+        if not username or any(ord(character) < 32 for character in username):
+            raise HTTPException(status_code=422, detail="invalid_username")
         try:
             installation, token = storage.register_installation(
                 invite_code=body.invite_code.strip(),
                 feishu_app_id=app_id,
-                label=body.device_name,
+                label=username,
             )
         except ValueError as exc:
             code = str(exc)

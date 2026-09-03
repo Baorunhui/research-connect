@@ -56,7 +56,7 @@ Report Hub 不理解具体模块业务、不连接用户内网，也不保存 Pr
 report-hub --issue-invite demo --max-uses 30 --expires-in 30d
 ```
 
-客户端调用公开的 `POST /api/v1/installations/register`，提交邀请码、飞书 App ID 和设备备注。服务端验证邀请状态、次数、有效期和 App ID 唯一性，返回一次性安装 token；数据库只保存哈希。
+客户端调用公开的 `POST /api/v1/installations/register`，提交邀请码、飞书 App ID 和用户自定义名称。名称支持中英文和重复值，仅供管理员识别；`install_id` 才是唯一标识。服务端验证邀请状态、次数、有效期和 App ID 唯一性，返回一次性安装 token；数据库只保存哈希。
 
 详细命令见 [Report Hub 多安装接入](REPORT_HUB_MULTI_INSTALL.md)。
 

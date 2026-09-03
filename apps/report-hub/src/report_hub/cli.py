@@ -60,9 +60,10 @@ def main() -> None:
             print(f"REPORT_HUB_AGENT_TOKEN={token}")
             print("This token is shown once. Send it to that user through a private channel.")
         elif args.list_installs:
+            print("INSTALL_ID\tSTATE\tREGISTERED_AT\tUSERNAME")
             for item in storage.list_installations():
                 state = "enabled" if item["enabled"] else "revoked"
-                print(f"{item['install_id']}\t{state}\t{item['label']}\t{item['created_at']}")
+                print(f"{item['install_id']}\t{state}\t{item['created_at']}\t{item['label']}")
         elif args.revoke_install:
             if not storage.revoke_installation(args.revoke_install):
                 raise SystemExit("Installation not found or already revoked")

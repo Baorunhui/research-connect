@@ -112,7 +112,7 @@ class ReportHubClient:
         *,
         invite_code: str,
         feishu_app_id: str,
-        device_name: str,
+        username: str,
         timeout_seconds: int = 15,
     ) -> Mapping[str, Any]:
         endpoint = api_url.strip().rstrip("/") + "/api/v1/installations/register"
@@ -122,7 +122,7 @@ class ReportHubClient:
                 {
                     "invite_code": invite_code.strip(),
                     "feishu_app_id": feishu_app_id.strip(),
-                    "device_name": device_name.strip() or "Research Connect",
+                    "username": username.strip(),
                 },
                 ensure_ascii=False,
             ).encode("utf-8"),

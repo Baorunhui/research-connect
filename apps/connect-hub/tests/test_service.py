@@ -23,6 +23,37 @@ class FakeGateway:
         return FakeResponse("answer")
 
 
+class FakeRemoteStorage:
+    configured = True
+
+    def __init__(self):
+        self.deleted_sites = []
+        self.cleared = False
+
+    def storage_summary(self):
+        return {
+            "install_id": "install-1",
+            "label": "测试用户",
+            "site_count": 1,
+            "total_bytes": 2048,
+            "sites": [
+                {
+                    "site_id": "daily-paper-test",
+                    "title": "Daily Paper",
+                    "size_bytes": 2048,
+                }
+            ],
+        }
+
+    def delete_remote_site(self, site_id):
+        self.deleted_sites.append(site_id)
+        return {"deleted": True, "site_id": site_id}
+
+    def clear_remote_data(self):
+        self.cleared = True
+        return {"deleted": True, "deleted_sites": 1}
+
+
 def test_commands_and_history(tmp_path):
     gateway = FakeGateway()
     store = ConversationStore(tmp_path / "messages.sqlite3")
@@ -67,6 +98,43 @@ def test_module_page_shortcuts_do_not_call_llm(tmp_path):
     assert service.handle("s", "/citationclaw").text.endswith("https://reports.test/citations/")
     assert "https://reports.test/configure/token/" in service.handle("s", "/config").text
     assert gateway.messages == []
+
+
+def test_storage_slash_command_uses_scoped_number_menu(tmp_path):
+    gateway = FakeGateway()
+    remote = FakeRemoteStorage()
+    service = ChatService(
+        gateway,
+        ConversationStore(tmp_path / "storage.sqlite3"),
+        remote_storage=remote,
+    )
+
+    opened = service.handle("feishu:chat:user", "/storage").text
+    assert "测试用户" in opened
+    assert "daily-paper-test" in opened
+    assert "2.0 KiB" in opened
+    assert "SITE_ID" in service.handle("feishu:chat:user", "2").text
+    assert "已删除" in service.handle("feishu:chat:user", "daily-paper-test").text
+    assert remote.deleted_sites == ["daily-paper-test"]
+
+    # A plain number outside an active storage flow remains an ordinary LLM message.
+    assert service.handle("another-session", "2").text == "answer"
+
+
+def test_storage_clear_requires_explicit_confirmation(tmp_path):
+    remote = FakeRemoteStorage()
+    service = ChatService(
+        FakeGateway(),
+        ConversationStore(tmp_path / "storage-clear.sqlite3"),
+        remote_storage=remote,
+    )
+
+    service.handle("s", "/storage")
+    assert "确认清空" in service.handle("s", "3").text
+    assert "确认清空" in service.handle("s", "确认").text
+    assert remote.cleared is False
+    assert "已清空" in service.handle("s", "确认清空").text
+    assert remote.cleared is True
 
 
 def test_first_use_configuration_notice_is_once_per_feishu_user(tmp_path):

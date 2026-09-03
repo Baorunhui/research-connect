@@ -92,12 +92,13 @@ def test_invite_registration_issues_isolated_install_token(tmp_path):
         json={
             "invite_code": code,
             "feishu_app_id": "cli_first_app",
-            "device_name": "Windows laptop",
+            "username": "鲍润晖",
         },
     )
     assert first.status_code == 201
     payload = first.json()
     assert payload["agent_token"].startswith(f"rhi_{payload['install_id']}_")
+    assert storage.get_installation(payload["install_id"])["label"] == "鲍润晖"
     assert api.post(
         "/api/v1/sites",
         headers=install_auth(payload["agent_token"]),
@@ -110,7 +111,7 @@ def test_invite_registration_issues_isolated_install_token(tmp_path):
         json={
             "invite_code": code,
             "feishu_app_id": "cli_first_app",
-            "device_name": "duplicate",
+            "username": "鲍润晖",
         },
     )
     assert duplicate.status_code == 409
@@ -122,20 +123,37 @@ def test_invite_registration_issues_isolated_install_token(tmp_path):
         json={
             "invite_code": code,
             "feishu_app_id": "cli_second_app",
-            "device_name": "Linux server",
+            "username": "鲍润晖",
         },
     )
     assert second.status_code == 201
+    assert second.json()["install_id"] != payload["install_id"]
     exhausted = api.post(
         "/api/v1/installations/register",
         json={
             "invite_code": code,
             "feishu_app_id": "cli_third_app",
-            "device_name": "third",
+            "username": "第三位用户",
         },
     )
     assert exhausted.status_code == 403
     assert exhausted.json()["detail"] == "invite_exhausted"
+
+
+def test_registration_rejects_blank_or_control_character_username(tmp_path):
+    storage = Storage(tmp_path)
+    storage.initialize()
+    expires = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(timespec="seconds")
+    _invite, code = storage.issue_invite("demo", max_uses=2, expires_at=expires)
+    api = client(tmp_path)
+
+    for app_id, username in (("cli_blank_name", "   "), ("cli_bad_name", "name\nextra")):
+        response = api.post(
+            "/api/v1/installations/register",
+            json={"invite_code": code, "feishu_app_id": app_id, "username": username},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"] == "invalid_username"
 
 
 def test_revoked_and_expired_invites_are_rejected(tmp_path):
@@ -147,7 +165,7 @@ def test_revoked_and_expired_invites_are_rejected(tmp_path):
     api = client(tmp_path)
     revoked = api.post(
         "/api/v1/installations/register",
-        json={"invite_code": code, "feishu_app_id": "cli_revoked", "device_name": "x"},
+        json={"invite_code": code, "feishu_app_id": "cli_revoked", "username": "x"},
     )
     assert revoked.status_code == 403
     assert revoked.json()["detail"] == "invite_revoked"
@@ -156,7 +174,7 @@ def test_revoked_and_expired_invites_are_rejected(tmp_path):
     _expired, expired_code = storage.issue_invite("expired", max_uses=3, expires_at=past)
     expired = api.post(
         "/api/v1/installations/register",
-        json={"invite_code": expired_code, "feishu_app_id": "cli_expired", "device_name": "x"},
+        json={"invite_code": expired_code, "feishu_app_id": "cli_expired", "username": "x"},
     )
     assert expired.status_code == 403
     assert expired.json()["detail"] == "invite_expired"

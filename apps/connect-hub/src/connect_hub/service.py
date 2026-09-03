@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -22,6 +23,17 @@ class ChatGateway(Protocol):
     def provider_names(self) -> tuple[str, ...]: ...
 
     def chat(self, messages: Sequence[Mapping[str, Any]], **kwargs: object) -> object: ...
+
+
+class RemoteStorageClient(Protocol):
+    @property
+    def configured(self) -> bool: ...
+
+    def storage_summary(self) -> Mapping[str, Any]: ...
+
+    def delete_remote_site(self, site_id: str) -> Mapping[str, Any]: ...
+
+    def clear_remote_data(self) -> Mapping[str, Any]: ...
 
 
 SYSTEM_PROMPT = """你是 Research Connect Hub 的单 Agent 助手，通过飞书与用户自然对话。
@@ -110,6 +122,7 @@ class ChatService:
         max_business_tool_calls: int = 1,
         shortcut_urls: Mapping[str, str] | None = None,
         config_sync: Callable[..., bool] | None = None,
+        remote_storage: RemoteStorageClient | None = None,
     ) -> None:
         self.gateway = gateway
         self.store = store
@@ -126,6 +139,9 @@ class ChatService:
             if str(name).strip() and str(url).strip()
         }
         self.config_sync = config_sync
+        self.remote_storage = remote_storage
+        self._storage_flows: dict[str, str] = {}
+        self._storage_flow_lock = threading.Lock()
 
     def first_use_notice(self, session_key: str) -> str:
         url = self.shortcut_urls.get("config", "")
@@ -203,10 +219,16 @@ class ChatService:
                 "/paper_reader - 打开论文日报网页\n"
                 "/citationclaw - 打开查引用网页\n"
                 "/config - 打开统一 API 与论文源配置中心\n"
+                "/storage - 管理当前安装保存在公网服务器上的内容\n"
                 "/help - 显示帮助\n\n"
                 "联网默认开启；如需临时控制，可使用 /web on、/web off 或 /web auto。\n\n"
                 "其他文字会发送到统一 LLM 中台。"
             )
+        if content in {"/storage", "/存储", "管理存储"}:
+            return self._open_storage_menu(session_key)
+        storage_reply = self._handle_storage_flow(session_key, content)
+        if storage_reply is not None:
+            return storage_reply
         if content == "/model":
             return ServiceReply("LLM provider：" + ", ".join(self.gateway.provider_names))
         if content == "/tools":
@@ -363,6 +385,70 @@ class ChatService:
             model=str(getattr(response, "model", "")),
             attachments=attachments,
         )
+
+    def _open_storage_menu(self, session_key: str) -> ServiceReply:
+        if self.remote_storage is None or not self.remote_storage.configured:
+            return ServiceReply("当前安装尚未连接 Report Hub，无法管理公网存储。")
+        try:
+            summary = self.remote_storage.storage_summary()
+        except Exception as exc:
+            logger.warning("could not load remote storage summary: %s", exc)
+            return ServiceReply("读取公网存储失败，请检查 Report Hub 连接后重试。")
+        with self._storage_flow_lock:
+            self._storage_flows[session_key] = "menu"
+        return ServiceReply(_format_storage_menu(summary))
+
+    def _handle_storage_flow(self, session_key: str, content: str) -> ServiceReply | None:
+        with self._storage_flow_lock:
+            state = self._storage_flows.get(session_key)
+        if state is None or content.startswith("/"):
+            return None
+        normalized = content.strip()
+        if normalized in {"0", "退出", "取消"}:
+            with self._storage_flow_lock:
+                self._storage_flows.pop(session_key, None)
+            return ServiceReply("已退出公网存储管理。")
+        if state == "menu":
+            if normalized == "1":
+                return self._open_storage_menu(session_key)
+            if normalized == "2":
+                with self._storage_flow_lock:
+                    self._storage_flows[session_key] = "delete_site"
+                return ServiceReply(
+                    "请回复要删除的 SITE_ID。可先回复 0 退出；删除后该网页链接会立即失效。"
+                )
+            if normalized == "3":
+                with self._storage_flow_lock:
+                    self._storage_flows[session_key] = "clear_confirm"
+                return ServiceReply(
+                    "这会删除当前安装在公网服务器上的全部网页、运行快照和上传残留，"
+                    "但保留安装 token。确认请回复“确认清空”，放弃请回复 0。"
+                )
+            return ServiceReply("请回复 1、2、3，或回复 0 退出存储管理。")
+        if state == "delete_site":
+            try:
+                result = self.remote_storage.delete_remote_site(normalized)  # type: ignore[union-attr]
+            except Exception as exc:
+                logger.warning("could not delete remote site %s: %s", normalized, exc)
+                return ServiceReply("删除站点失败。请核对 SITE_ID 后重试，或回复 0 退出。")
+            with self._storage_flow_lock:
+                self._storage_flows.pop(session_key, None)
+            return ServiceReply(f"已删除公网站点：{result.get('site_id') or normalized}")
+        if state == "clear_confirm":
+            if normalized != "确认清空":
+                return ServiceReply("如需继续请回复“确认清空”，放弃请回复 0。")
+            try:
+                result = self.remote_storage.clear_remote_data()  # type: ignore[union-attr]
+            except Exception as exc:
+                logger.warning("could not clear remote storage: %s", exc)
+                return ServiceReply("清空公网存储失败，请稍后重试，或回复 0 退出。")
+            with self._storage_flow_lock:
+                self._storage_flows.pop(session_key, None)
+            return ServiceReply(
+                f"已清空公网存储，共删除 {result.get('deleted_sites', 0)} 个站点。"
+                "安装 token 仍有效；重启服务后会重新发布所需页面。"
+            )
+        return None
 
     def _run_agent(
         self,
@@ -748,6 +834,48 @@ def _format_recent_jobs(jobs: Sequence[Mapping[str, Any]]) -> str:
         )
     lines.extend(["", "详情：/job <短ID>；取消当前运行任务：/cancel"])
     return "\n".join(lines)
+
+
+def _format_storage_menu(summary: Mapping[str, Any]) -> str:
+    sites = summary.get("sites")
+    site_rows = sites if isinstance(sites, list) else []
+    lines = [
+        "公网存储管理",
+        f"安装：{summary.get('label') or summary.get('install_id') or '未知'}",
+        f"站点：{summary.get('site_count', len(site_rows))} 个",
+        f"占用：{_format_bytes(int(summary.get('total_bytes', 0) or 0))}",
+    ]
+    if site_rows:
+        lines.append("\n当前站点：")
+        for site in site_rows[:12]:
+            if not isinstance(site, Mapping):
+                continue
+            lines.append(
+                f"- {site.get('site_id')} · {site.get('title') or site.get('module_name')} · "
+                f"{_format_bytes(int(site.get('size_bytes', 0) or 0))}"
+            )
+        if len(site_rows) > 12:
+            lines.append(f"- 另有 {len(site_rows) - 12} 个站点")
+    lines.extend(
+        [
+            "",
+            "回复数字继续：",
+            "1. 刷新并查看站点",
+            "2. 删除指定站点",
+            "3. 清空本安装全部公网内容",
+            "0. 退出",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _format_bytes(value: int) -> str:
+    size = max(0, value)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if size < 1024 or unit == "GiB":
+            return f"{size} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GiB"
 
 
 def _format_job_detail(
