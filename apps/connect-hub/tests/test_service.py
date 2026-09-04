@@ -137,6 +137,20 @@ def test_storage_clear_requires_explicit_confirmation(tmp_path):
     assert remote.cleared is True
 
 
+def test_reset_exits_storage_menu_before_next_message(tmp_path):
+    gateway = FakeGateway()
+    service = ChatService(
+        gateway,
+        ConversationStore(tmp_path / "storage-reset.sqlite3"),
+        remote_storage=FakeRemoteStorage(),
+    )
+
+    service.handle("s", "/storage")
+    assert service.handle("s", "/reset").text.startswith("已清空当前会话")
+    assert service.handle("s", "我要调研近5天的 agent 领域论文").text == "answer"
+    assert gateway.messages[-1]["content"] == "我要调研近5天的 agent 领域论文"
+
+
 def test_first_use_configuration_notice_is_once_per_feishu_user(tmp_path):
     store = ConversationStore(tmp_path / "notices.sqlite3")
     service = ChatService(

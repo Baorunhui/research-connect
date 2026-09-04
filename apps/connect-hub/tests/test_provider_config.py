@@ -132,3 +132,38 @@ def test_completed_local_run_is_published(monkeypatch, tmp_path):
     relay._wait_and_publish("run-123")
     assert published == [("daily-site", tmp_path.resolve(), "daily-paper")]
     assert "run-123" not in relay._publish_runs
+
+
+def test_completed_native_page_job_is_published_before_browser_redirect(tmp_path):
+    published = []
+
+    class Client:
+        def upload_site(self, site_id, project_dir, *, site_kind):
+            published.append((site_id, project_dir, site_kind))
+            return "https://reports.test/s/site/"
+
+    relay = ModuleCommandRelay(
+        Client(), "daily-site", "http://127.0.0.1:8567",
+        auto_publish_dir=tmp_path,
+    )
+    response = json.dumps({
+        "ok": True,
+        "job": {
+            "id": "sum-123",
+            "status": "completed",
+            "result": {"meta": {"paper_id": "202609/04/paper"}},
+        },
+    }).encode()
+
+    relay._publish_completed_page_job(
+        {"method": "GET", "path": "/api/paper/summarize/sum-123"},
+        200,
+        response,
+    )
+    # Re-reading the same terminal job must not upload the whole site again.
+    relay._publish_completed_page_job(
+        {"method": "GET", "path": "/api/paper/summarize/sum-123"},
+        200,
+        response,
+    )
+    assert published == [("daily-site", tmp_path.resolve(), "daily-paper")]

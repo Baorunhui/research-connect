@@ -274,6 +274,12 @@ class ChatService:
             result = self.tools.cancel_latest(session_key)
             return ServiceReply(result.message)
         if content == "/reset":
+            # /reset resets the whole conversational interaction, including
+            # transient command menus that otherwise live outside SQLite.
+            # Without this, a later ordinary message is still consumed by the
+            # storage menu even though the user was told the session was reset.
+            with self._storage_flow_lock:
+                self._storage_flows.pop(session_key, None)
             deleted = self.store.clear(session_key)
             return ServiceReply(f"已清空当前会话，共删除 {deleted} 条历史消息。")
 

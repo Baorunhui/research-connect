@@ -4,6 +4,7 @@ import json
 import base64
 import logging
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -235,6 +236,7 @@ class ModuleCommandRelay:
         self._thread: threading.Thread | None = None
         self._publish_lock = threading.Lock()
         self._publish_runs: set[str] = set()
+        self._published_page_jobs: set[str] = set()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -282,6 +284,12 @@ class ModuleCommandRelay:
                 response_body = exc.read(self.max_response_bytes)
                 status = exc.code
                 response_headers = {"content-type": exc.headers.get("content-type", "application/json")}
+            # The original Daily Paper page redirects as soon as an async
+            # summarize/survey job reports ``completed``. Publish the freshly
+            # generated Markdown before returning that terminal response;
+            # otherwise the browser reaches the new hash route while Report
+            # Hub still serves the previous site snapshot and shows 404.md.
+            self._publish_completed_page_job(command, status, response_body)
             self.client.complete_site_command(
                 self.site_id, command_id, status_code=status,
                 headers=response_headers, body=response_body,
@@ -294,6 +302,46 @@ class ModuleCommandRelay:
                 self.site_id, command_id, status_code=502, headers={"content-type": "application/json"},
                 body=b"", error_message=str(exc)[:500],
             )
+
+    def _publish_completed_page_job(
+        self, command: Mapping[str, Any], status: int, response_body: bytes
+    ) -> None:
+        """Publish pages created by the native summarize/survey async APIs."""
+        if self.auto_publish_dir is None or status < 200 or status >= 300:
+            return
+        if str(command.get("method") or "GET").upper() != "GET":
+            return
+        path = str(command.get("path") or "").split("?", 1)[0]
+        match = re.fullmatch(r"/api/(?:paper/summarize|survey)/([^/]+)", path)
+        if match is None:
+            return
+        try:
+            payload = json.loads(response_body.decode("utf-8"))
+            job = payload.get("job") if isinstance(payload, Mapping) else None
+            if not isinstance(job, Mapping) or str(job.get("status") or "").lower() != "completed":
+                return
+            job_id = str(job.get("id") or match.group(1)).strip()
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not job_id:
+            return
+        with self._publish_lock:
+            if job_id in self._published_page_jobs:
+                return
+            self._published_page_jobs.add(job_id)
+        try:
+            public_url = self.client.upload_site(
+                self.site_id,
+                self.auto_publish_dir,
+                site_kind=self.auto_publish_kind,
+            )
+            logging.getLogger(__name__).info(
+                "published completed page job %s at %s", job_id, public_url
+            )
+        except Exception:
+            with self._publish_lock:
+                self._published_page_jobs.discard(job_id)
+            raise
 
     def _watch_dispatched_run(
         self, command: Mapping[str, Any], status: int, response_body: bytes
