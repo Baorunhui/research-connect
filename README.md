@@ -11,7 +11,7 @@ Research Connect 是一套可自行部署的本地优先研究工具。每位用
 - 飞书 Connect Hub：自然语言理解、联网富化、任务进度、取消、缓存和用量记录；
 - 公网 Report Hub：把原版网页和历史报告提供给手机/其他电脑访问，不要求用户机器有公网 IP。
 
-论文处理和任务进程运行在用户自己的机器；Embedding、Reranker、Supabase、Exa、Jina 和 LLM 可使用远程服务。默认不下载本地 embedding/reranker 模型，不需要 PostgreSQL、Redis 或 Docker。
+论文处理和任务进程运行在用户自己的机器；Embedding、Reranker、Supabase、Exa、Jina 和 LLM 可使用远程服务。默认不下载本地 embedding/reranker 模型，不需要 PostgreSQL 或 Redis。既可以使用 Python 安装，也可以选择 Docker 部署。
 
 > 当前是面向少量测试用户的 Python demo。每个安装只运行一个 Connect Hub；公网网页采用随机 bearer 链接，不应公开转发。
 
@@ -82,6 +82,8 @@ conda activate your-env
 
 ## 2. 配置飞书机器人
 飞书开放平台需要添加机器人能力、权限、长连接事件和固定菜单，完整步骤见 [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)。
+
+不想在宿主机安装 Python 依赖时，可改用 [Docker 部署](docs/DOCKER_DEPLOYMENT.md)。Docker 镜像默认包含 Docling 和 Chromium，使用同一套飞书、Report Hub 与统一配置流程，且无需开放本地端口。
 
 ## 3. 填写配置并注册
 
@@ -223,6 +225,7 @@ docs/                             部署、协议和开发文档
 - [常见问题](docs/FAQ.md)：安装、注册、飞书、网页、论文任务和数据排查；
 - [外部论文服务申请与配置](docs/EXTERNAL_SERVICES_SETUP.md)：LLM、论文源、Embedding、Reranker 和引用服务；
 - [飞书机器人配置教程](docs/FEISHU_BOT_SETUP.md)：飞书开放平台逐步配置；
+- [Docker 部署](docs/DOCKER_DEPLOYMENT.md)：单容器客户端、持久化卷、注册、更新与排查；
 - [Report Hub 公网服务器部署与运维](docs/PUBLIC_SERVER_ADMIN_GUIDE.md)：公网管理员专用；
 - [作品设计说明书](docs/DESIGN_DOCUMENT.md)：设计思路、架构、模块和技术难点；
 - [下一阶段待办](docs/NEXT_SCOPE_TODO.md)：唯一的后续开发清单。

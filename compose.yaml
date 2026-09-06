@@ -1,0 +1,35 @@
+name: research-connect
+
+services:
+  research-connect:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DOCLING_TORCH_INDEX_URL: ${DOCLING_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    image: research-connect:local
+    init: true
+    restart: unless-stopped
+    user: "${RESEARCH_CONNECT_UID:-1000}:${RESEARCH_CONNECT_GID:-1000}"
+    environment:
+      RESEARCH_CONNECT_DATA_DIR: /data
+      DAILY_PAPER_DIR: /app/modules/daily-paper-reader
+      XHS_AGENT_DIR: /app/modules/xhs-agent
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      HF_HOME: /data/cache/huggingface
+      XDG_CACHE_HOME: /data/cache
+    volumes:
+      - ./docker/config:/config
+      - ./docker/config/daily-paper.yaml:/app/modules/daily-paper-reader/config.yaml
+      - research-connect-data:/data
+      - daily-paper-docs:/app/modules/daily-paper-reader/docs
+      - daily-paper-runs:/app/modules/daily-paper-reader/.local-runs
+      - daily-paper-archive:/app/modules/daily-paper-reader/archive
+    shm_size: "1gb"
+    stop_grace_period: 45s
+
+volumes:
+  research-connect-data:
+  daily-paper-docs:
+  daily-paper-runs:
+  daily-paper-archive:

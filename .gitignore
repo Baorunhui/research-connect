@@ -5,6 +5,8 @@
 *.secret
 secret.private
 config.local.*
+docker/config/*
+!docker/config/.gitkeep
 
 # Python environments and build products
 .venv/
