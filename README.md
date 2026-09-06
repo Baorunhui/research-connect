@@ -1,6 +1,6 @@
 # Research Connect
 
-Research Connect 是一套可自行部署的本地优先研究工具。每位用户在自己的 Windows 电脑、Linux 工作站或服务器上运行一份，通过飞书机器人在手机或电脑上调用研究功能。专为青椒打造！
+Research Connect 是一套可自行部署的本地优先研究工具。每位用户在自己的 Windows 电脑、Linux 工作站、macOS 或服务器上运行一份，通过飞书机器人在手机或电脑上调用研究功能。专为青椒打造！
 
 当前 Python demo 包含：
 
@@ -17,7 +17,7 @@ Research Connect 是一套可自行部署的本地优先研究工具。每位用
 
 ## 安装前准备
 
-- Windows 10/11 或常见 x86-64 Linux；
+- Windows 10/11、常见 x86-64 Linux 或 macOS（Apple Silicon / Intel）；
 - Python 3.11～3.13（推荐 3.11）和 Git；
 - 可以访问 PyPI、GitHub、飞书和所配置 API 的网络；
 - 自己创建的中国版飞书企业自建应用；
@@ -32,7 +32,7 @@ Research Connect 是一套可自行部署的本地优先研究工具。每位用
 
 ## 1. 下载与安装
 
-Linux：
+macOS / Linux（bash）：
 
 ```bash
 git clone https://github.com/Baorunhui/research-connect.git
@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -WithDocling
 
 安装选项：
 
-| Linux | Windows | 作用 |
+| macOS / Linux | Windows | 作用 |
 |---|---|---|
 | `--with-docling` | `-WithDocling` | 安装 Docling、pypdfium2 和 PDF 图表提取依赖 |
 | `--skip-browser` | `-SkipBrowser` | 不安装 Playwright Chromium |
@@ -58,17 +58,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -WithDocling
 
 Docling 支持 CPU，并会在环境可用时使用 GPU；首次使用可能下载模型。不需要 PDF 深度解析时可以去掉 Docling 参数。
 
-如果使用 Conda，请先激活目标环境再运行上述命令。Windows 和 Linux 安装脚本
+如果使用 Conda，请先激活目标环境再运行上述命令。macOS / Linux / Windows 安装脚本
 都会优先使用当前 `PATH` 中的 `python`（即 Conda 环境的 Python），并用它创建项目专属的 `.venv`，
 不会把依赖直接装入 Conda 环境：
 
 ```text
 conda activate your-env
-# Linux: ./scripts/setup.sh --with-docling
+# macOS/Linux: ./scripts/setup.sh --with-docling
 # Windows: powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -WithDocling
 ```
 
-也可以通过 Linux 的 `PYTHON` / `RESEARCH_CONNECT_VENV` 或 Windows 的
+
+也可以通过 macOS / Linux 的 `PYTHON` / `RESEARCH_CONNECT_VENV` 或 Windows 的
 `-Python` / `-Venv` 显式指定解释器及目标环境。
 
 安装脚本会：
@@ -96,7 +97,7 @@ LLM_MODEL=your-model
 
 ```
 
-然后使用管理员提供的邀请码注册。Linux：
+然后使用管理员提供的邀请码注册。macOS / Linux（bash）：
 
 ```bash
 .venv/bin/connect-hub --env-file apps/connect-hub/.env register \
@@ -133,7 +134,7 @@ LLM 配置首次启动后会导入本机统一配置；以后也可以在飞书 
 
 ## 4. 检查并启动
 
-Linux：
+macOS / Linux（bash）：
 
 ```bash
 ./scripts/doctor.sh
@@ -187,7 +188,7 @@ Windows 将 `.venv/bin/connect-hub` 换成 `.venv\Scripts\connect-hub.exe`。
 
 ```bash
 git pull --ff-only
-./scripts/setup.sh                    # Linux
+./scripts/setup.sh                    # macOS / Linux
 ```
 
 ```powershell
@@ -197,7 +198,7 @@ git pull --ff-only
 
 ## 数据与安全
 
-- 默认数据根：Linux 为 `~/.research-connect/data`，Windows 为 `%USERPROFILE%\.research-connect\data`；可用 `RESEARCH_CONNECT_DATA_DIR` 修改；
+- 默认数据根：macOS / Linux 为 `~/.research-connect/data`，Windows 为 `%USERPROFILE%\.research-connect\data`；可用 `RESEARCH_CONNECT_DATA_DIR` 修改；
 - SQLite 只保存任务、事件、索引和小型元数据；PDF、JSON 大对象、图片和网页仍保存为文件；
 - `.env`、本地数据库、缓存、PDF、生成结果和模型不会提交 Git；
 - Report Hub 安装 token 只允许操作本安装的资源；服务端只保存 token 哈希；
@@ -213,7 +214,7 @@ packages/research-connect-core/   共享 LLM、数据目录、缓存和 CLI 事�
 modules/daily-paper-reader/       论文日报、论文总结与领域综述
 modules/citationclaw/             查引用与引用画像
 modules/xhs-agent/                小红书内容生成
-scripts/                          Windows/Linux 安装、检查和启动入口
+scripts/                          macOS/Linux/Windows 安装、检查和启动入口
 docs/                             部署、协议和开发文档
 ```
 
