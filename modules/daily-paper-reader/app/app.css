@@ -6390,6 +6390,36 @@ body.dpr-pdf-preview-open .dpr-pdf-preview-panel {
   transform: translate3d(0, 0, 0);
 }
 
+/* 面板左缘的拖拽手柄：命中区 12px 骑缝，视觉上只显示一小段握把 */
+.dpr-pdf-preview-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 3;
+}
+
+.dpr-pdf-preview-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 48px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.16);
+  transform: translate(-50%, -50%);
+  transition: background 0.18s ease;
+}
+
+.dpr-pdf-preview-resize-handle:hover::after,
+body.dpr-pdf-preview-resizing .dpr-pdf-preview-resize-handle::after {
+  background: rgba(192, 57, 43, 0.55);
+}
+
 .dpr-pdf-preview-header {
   display: flex;
   align-items: center;
@@ -6521,25 +6551,35 @@ body.dpr-pdf-preview-open .dpr-pdf-preview-panel {
 }
 
 body.dpr-pdf-preview-open {
-  --dpr-pdf-preview-width: min(50vw, 760px);
+  --dpr-pdf-preview-width: var(--dpr-pdf-preview-user-width, min(50vw, 760px));
   --dpr-pdf-preview-left-space: calc(100vw - var(--dpr-pdf-preview-width));
-  --dpr-pdf-preview-reading-left: var(--dpr-sidebar-width, 298px);
-  --dpr-pdf-preview-content-shift: min(
-    calc(var(--dpr-pdf-preview-width) / 2),
-    max(
-      0px,
-      calc((100vw - var(--dpr-pdf-preview-reading-left) - 900px) / 2)
-    )
-  );
 }
 
-body.dpr-sidebar-v2.dpr-sidebar-v2-collapsed.dpr-pdf-preview-open {
-  --dpr-pdf-preview-reading-left: 0px;
+/* 宽屏：预览与正文并排。正文通过 padding-right 让出预览宽度并回流换行，
+   而不是被悬浮面板遮挡；面板最宽压到「视口 - 侧栏 - 420px」，保证正文至少剩 420px。 */
+@media (min-width: 1181px) {
+  body.dpr-pdf-preview-open {
+    --dpr-pdf-preview-width: min(
+      var(--dpr-pdf-preview-user-width, min(50vw, 760px)),
+      calc(100vw - var(--sidebar-width, 350px) - 420px)
+    );
+  }
+
+  body.dpr-pdf-preview-open .content {
+    padding-right: var(--dpr-pdf-preview-width) !important;
+    transition: padding-right 0.28s cubic-bezier(0.2, 0.9, 0.2, 1) !important;
+  }
 }
 
-body.dpr-paper-page.dpr-pdf-preview-open .markdown-section .dpr-page-content:not(.dpr-page-enter):not(.dpr-page-exit) {
-  transform: translate3d(calc(-1 * var(--dpr-pdf-preview-content-shift, 0px)), 0, 0);
-  transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.2, 1);
+/* 拖拽调宽期间：禁用文本选中与让位过渡，保证 1:1 跟手 */
+body.dpr-pdf-preview-resizing {
+  cursor: col-resize;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.dpr-pdf-preview-resizing .content {
+  transition: none !important;
 }
 
 body.dpr-sidebar-v2.dpr-pdf-preview-open #paper-chat-container::before,

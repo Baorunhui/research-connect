@@ -3129,6 +3129,79 @@ window.$docsify = {
         }
       };
 
+      // PDF 预览面板宽度：用户拖拽后写入 body 变量并持久化，下次打开沿用
+      const PDF_PREVIEW_WIDTH_STORAGE_KEY = 'dprPdfPreviewWidth';
+      const PDF_PREVIEW_MIN_WIDTH = 420;
+      const PDF_PREVIEW_MIN_CONTENT_WIDTH = 360;
+
+      const applyPdfPreviewUserWidth = (width) => {
+        const parsed = Number(width);
+        if (!Number.isFinite(parsed)) return;
+        document.body.style.setProperty(
+          '--dpr-pdf-preview-user-width',
+          `${Math.round(Math.max(PDF_PREVIEW_MIN_WIDTH, parsed))}px`,
+        );
+      };
+
+      const restorePdfPreviewWidth = () => {
+        try {
+          applyPdfPreviewUserWidth(
+            Number.parseFloat(window.localStorage.getItem(PDF_PREVIEW_WIDTH_STORAGE_KEY)),
+          );
+        } catch (_err) {
+          // localStorage 不可用时忽略，回落到默认宽度
+        }
+      };
+
+      const persistPdfPreviewWidth = () => {
+        try {
+          const parsed = Number.parseFloat(
+            document.body.style.getPropertyValue('--dpr-pdf-preview-user-width'),
+          );
+          if (Number.isFinite(parsed)) {
+            window.localStorage.setItem(
+              PDF_PREVIEW_WIDTH_STORAGE_KEY,
+              String(Math.round(parsed)),
+            );
+          }
+        } catch (_err) {
+          // 持久化失败不影响使用
+        }
+      };
+
+      const bindPdfPreviewResize = (panel) => {
+        if (panel.querySelector('.dpr-pdf-preview-resize-handle')) return;
+        const handle = document.createElement('div');
+        handle.className = 'dpr-pdf-preview-resize-handle';
+        handle.setAttribute('aria-hidden', 'true');
+        handle.addEventListener('pointerdown', (event) => {
+          event.preventDefault();
+          if (!document.body.classList.contains('dpr-pdf-preview-open')) return;
+          const maxWidth = Math.max(
+            PDF_PREVIEW_MIN_WIDTH,
+            window.innerWidth - PDF_PREVIEW_MIN_CONTENT_WIDTH,
+          );
+          const onMove = (moveEvent) => {
+            applyPdfPreviewUserWidth(
+              Math.min(maxWidth, window.innerWidth - moveEvent.clientX),
+            );
+          };
+          const stop = () => {
+            document.body.classList.remove('dpr-pdf-preview-resizing');
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', stop);
+            window.removeEventListener('pointercancel', stop);
+            persistPdfPreviewWidth();
+          };
+          document.body.classList.add('dpr-pdf-preview-resizing');
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', stop);
+          window.addEventListener('pointercancel', stop);
+          onMove(event);
+        });
+        panel.appendChild(handle);
+      };
+
       const ensurePdfPreviewPanel = () => {
         let panel = document.getElementById('dpr-pdf-preview-panel');
         if (panel) return panel;
@@ -3151,6 +3224,8 @@ window.$docsify = {
         ].join('');
         document.body.appendChild(panel);
         panel.querySelector('.dpr-pdf-preview-close')?.addEventListener('click', closePdfPreview);
+        bindPdfPreviewResize(panel);
+        restorePdfPreviewWidth();
         return panel;
       };
 
