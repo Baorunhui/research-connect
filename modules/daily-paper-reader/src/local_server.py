@@ -1698,9 +1698,9 @@ def _resolve_chat_credentials(base_url: str, api_key: str) -> tuple[str, str]:
     url = str(base_url or "").strip() or cfg["base_url"] or resolve_llm_base_url()
     key = str(api_key or "").strip() or _resolve_chat_api_key(cfg) or resolve_llm_api_key()
     if not url:
-        raise ValueError("缺少 API 端点：请填写端点或先在 config.yaml / .env 配置 base_url")
+        raise ValueError("还没有模型地址。请打开页面设置填写。")
     if not key:
-        raise ValueError("未配置 API Key：请在输入框填写，或先在 .env 配置 DEEPSEEK_API_KEY")
+        raise ValueError("还没有可用的模型密钥。请打开页面设置填写。")
     return url, key
 
 
@@ -2780,7 +2780,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _save_local_config(self) -> None:
         if yaml is None:
-            return self._json({"ok": False, "error": "本地调试后端缺少 PyYAML，无法写入 config.yaml。"}, status=500)
+            return self._json({"ok": False, "error": "设置没保存：服务器上缺少配置组件。"}, status=500)
         try:
             length = int(self.headers.get("Content-Length") or "0")
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")

@@ -484,14 +484,14 @@
       '  <h2 style="margin-top:0;">页面设置</h2>' +
       '  <p style="font-size:13px;color:#555;margin:0 0 14px;">模型和精排保存后马上生效，不用重启。</p>' +
       '  <div class="dpr-settings-field"><label>API 端点（OpenAI 兼容）</label><input type="text" id="dpr-settings-chat-baseurl" placeholder="https://api.sinksilk.com:58443" /></div>' +
-      '  <div class="dpr-settings-field"><label>API Key（留空表示沿用 .env，不修改）</label><input type="password" id="dpr-settings-chat-apikey" placeholder="sk-..." autocomplete="off" /></div>' +
+      '  <div class="dpr-settings-field"><label>API Key（留空表示不修改已保存的密钥）</label><input type="password" id="dpr-settings-chat-apikey" placeholder="sk-..." autocomplete="off" /></div>' +
       '  <div class="dpr-settings-field"><label>AI 问答模型</label>' +
       '    <div style="display:flex;gap:6px;align-items:center;">' +
       '      <input type="text" id="dpr-settings-chat-model" placeholder="deepseek-v4-flash" style="flex:1;min-width:0;" />' +
       '      <button type="button" class="secret-gate-btn secondary" id="dpr-settings-chat-fetch-models" style="white-space:nowrap;padding:4px 10px;font-size:12px;">获取模型列表</button>' +
       '    </div>' +
       '    <select id="dpr-settings-chat-model-select" style="margin-top:6px;width:100%;display:none;"></select>' +
-      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">填好端点和密钥后点「获取模型列表」，从下拉里选择会自动填入；也可以直接手输模型名。密钥留空时按已保存/.env 的密钥拉取。</p></div>' +
+      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">填好端点和密钥后点「获取模型列表」，从下拉里选择会自动填入；也可以直接手输模型名。密钥留空时用已经保存的密钥拉取。</p></div>' +
       '  <div class="dpr-settings-field"><label>连通性测试</label>' +
       '    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
       '      <button type="button" class="secret-gate-btn secondary" id="dpr-settings-chat-test" style="padding:4px 10px;font-size:12px;">测试连通性</button>' +
@@ -506,7 +506,7 @@
       '    <p style="font-size:12px;color:#666;margin:4px 0 0;">云端更快，但依赖共享库。本地每次会先抓一批新论文，大约多等几分钟。保存后，下一次生成按新选择运行。</p></div>' +
       '  <div class="dpr-settings-field"><label>精排方式（日报和综述共用）</label>' +
       '    <select id="dpr-settings-rerank-profile">' +
-      '      <option value="auto">自动（跟随 .env，缺省远程）</option>' +
+      '      <option value="auto">自动（用服务器上已有的设置）</option>' +
       '      <option value="public-zwwen-rerank">远程 · zwwen 公益端点（推荐，免配置）</option>' +
       '      <option value="public-sinksilk-rerank">远程 · sinksilk 中转</option>' +
       '      <option value="siliconflow-qwen3-0.6b">远程 · SiliconFlow</option>' +

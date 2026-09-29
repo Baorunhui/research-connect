@@ -449,7 +449,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _save_local_config(self) -> None:
         if yaml is None:
-            return self._json({"ok": False, "error": "本地调试后端缺少 PyYAML，无法写入 config.yaml。"}, status=500)
+            return self._json({"ok": False, "error": "设置没保存：服务器上缺少配置组件。"}, status=500)
         try:
             length = int(self.headers.get("Content-Length") or "0")
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
