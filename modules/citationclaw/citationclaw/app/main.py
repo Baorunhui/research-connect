@@ -162,6 +162,16 @@ def _api_config_write_allowed(request: Request) -> bool:
     return secrets.compare_digest(provided, token)
 
 
+def _reject_public_model_test(request: Request):
+    """The page does not configure models. These tests also call whatever address the browser sends."""
+    if _api_config_write_allowed(request):
+        return None
+    return JSONResponse(
+        status_code=403,
+        content={"status": "error", "message": "页面上不能测试模型。"},
+    )
+
+
 @app.get("/api/config")
 async def get_config():
     return redact_api_config(config_manager.get().model_dump())
@@ -256,9 +266,10 @@ async def save_config(config: ConfigUpdate, request: Request):
         config_manager.save(new_config)
         return {"status": "success", "message": "配置已保存"}
     except Exception as e:
+        print(f"[citationclaw] config save failed: {e}", flush=True)
         return JSONResponse(
             status_code=400,
-            content={"status": "error", "message": f"配置保存失败: {str(e)}"}
+            content={"status": "error", "message": "设置没有保存，请稍后重试。"}
         )
 
 
@@ -972,7 +983,10 @@ class APITestRequest(BaseModel):
 
 
 @app.post("/api/test_openai")
-async def test_openai_api(request: APITestRequest):
+async def test_openai_api(request: APITestRequest, http_request: Request):
+    denied = _reject_public_model_test(http_request)
+    if denied is not None:
+        return denied
     try:
         client = _make_openai_client(request.api_key, request.base_url, timeout=60.0)
 
@@ -984,7 +998,8 @@ async def test_openai_api(request: APITestRequest):
             )
             result_no_web = response_no_web.choices[0].message.content
         except Exception as e:
-            result_no_web = f"错误: {str(e)}"
+            print(f"[citationclaw] model test failed: {e}", flush=True)
+            result_no_web = "错误: 这次没有连上。"
 
         try:
             response_with_web = client.chat.completions.create(
@@ -995,7 +1010,8 @@ async def test_openai_api(request: APITestRequest):
             )
             result_with_web = response_with_web.choices[0].message.content
         except Exception as e:
-            result_with_web = f"错误: {str(e)}"
+            print(f"[citationclaw] model test failed: {e}", flush=True)
+            result_with_web = "错误: 这次没有连上。"
 
         has_web_search = "错误" not in result_with_web and result_with_web != result_no_web
 
@@ -1010,11 +1026,12 @@ async def test_openai_api(request: APITestRequest):
         }
 
     except Exception as e:
+        print(f"[citationclaw] model test failed: {e}", flush=True)
         return JSONResponse(
             status_code=400,
             content={
                 "status": "error",
-                "message": f"API测试失败: {str(e)}",
+                "message": "这次没有连上模型。",
                 "has_web_search": False
             }
         )
@@ -1028,8 +1045,11 @@ class PretestRequest(BaseModel):
 
 
 @app.post("/api/pretest/search_llm")
-async def pretest_search_llm(req: PretestRequest):
+async def pretest_search_llm(req: PretestRequest, request: Request):
     """Quick test: verify Search LLM with web_search_options works."""
+    denied = _reject_public_model_test(request)
+    if denied is not None:
+        return denied
     from datetime import datetime
     try:
         client = _make_openai_client(req.api_key, req.base_url, timeout=30.0)
@@ -1043,12 +1063,16 @@ async def pretest_search_llm(req: PretestRequest):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return {"status": "success", "message": f"Search LLM 可用 ✓（{now}）", "reply": answer}
     except Exception as e:
-        return JSONResponse(status_code=400, content={"status": "error", "message": f"Search LLM 不可用: {e}"})
+        print(f"[citationclaw] model test failed: {e}", flush=True)
+        return JSONResponse(status_code=400, content={"status": "error", "message": "这次没有连上模型。"})
 
 
 @app.post("/api/pretest/light_model")
-async def pretest_light_model(req: PretestRequest):
+async def pretest_light_model(req: PretestRequest, request: Request):
     """Quick test: verify lightweight model works."""
+    denied = _reject_public_model_test(request)
+    if denied is not None:
+        return denied
     from datetime import datetime
     try:
         client = _make_openai_client(req.api_key, req.base_url, timeout=30.0)
@@ -1061,7 +1085,8 @@ async def pretest_light_model(req: PretestRequest):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return {"status": "success", "message": f"轻量模型可用 ✓（{now}）", "reply": answer}
     except Exception as e:
-        return JSONResponse(status_code=400, content={"status": "error", "message": f"轻量模型不可用: {e}"})
+        print(f"[citationclaw] model test failed: {e}", flush=True)
+        return JSONResponse(status_code=400, content={"status": "error", "message": "这次没有连上模型。"})
 
 
 
