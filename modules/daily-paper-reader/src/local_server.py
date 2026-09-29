@@ -3094,7 +3094,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _chat_config(self) -> None:
         cfg = _load_local_chat_config()
-        return self._json({"ok": True, "model": cfg["model"], "base_url": cfg["base_url"]})
+        return self._json({"ok": True, "model": cfg["model"]})
 
     def _smart_query(self) -> None:
         """POST /api/local/smart-query — 把一句检索意图解析成订阅候选（关键词/意图查询，英中成对）。
