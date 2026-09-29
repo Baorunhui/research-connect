@@ -583,17 +583,33 @@ window.SurveyGenerator = (function () {
     });
     row.appendChild(input);
     row.appendChild(unit);
-    lab.appendChild(el('span', 'survey-param-hint', '按年回溯，最长 3 年'));
+    lab.appendChild(el('span', 'survey-param-hint', '最长 3 年'));
     wrap.appendChild(lab);
     wrap.appendChild(row);
+    unit.addEventListener('change', function () {
+      applyLookbackLimit(input, unit.value);
+    });
     return wrap;
+  }
+
+  function lookbackUnitMax(unit) {
+    return { day: 1095, month: 36, year: 3 }[unit] || 3;
+  }
+
+  function applyLookbackLimit(input, unit) {
+    var max = lookbackUnitMax(unit);
+    input.max = String(max);
+    var n = Number(input.value);
+    if (!isFinite(n) || n < 1) input.value = '1';
+    else if (n > max) input.value = String(max);
   }
 
   function lookbackDaysFromUI() {
     var valueEl = getEl('survey-fetch-value');
     var unitEl = getEl('survey-fetch-unit');
-    var n = clampRange(valueEl ? Number(valueEl.value) : NaN, 1, 1095, 365);
-    var factor = { day: 1, month: 30, year: 365 }[(unitEl && unitEl.value) || 'year'] || 365;
+    var unit = (unitEl && unitEl.value) || 'year';
+    var n = clampRange(valueEl ? Number(valueEl.value) : NaN, 1, lookbackUnitMax(unit), 1);
+    var factor = { day: 1, month: 30, year: 365 }[unit] || 365;
     return clampRange(n * factor, 1, 1095, 365);
   }
 
