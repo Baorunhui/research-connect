@@ -60,8 +60,8 @@ INDEX_HTML = """<!DOCTYPE html>
       <button type="submit" id="submit">生成内容包</button>
       <div class="status" id="status"></div>
     </form>
-    <section class="panel" id="result">
-      <div class="muted">生成结果会显示在这里。</div>
+    <section class="panel">
+      <div id="result"><div class="muted">生成结果会显示在这里。</div></div>
       <div class="history" id="history"></div>
     </section>
   </div>

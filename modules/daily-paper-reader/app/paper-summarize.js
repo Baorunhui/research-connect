@@ -9,7 +9,9 @@ window.PaperSummarizer = (function () {
     return base + path;
   }
 
-  var SUMMARIZE_ENDPOINT = apiUrl('/api/paper/summarize');
+  function summarizeEndpoint() {
+    return apiUrl('/api/paper/summarize');
+  }
   var MAX_PDF_BYTES = 50 * 1024 * 1024; // 与后端默认一致（DPR_PDF_MAX_MB 默认 50MB）
 
   function isProbablyLocal() {
@@ -171,7 +173,7 @@ window.PaperSummarizer = (function () {
     setStatus('');
     renderProgress([], 'queued');
     // 异步 job：POST 建job拿 job_id，然后轮询 GET /api/paper/summarize/<id> 拿进度事件
-    return fetch(SUMMARIZE_ENDPOINT, {
+    return fetch(summarizeEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -192,7 +194,7 @@ window.PaperSummarizer = (function () {
       })
       .catch(function () {
         state.busy = false;
-        renderError('无法连接本地后端。总结功能需要本地后端（python src/local_server.py）支持；纯 GitHub Pages 静态站点下不可用。');
+        renderError('总结没有提交成功，请稍后重试。');
         setStatus('');
       });
   }
@@ -202,7 +204,7 @@ window.PaperSummarizer = (function () {
 
   function pollJob(jobId) {
     if (state.jobId !== jobId) return; // 已被新请求取代
-    fetch(SUMMARIZE_ENDPOINT + '/' + encodeURIComponent(jobId), { cache: 'no-store' })
+    fetch(summarizeEndpoint() + '/' + encodeURIComponent(jobId), { cache: 'no-store' })
       .then(function (resp) { return resp.json().catch(function () { return {}; }); })
       .then(function (data) {
         if (!data || !data.ok || !data.job) {
@@ -233,7 +235,7 @@ window.PaperSummarizer = (function () {
       .catch(function () {
         if (state.jobId !== jobId) return;
         state.busy = false;
-        renderError('轮询中断，无法连接本地后端。');
+        renderError('进度更新中断，请稍后刷新页面查看是否已完成。');
         setStatus('');
       });
   }
@@ -411,7 +413,7 @@ window.PaperSummarizer = (function () {
 
     var title = el('h2', 'paper-summarize-heading', '📄 论文总结');
     root.appendChild(title);
-    var subtitle = el('p', 'paper-summarize-sub', '贴一篇 arXiv/网页链接，或上传 PDF，即可得到结构化中文总结（本地后端驱动）。');
+    var subtitle = el('p', 'paper-summarize-sub', '贴一篇 arXiv 或网页链接，或上传 PDF，得到结构化中文总结。');
     root.appendChild(subtitle);
 
     // 公网站点会通过 Report Hub 的受限 API 中继访问用户电脑上的本地后端。
@@ -462,7 +464,7 @@ window.PaperSummarizer = (function () {
       pdfSection.appendChild(fileInput);
       pdfSection.appendChild(pdfBtn);
     } else {
-      var hint = el('p', 'paper-summarize-hint', '上传 PDF 需要本地后端。当前为静态部署：可使用上方链接总结（经后端代理），或通过本地 backend（python src/local_server.py）来获得 PDF 总结。');
+      var hint = el('p', 'paper-summarize-hint', '当前页面不能上传 PDF。可以改用上方的论文链接。');
       pdfSection.appendChild(hint);
     }
     root.appendChild(pdfSection);
@@ -518,7 +520,7 @@ window.PaperSummarizer = (function () {
         if (!ok) {
           var s = document.querySelector('#paper-summarize-status');
           if (s) {
-            s.textContent = '⚠️ 当前未检测到本地后端，总结功能不可用。请运行 python src/local_server.py 后刷新。';
+            s.textContent = '总结服务暂时连不上，请稍后刷新。';
             s.classList.add('is-error');
           }
         }

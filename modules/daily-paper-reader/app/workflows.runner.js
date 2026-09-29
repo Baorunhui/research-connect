@@ -247,14 +247,14 @@ window.DPRWorkflowRunner = (function () {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
-        const error = new Error((data && data.error) || `本地调试后端请求失败：HTTP ${res.status}`);
+        const error = new Error((data && data.error) || `请求失败：HTTP ${res.status}`);
         error.status = res.status;
         throw error;
       }
       return data;
     } catch (e) {
       if (e && e.name === 'AbortError') {
-        throw new Error('本地调试后端请求超时，请确认 8567 端口服务正在运行。');
+        throw new Error('请求超时，请稍后重试。');
       }
       throw e;
     } finally {
@@ -499,8 +499,8 @@ window.DPRWorkflowRunner = (function () {
     stopPolling();
     activeRun = null;
     rawLogExpanded = false;
-    setStatus(`正在触发本地调试任务：${wf.name || workflowFile} ...`, '#666', { waiting: true });
-    runsEl.innerHTML = '<div style="color:#999;">正在请求本地后端，请稍候...</div>';
+    setStatus(`正在开始：${wf.name || '任务'} ...`, '#666', { waiting: true });
+    runsEl.innerHTML = '<div style="color:#999;">正在提交，请稍候...</div>';
     const data = await localApiFetch('/api/local/workflows/dispatch', {
       method: 'POST',
       body: JSON.stringify({
@@ -569,7 +569,7 @@ window.DPRWorkflowRunner = (function () {
     overlay.innerHTML = `
       <div id="dpr-workflow-panel">
         <div id="dpr-workflow-header">
-          <div style="font-weight:600;">工作流触发</div>
+          <div style="font-weight:600;">论文任务</div>
           <div style="display:flex; gap:8px; align-items:center;">
             <button id="dpr-workflow-refresh-btn" class="arxiv-tool-btn" style="padding:2px 10px;">刷新</button>
             <button id="dpr-workflow-close-btn" class="arxiv-tool-btn" style="padding:2px 6px;">关闭</button>
@@ -583,7 +583,7 @@ window.DPRWorkflowRunner = (function () {
           </div>
           <div style="font-weight:600; font-size:13px; margin-bottom:6px;">执行过程</div>
           <div id="dpr-workflow-runs" style="font-size:12px; color:#333; border:1px solid #eee; border-radius:8px; background:#fff; padding:10px; min-height:120px;">
-            <div style="color:#999;">尚未触发工作流。</div>
+            <div style="color:#999;">还没有任务。</div>
           </div>
         </div>
       </div>
@@ -952,8 +952,11 @@ window.DPRWorkflowRunner = (function () {
       } catch (e) {
         console.error(e);
         const msg = e.message || String(e);
-        setStatus(`本地触发失败：${msg}`, '#c00');
-        runsEl.innerHTML = `<div style="color:#c00;">${escapeHtml(msg)}<br/>请确认本地后端已启动：<code>scripts/local_debug.sh</code> 或 <code>python src/local_debug_server.py --port 8567</code></div>`;
+        setStatus(`没有开始：${msg}`, '#c00');
+        const debugHint = String(window.DPR_LOCAL_API_BASE || '').trim()
+          ? '请稍后重试。若仍失败，检查服务器上的论文日报服务。'
+          : '请确认本机服务已启动：<code>python src/local_server.py</code>';
+        runsEl.innerHTML = `<div style="color:#c00;">${escapeHtml(msg)}<br/>${debugHint}</div>`;
         return;
       }
     }

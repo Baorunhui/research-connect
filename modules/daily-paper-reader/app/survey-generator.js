@@ -10,7 +10,9 @@ window.SurveyGenerator = (function () {
     return base + path;
   }
 
-  var SURVEY_ENDPOINT = apiUrl('/api/survey');
+  function surveyEndpoint() {
+    return apiUrl('/api/survey');
+  }
   var POLL_INTERVAL = 2500;
 
   // 阶段序与进度条权重（累计到该阶段完成时的比例；带 current/total 的事件在区间内线性推进）
@@ -233,13 +235,13 @@ window.SurveyGenerator = (function () {
   }
 
   function requestCancel(jobId) {
-    fetch(SURVEY_ENDPOINT + '/' + encodeURIComponent(jobId) + '/cancel', { method: 'POST' })
+    fetch(surveyEndpoint() + '/' + encodeURIComponent(jobId) + '/cancel', { method: 'POST' })
       .then(function () { setStatus('已请求取消，等待流水线在阶段边界停止…'); })
       .catch(function () { setStatus('取消请求发送失败', true); });
   }
 
   function loadLog(jobId) {
-    fetch(SURVEY_ENDPOINT + '/' + encodeURIComponent(jobId) + '/log', { cache: 'no-store' })
+    fetch(surveyEndpoint() + '/' + encodeURIComponent(jobId) + '/log', { cache: 'no-store' })
       .then(function (r) { return r.json().catch(function () { return {}; }); })
       .then(function (data) {
         var out = getEl('survey-result');
@@ -272,7 +274,7 @@ window.SurveyGenerator = (function () {
   }
 
   function schedulePoll(jobId) {
-    fetch(SURVEY_ENDPOINT + '/' + encodeURIComponent(jobId), { cache: 'no-store' })
+    fetch(surveyEndpoint() + '/' + encodeURIComponent(jobId), { cache: 'no-store' })
       .then(function (r) { return r.json().catch(function () { return {}; }); })
       .then(function (data) {
         state.polling = false;
@@ -308,7 +310,7 @@ window.SurveyGenerator = (function () {
       .catch(function () {
         state.polling = false;
         if (state.jobId !== jobId) return;
-        renderError('轮询中断，无法连接本地后端（8567）。');
+        renderError('进度更新中断，请稍后刷新页面查看是否已完成。');
         setStatus('');
         setBusy(false);
       });
@@ -334,7 +336,7 @@ window.SurveyGenerator = (function () {
 
   // ---- 运行历史 ----
   function listRuns() {
-    fetch(SURVEY_ENDPOINT, { cache: 'no-store' })
+    fetch(surveyEndpoint(), { cache: 'no-store' })
       .then(function (r) { return r.json().catch(function () { return {}; }); })
       .then(function (data) {
         var wrap = document.getElementById('survey-history');
@@ -434,7 +436,7 @@ window.SurveyGenerator = (function () {
     var out = getEl('survey-result');
     if (out) out.textContent = '';
     stopPolling();
-    return fetch(SURVEY_ENDPOINT, {
+    return fetch(surveyEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -452,7 +454,7 @@ window.SurveyGenerator = (function () {
       })
       .catch(function () {
         setBusy(false);
-        renderError('无法连接本地后端。综述功能需要本地后端（python src/local_server.py，默认 8567）支持；纯 GitHub Pages 静态站点下不可用。');
+        renderError('综述没有提交成功，请稍后重试。');
       });
   }
 
@@ -702,9 +704,9 @@ window.SurveyGenerator = (function () {
     container.appendChild(buildUI());
     backendAvailable().then(function (ok) {
       if (ok) {
-        setStatus('✅ 本地后端已连接，可提交综述。');
+        setStatus('可以开始写综述。');
       } else {
-        setStatus('⚠️ 未检测到本地后端。综述功能需要运行 python src/local_server.py（默认 8567）。', true);
+        setStatus('综述服务暂时连不上，请稍后刷新。', true);
       }
     });
     listRuns();

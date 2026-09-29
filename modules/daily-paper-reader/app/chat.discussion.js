@@ -1048,10 +1048,10 @@ window.PrivateDiscussionChat = (function () {
 
     if (!model) {
       aiAnswerDiv.textContent =
-        '本地后端未配置 Chat 模型，请在 config.yaml 的 local.chat 中设置。';
+        '还没有可用的对话模型。请打开页面设置，填写模型后再试。';
       if (statusEl) {
         statusEl.textContent =
-          '本地后端未配置 Chat 模型。';
+          '还没有可用的对话模型。';
         statusEl.style.color = '#c00';
       }
       input.disabled = false;
@@ -1615,7 +1615,7 @@ window.PrivateDiscussionChat = (function () {
         }
         if (!names.length && status) {
           status.textContent =
-            '本地后端未配置 Chat 模型，请在 config.yaml 的 local.chat 中配置。';
+            '还没有可用的对话模型。请打开页面设置填写。';
           status.style.color = '#c00';
         }
         syncChatModelPicker(names);
