@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from research_connect_core import StandaloneJobRuntime, runtime_from_env
+from research_connect_core.net import command_with_ipv4
 
 try:
     from source_config import get_source_backend, load_config_with_source_migration
@@ -33,7 +34,7 @@ def run_step(label: str, args: list[str], env: dict[str, str] | None = None) -> 
     if _JOB_RUNTIME is not None:
         _JOB_RUNTIME.progress(label, stage=label)
     print(f"[INFO] {label}: {' '.join(args)}", flush=True)
-    subprocess.run(args, check=True, env=env)
+    subprocess.run(command_with_ipv4(args), check=True, env=env)
 
 
 def _load_full_config() -> dict:

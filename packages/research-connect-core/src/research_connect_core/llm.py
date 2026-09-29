@@ -15,6 +15,10 @@ from typing import Any, Callable, Mapping, Sequence
 import httpx
 from openai import APIConnectionError, AsyncOpenAI, OpenAI
 
+from .net import prefer_ipv4
+
+prefer_ipv4()
+
 logger = logging.getLogger(__name__)
 
 EventCallback = Callable[[Mapping[str, Any]], None]
