@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}CitationClaw v2{% endblock %}
+{% block title %}查他引{% endblock %}
 
 {% block content %}
 
@@ -27,7 +27,7 @@
     <div class="hero-eyebrow">查他引</div>
     <h1 class="hero-title">学者施引<span>快查</span></h1>
     <p class="hero-desc">
-      粘贴 OpenAlex 作者主页，或上传保存的学者主页。施引从 OpenAlex 拉取，题录用本地快照核对，再对照荣誉名单。
+      贴上 OpenAlex 的作者主页，或上传自己保存的学者主页。查过的结果会留在这台服务器上。
     </p>
   </div>
 </div>
@@ -35,14 +35,12 @@
 <!-- 学者主页快速流水线（OpenAlex 施引 + 荣誉名单；也可从 Google Scholar 主页取论文列表） -->
 <div class="agent-card" id="profile-fast-card">
   <div class="agent-card-label" style="display:flex;align-items:center;justify-content:space-between">
-    <span><i class="bi bi-rocket-takeoff-fill" style="color:var(--green)"></i>&nbsp; 学者主页快速分析
-      <span style="color:var(--light);font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">OpenAlex 作者主页或 Google Scholar 主页</span>
-    </span>
+    <span><i class="bi bi-rocket-takeoff-fill" style="color:var(--green)"></i>&nbsp; 查一位学者</span>
   </div>
   <div style="margin-top:14px">
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <input id="profile-url-fast" type="text" class="form-control"
-             placeholder="https://openalex.org/A…  或  https://scholar.google.com/citations?user=…（访问不了谷歌学术时用 OpenAlex，或在下方上传主页 HTML）"
+             placeholder="https://openalex.org/A…  访问不了谷歌学术时用这个，或上传保存的主页"
              style="flex:1">
       <button class="btn-agent-primary" id="profile-run-btn" onclick="runProfilePipeline()">快速分析</button>
     </div>
@@ -54,7 +52,7 @@
     </div>
     <div style="display:flex;gap:16px;align-items:center;margin-top:10px;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)">
-        Top-N 论文
+        最多查几篇
         <input id="profile-top-n" type="number" min="1" max="500" value="30"
                style="width:64px;font-size:12.5px" class="form-control form-control-sm">
       </label>
@@ -65,12 +63,12 @@
       </label>
       <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer">
         <input class="form-check-input" type="checkbox" id="profile-llm-fallback" checked>
-        LLM 兜底（高被引无命中时联网搜索）
+        本地对不上时，再用模型补查
       </label>
       <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer"
              title="默认是快查：到 OpenAlex 分页拉取每篇论文的全部施引（仅题录与作者单位），用 Kaggle arXiv 核对题录，再与荣誉名单匹配；不下载 PDF">
         <input class="form-check-input" type="checkbox" id="profile-full-mode">
-        全量施引（慢，逐篇查 Semantic Scholar）
+        查得更全（更慢）
       </label>
     </div>
   </div>

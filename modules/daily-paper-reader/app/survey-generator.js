@@ -15,6 +15,18 @@ window.SurveyGenerator = (function () {
   }
   var POLL_INTERVAL = 2500;
 
+  function rememberSurveyJob(jobId) {
+    try { sessionStorage.setItem('dpr_survey_job', jobId); } catch (e) { /* 浏览器禁了存储就只在当前页看进度 */ }
+  }
+
+  function forgetSurveyJob() {
+    try { sessionStorage.removeItem('dpr_survey_job'); } catch (e) { /* 同上 */ }
+  }
+
+  function readSurveyJob() {
+    try { return sessionStorage.getItem('dpr_survey_job') || ''; } catch (e) { return ''; }
+  }
+
   // 阶段序与进度条权重（累计到该阶段完成时的比例；带 current/total 的事件在区间内线性推进）
   var STAGE_WEIGHTS = {
     seed: 0.1,
@@ -184,7 +196,8 @@ window.SurveyGenerator = (function () {
       cancelled: '🚫 已取消',
     }[status] || '⏳ 综述生成中';
     card.appendChild(el('div', 'survey-progress-title', headline));
-    card.appendChild(el('div', 'survey-progress-run', 'job_id: ' + (job.job_id || '')));
+    var topic = (job.input && job.input.query) || '';
+    if (topic) card.appendChild(el('div', 'survey-progress-run', topic));
 
     var bar = el('div', 'survey-progress-bar');
     var fill = el('div', 'survey-progress-fill');
@@ -201,7 +214,7 @@ window.SurveyGenerator = (function () {
       var suffix = (latest.current != null && latest.total != null) ? ('（' + latest.current + '/' + latest.total + '）') : '';
       card.appendChild(el('div', 'survey-progress-msg', '「' + label + '」' + suffix + (latest.message || '')));
     } else if (status === 'queued') {
-      card.appendChild(el('div', 'survey-progress-msg', '任务已排队，正在等待流水线启动。'));
+      card.appendChild(el('div', 'survey-progress-msg', '已排队，马上开始。'));
     }
 
     // 阶段事件流水（去重追加）
@@ -224,7 +237,7 @@ window.SurveyGenerator = (function () {
       cancelBtn.addEventListener('click', function () { requestCancel(job.job_id); });
       actions.appendChild(cancelBtn);
     }
-    var logBtn = el('button', 'survey-btn survey-btn-ghost', '查看运行日志');
+    var logBtn = el('button', 'survey-btn survey-btn-ghost', '查看详细过程');
     logBtn.type = 'button';
     logBtn.addEventListener('click', function () { loadLog(job.job_id); });
     actions.appendChild(logBtn);
@@ -236,7 +249,7 @@ window.SurveyGenerator = (function () {
 
   function requestCancel(jobId) {
     fetch(surveyEndpoint() + '/' + encodeURIComponent(jobId) + '/cancel', { method: 'POST' })
-      .then(function () { setStatus('已请求取消，等待流水线在阶段边界停止…'); })
+      .then(function () { setStatus('已请求取消，这一步做完就会停。'); })
       .catch(function () { setStatus('取消请求发送失败', true); });
   }
 
@@ -248,9 +261,9 @@ window.SurveyGenerator = (function () {
         if (!out) return;
         out.textContent = '';
         out.classList.remove('is-error');
-        var title = el('h3', 'survey-log-title', '📜 运行日志');
-        var pre = el('pre', 'survey-log-body', String((data && data.log) || '(空)'));
-        var back = el('button', 'survey-btn survey-btn-ghost', '← 返回结果');
+        var title = el('h3', 'survey-log-title', '详细过程');
+        var pre = el('pre', 'survey-log-body', String((data && data.log) || '还没有记录。'));
+        var back = el('button', 'survey-btn survey-btn-ghost', '返回进度');
         back.type = 'button';
         back.addEventListener('click', function () {
           if (state.jobId) pollJob(state.jobId);
@@ -281,7 +294,8 @@ window.SurveyGenerator = (function () {
         if (state.jobId !== jobId) return;
         var job = data && data.job;
         if (!job) {
-          renderError('未找到综述任务（job not found）。');
+          forgetSurveyJob();
+          renderError('没有找到这次综述，请重新提交。');
           setStatus('');
           setBusy(false);
           return;
@@ -289,16 +303,19 @@ window.SurveyGenerator = (function () {
         var status = String(job.status || 'unknown').toLowerCase();
         renderProgressCard(job);
         if (status === 'completed') {
+          forgetSurveyJob();
           setBusy(false);
           handleJobResult(job);
         } else if (status === 'failed') {
+          forgetSurveyJob();
           setBusy(false);
           setStatus('综述失败：' + (job.error || ''), true);
           renderError(job.error || '综述生成失败');
           listRuns();
         } else if (status === 'cancelled') {
+          forgetSurveyJob();
           setBusy(false);
-          setStatus('任务已取消。');
+          setStatus('已取消。');
           listRuns();
         } else {
           state.timer = setTimeout(function () {
@@ -330,7 +347,7 @@ window.SurveyGenerator = (function () {
       listRuns();
       return;
     }
-    setStatus('✅ 任务完成，但未取得报告路由，请从历史列表打开。');
+    setStatus('综述写完了，但没能自动打开。请从下面的历史里打开。');
     listRuns();
   }
 
@@ -356,9 +373,9 @@ window.SurveyGenerator = (function () {
           var report = (job.result && job.result.report) || {};
           var status = String(job.status || '').toLowerCase();
           var label = report.title || input.query || job.job_id || '';
-          row.appendChild(el('span', 'survey-history-id', label + '（' + (job.job_id || '') + '）'));
+          row.appendChild(el('span', 'survey-history-id', label));
           var btn = el('button', 'survey-history-view',
-            status === 'completed' ? '打开报告' : '查看 / 继续轮询');
+            status === 'completed' ? '打开报告' : (status === 'failed' ? '查看原因' : '继续看进度'));
           btn.onclick = function () {
             if (status === 'completed' && report.route) {
               var target = '#/' + String(report.route).replace(/^#?\//, '');
@@ -444,12 +461,13 @@ window.SurveyGenerator = (function () {
       .then(function (resp) { return resp.json().catch(function () { return {}; }); })
       .then(function (data) {
         if (data && data.ok && data.job_id) {
-          setStatus('📮 任务已提交，job_id: ' + data.job_id);
+          setStatus('已开始写综述。');
+          rememberSurveyJob(data.job_id);
           listRuns();
           pollJob(data.job_id);
         } else {
           setBusy(false);
-          renderError('提交失败：' + ((data && (data.error || data.detail || data.message)) || '未知错误'));
+          renderError('提交失败：' + ((data && (data.error || data.detail || data.message)) || '请稍后重试。'));
         }
       })
       .catch(function () {
@@ -621,8 +639,8 @@ window.SurveyGenerator = (function () {
     root.className = 'survey';
     root.id = 'survey';
 
-    root.appendChild(el('h2', 'survey-heading', '📋 综述生成'));
-    root.appendChild(el('p', 'survey-sub', '输入研究主题，流水线将从论文库召回候选、精选、聚类分析并生成一篇带引用的领域综述报告；报告会保存为站点页面并出现在左侧栏「Survey Reports」分组。'));
+    root.appendChild(el('h2', 'survey-heading', '写综述'));
+    root.appendChild(el('p', 'survey-sub', '写下一个研究主题。写完后会出现在左侧栏，可以直接打开。'));
 
     var section = el('div', 'survey-section');
     var label = el('label', 'survey-label', '研究主题');
@@ -702,13 +720,20 @@ window.SurveyGenerator = (function () {
     if (!container) return;
     if (container.querySelector('#survey')) return; // 幂等
     container.appendChild(buildUI());
+    var pending = readSurveyJob();
     backendAvailable().then(function (ok) {
+      if (pending) return;
       if (ok) {
         setStatus('可以开始写综述。');
       } else {
         setStatus('综述服务暂时连不上，请稍后刷新。', true);
       }
     });
+    if (pending) {
+      setBusy(true);
+      setStatus('正在继续上次的综述。');
+      pollJob(pending);
+    }
     listRuns();
     return true;
   }

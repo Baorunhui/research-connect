@@ -14,6 +14,18 @@ window.PaperSummarizer = (function () {
   }
   var MAX_PDF_BYTES = 50 * 1024 * 1024; // 与后端默认一致（DPR_PDF_MAX_MB 默认 50MB）
 
+  function rememberSummarizeJob(jobId) {
+    try { sessionStorage.setItem('dpr_summarize_job', jobId); } catch (e) { /* 浏览器禁了存储就只在当前页看进度 */ }
+  }
+
+  function forgetSummarizeJob() {
+    try { sessionStorage.removeItem('dpr_summarize_job'); } catch (e) { /* 同上 */ }
+  }
+
+  function readSummarizeJob() {
+    try { return sessionStorage.getItem('dpr_summarize_job') || ''; } catch (e) { return ''; }
+  }
+
   function isProbablyLocal() {
     var h = String(window.location && window.location.hostname || '').toLowerCase();
     return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h.indexOf('.local') >= 0;
@@ -182,14 +194,15 @@ window.PaperSummarizer = (function () {
       .then(function (data) {
         if (!data || !data.ok || !data.job_id) {
           state.busy = false;
-          var msg = (data && (data.error || data.detail || data.message)) || '后端未返回 job_id';
+          var msg = (data && (data.error || data.detail || data.message)) || '没有开始，请稍后重试。';
           renderError(msg);
           setStatus('');
           return;
         }
         state.jobId = data.job_id;
         state.seenEventIds = {};
-        setStatus('已创建任务 ' + data.job_id + '，正在处理…');
+        rememberSummarizeJob(data.job_id);
+        setStatus('已开始，正在写总结。');
         pollJob(data.job_id);
       })
       .catch(function () {
@@ -208,8 +221,9 @@ window.PaperSummarizer = (function () {
       .then(function (resp) { return resp.json().catch(function () { return {}; }); })
       .then(function (data) {
         if (!data || !data.ok || !data.job) {
+          forgetSummarizeJob();
           state.busy = false;
-          renderError('轮询失败：未找到任务');
+          renderError('没有找到这次总结，请重新提交。');
           setStatus('');
           return;
         }
@@ -218,13 +232,16 @@ window.PaperSummarizer = (function () {
         var events = job.events || [];
         renderProgress(events, status, state.seenEventIds);
         if (status === 'completed') {
+          forgetSummarizeJob();
           state.busy = false;
           handleJobResult(job);
         } else if (status === 'failed') {
+          forgetSummarizeJob();
           state.busy = false;
           renderError(job.error || '总结失败');
           setStatus('');
         } else if (status === 'cancelled') {
+          forgetSummarizeJob();
           state.busy = false;
           setStatus('已取消');
         } else {
@@ -411,9 +428,9 @@ window.PaperSummarizer = (function () {
     root.className = 'paper-summarize';
     root.id = 'paper-summarize';
 
-    var title = el('h2', 'paper-summarize-heading', '📄 论文总结');
+    var title = el('h2', 'paper-summarize-heading', '论文总结');
+    var subtitle = el('p', 'paper-summarize-sub', '贴一篇论文链接，或上传 PDF，写成中文总结。');
     root.appendChild(title);
-    var subtitle = el('p', 'paper-summarize-sub', '贴一篇 arXiv 或网页链接，或上传 PDF，得到结构化中文总结。');
     root.appendChild(subtitle);
 
     // 公网站点会通过 Report Hub 的受限 API 中继访问用户电脑上的本地后端。
@@ -513,9 +530,14 @@ window.PaperSummarizer = (function () {
     // 幂等：重复路由不重复挂载
     if (container.querySelector('#paper-summarize')) return;
     container.appendChild(buildUI());
-    // 非本地部署下，仅保留链接总结可用（链接也走本地后端代理，静态部署同样不可用，
-    // 此时直接提示不可用）。
-    if (!isProbablyLocal()) {
+    var pending = readSummarizeJob();
+    if (pending) {
+      state.jobId = pending;
+      state.seenEventIds = {};
+      setBusy(true);
+      setStatus('正在继续上次的总结。');
+      pollJob(pending);
+    } else if (!isProbablyLocal()) {
       backendAvailable().then(function (ok) {
         if (!ok) {
           var s = document.querySelector('#paper-summarize-status');
