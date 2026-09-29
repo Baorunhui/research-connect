@@ -620,12 +620,12 @@ class RunStore:
         with self._lock:
             run = self._runs.get(run_id)
             if not run:
-                return False, "run not found"
+                return False, "没有找到这次生成。"
             proc = self._processes.get(run_id)
             if str(run.get("status") or "").lower() in self.ACTIVE_STATUSES or (
                 proc is not None and proc.poll() is None
             ):
-                return False, "run is still active; cancel it before deleting"
+                return False, "这次生成还在进行，先停掉再删除。"
             self._runs.pop(run_id, None)
         run_dir = self._metadata_path(run_id).parent.resolve()
         root = self._runs_dir.resolve()
@@ -2556,7 +2556,7 @@ class Handler(SimpleHTTPRequestHandler):
             run_id = parts[4] if len(parts) >= 5 else ""
             run = RUN_STORE.get(run_id)
             if not run:
-                return self._json({"ok": False, "error": "run not found"}, status=404)
+                return self._json({"ok": False, "error": "没有找到这次生成。"}, status=404)
             if len(parts) >= 6 and parts[5] == "log":
                 return self._json({"ok": True, "run": run, "log": RUN_STORE.log(run_id)})
             return self._json({"ok": True, "run": run})
@@ -2565,7 +2565,7 @@ class Handler(SimpleHTTPRequestHandler):
             run_id = parts[3] if len(parts) >= 4 else ""
             run = RUN_STORE.get(run_id)
             if not run:
-                return self._json({"ok": False, "error": "run not found"}, status=404)
+                return self._json({"ok": False, "error": "没有找到这次生成。"}, status=404)
             if len(parts) >= 5 and parts[4] == "log":
                 return self._json({"ok": True, "run": run, "log": RUN_STORE.log(run_id)})
             return self._json({"ok": True, "run": run})
@@ -2629,20 +2629,20 @@ class Handler(SimpleHTTPRequestHandler):
             parts = parsed.path.strip("/").split("/")
             run_id = parts[3] if len(parts) >= 5 else ""
             if not run_id or not RUN_STORE.cancel(run_id):
-                return self._json({"ok": False, "error": "run not found or already finished"}, status=404)
+                return self._json({"ok": False, "error": "没有找到这次生成，或它已经结束。"}, status=404)
             return self._json({"ok": True, "run_id": run_id, "status": "cancelled"})
         if parsed.path.startswith("/api/local/runtime/runs/") and parsed.path.rstrip("/").endswith("/cancel"):
             parts = parsed.path.strip("/").split("/")
             run_id = parts[4] if len(parts) >= 6 else ""
             if not run_id or not RUN_STORE.cancel(run_id):
-                return self._json({"ok": False, "error": "run not found or already finished"}, status=404)
+                return self._json({"ok": False, "error": "没有找到这次生成，或它已经结束。"}, status=404)
             return self._json({"ok": True, "run_id": run_id, "status": "cancelled"})
         if parsed.path.startswith("/api/local/runs/") and parsed.path.rstrip("/").endswith("/delete"):
             parts = parsed.path.strip("/").split("/")
             run_id = parts[3] if len(parts) >= 5 else ""
             ok, error = RUN_STORE.delete(run_id)
             if not ok:
-                status = 409 if "still active" in error else 404
+                status = 409 if error.startswith("这次生成还在进行") else 404
                 return self._json({"ok": False, "error": error}, status=status)
             return self._json({"ok": True, "run_id": run_id, "deleted": True})
         if parsed.path.startswith("/api/local/runtime/runs/") and parsed.path.rstrip("/").endswith("/delete"):
@@ -2650,7 +2650,7 @@ class Handler(SimpleHTTPRequestHandler):
             run_id = parts[4] if len(parts) >= 6 else ""
             ok, error = RUN_STORE.delete(run_id)
             if not ok:
-                status = 409 if "still active" in error else 404
+                status = 409 if error.startswith("这次生成还在进行") else 404
                 return self._json({"ok": False, "error": error}, status=status)
             return self._json({"ok": True, "run_id": run_id, "deleted": True})
         if parsed.path == "/api/local/config":
@@ -2690,7 +2690,7 @@ class Handler(SimpleHTTPRequestHandler):
             )
             return self._json({"ok": True, "run": run})
         except Exception as exc:
-            return self._json({"ok": False, "error": str(exc)}, status=400)
+            return self._json({"ok": False, "error": _user_visible_error(exc)}, status=400)
 
     def _paper_summarize_create_job(self) -> None:
         """POST /api/paper/summarize — 建异步 job，立即返回 job_id。
