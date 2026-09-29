@@ -5,7 +5,7 @@
 
 ## 整体流程
 
-「论文总结」由本地后端（`python src/local_server.py`）驱动，核心思路是
+论文总结就在这个网站上做。它的做法是
 **复用日报流水线的 Step 6 文档生成能力**，而不是另起一套独立链路：
 
 ```
@@ -108,7 +108,7 @@ POST /api/paper/summarize/<job_id>/cancel  best-effort 取消
    打 1/2/3/4 阅读状态标记。
 
 限制说明：整个功能依赖本地后端；纯 GitHub Pages 静态部署下没有后端代理，
-页面会提示不可用，需先运行 `python src/local_server.py` 再刷新。
+如果页面提示暂时不可用，请稍后刷新再试。
 
 ## 常见问题
 

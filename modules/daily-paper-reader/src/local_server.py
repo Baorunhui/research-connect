@@ -77,6 +77,35 @@ def ensure_runtime_docs_shell() -> None:
         )
         if updated != text:
             readme.write_text(updated, encoding="utf-8")
+    replacements = {
+        "本功能由本地后端（`python src/local_server.py`）驱动；纯静态部署下不可用。开启核心论文 PDF 深读时，整份报告通常需要几分钟到十几分钟。":
+        "写一篇综述通常要几分钟。如果勾选了细读全文，会更久一些。",
+        "本功能由本地后端（`python src/local_server.py`）驱动；纯静态部署下自动隐藏 PDF 入口。":
+        "贴上论文链接或上传 PDF，总结好后会打开一篇阅读页。",
+        "综述由本地后端（`python src/local_server.py`，默认 8567）驱动，纯静态部署不可用。":
+        "综述就在这个网站上写，不用另外启动程序。",
+        "页面会提示不可用，需先运行 `python src/local_server.py` 再刷新。":
+        "如果页面提示暂时不可用，请稍后刷新再试。",
+        "「论文总结」由本地后端（`python src/local_server.py`）驱动，核心思路是":
+        "论文总结就在这个网站上做。它的做法是",
+    }
+    for path in (
+        docs_dir / "survey.md",
+        docs_dir / "summarize.md",
+        docs_dir / "tutorial" / "survey.md",
+        docs_dir / "tutorial" / "paper-summarize.md",
+    ):
+        if not path.is_file():
+            continue
+        try:
+            page = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        rewritten = page
+        for old, new in replacements.items():
+            rewritten = rewritten.replace(old, new)
+        if rewritten != page:
+            path.write_text(rewritten, encoding="utf-8")
 
 
 ensure_runtime_docs_shell()
