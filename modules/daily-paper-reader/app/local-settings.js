@@ -682,7 +682,7 @@
   function describeChatToolError(err, resp) {
     const msg = err && err.message ? err.message : String(err || '');
     if ((resp && resp.status === 404) || /not found/i.test(msg)) {
-      return '本地服务进程是旧版本（不含该接口），请重启本地服务后重试';
+      return '当前服务还没有这个功能。更新并重启论文日报服务后再试。';
     }
     return msg;
   }

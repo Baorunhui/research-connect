@@ -666,13 +666,13 @@ window.SurveyGenerator = (function () {
     var params = el('div', 'survey-section survey-params');
     params.appendChild(buildNumberField('survey-max-papers', '候选论文数', '30', '5–200', 5, 200));
     params.appendChild(buildLookbackField());
-    params.appendChild(buildCheckbox('survey-use-rerank', 'Reranker 精选', true));
-    params.appendChild(buildCheckbox('survey-deep-read', '核心论文 PDF 深读', true));
+    params.appendChild(buildCheckbox('survey-use-rerank', '精排筛选', true));
+    params.appendChild(buildCheckbox('survey-deep-read', '细读核心论文 PDF', true));
     // 召回路开关（独立可关，便于 A/B 对比两条外部路的耗时与质量）：
     // Kaggle = 本地全量快照词法粗筛（万级、零限流、默认主路）；
     // DeepXiv = 语义检索（被引数 + 周级新鲜度，默认关——外部服务有 token 限额/波动，需要时勾选）
-    params.appendChild(buildCheckbox('survey-use-deepxiv', 'DeepXiv 外部检索（可选）', false));
-    params.appendChild(buildCheckbox('survey-use-kaggle', 'Kaggle 本地快照粗筛', true));
+    params.appendChild(buildCheckbox('survey-use-deepxiv', '再用外部库补一批（可选）', false));
+    params.appendChild(buildCheckbox('survey-use-kaggle', '用本地论文库粗筛', true));
     params.appendChild(buildCoarseTopField());
     root.appendChild(params);
 

@@ -3151,7 +3151,7 @@ class TaskExecutor:
         """Called when any phase signals that API quota is exhausted."""
         self.should_cancel = True
         message = "API 配额不足，搜索已自动停止。已处理的数据已保存至本地缓存。"
-        detail = "API 配额不足，搜索已自动停止。已处理的数据已保存至本地缓存，充值后重新运行将自动续跑，无需重复花费 Token。"
+        detail = "查询额度用完了，已停下。已经查过的部分已保存，稍后重新运行会接着查。"
         self.log_manager.error(message)
         self.log_manager.broadcast_event("quota_exceeded", {
             "message": detail
