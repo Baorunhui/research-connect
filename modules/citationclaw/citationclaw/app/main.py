@@ -474,7 +474,7 @@ async def fetch_scholar_papers(request: ScholarProfileRequest):
             log=print,
         )
         try:
-            got = await fetcher.fetch_author_works(oa_author, top_n=0, min_citations=0)
+            got = await fetcher.fetch_author_works(oa_author, top_n=200, min_citations=0)
         finally:
             await fetcher.close()
         papers = got.get("papers") or []
@@ -482,7 +482,12 @@ async def fetch_scholar_papers(request: ScholarProfileRequest):
             return JSONResponse(status_code=422, content={
                 "error": "没有读到论文列表。请确认这是 OpenAlex 的作者主页。",
             })
-        return {"papers": papers, "total": len(papers), "scholar_name": got.get("name") or ""}
+        return {
+            "papers": papers,
+            "total": len(papers),
+            "truncated": len(papers) >= 200,
+            "scholar_name": got.get("name") or "",
+        }
 
     from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper, no_papers_message
     scraper = ScholarProfileScraper(
@@ -542,7 +547,8 @@ async def paper_metadata(arxiv_id: str = "", title: str = "", doi: str = ""):
             finally:
                 await collector.close()
     except Exception as e:
-        error = str(e)[:200]
+        print(f"[citationclaw] paper meta failed: {e}", flush=True)
+        error = "这次没有查到这篇论文。"
     return {
         "source": "external_fallback",
         "local_index_available": local_index.available,
