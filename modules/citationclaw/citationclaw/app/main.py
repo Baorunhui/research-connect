@@ -999,6 +999,24 @@ async def get_task_status():
 
 # ── Results endpoints with absolute path ──────────────────────────────────
 
+def _result_folder_label(folder: Path) -> str:
+    """用报告标题代替 result-时间戳，方便在结果列表里辨认。"""
+    html_files = sorted(path for path in folder.glob("*.html") if path.is_file())
+    for html in html_files[:1]:
+        try:
+            head = html.read_text(encoding="utf-8", errors="ignore")[:4000]
+        except OSError:
+            continue
+        match = re.search(r"<title>(.*?)</title>", head, re.I | re.S)
+        if not match:
+            continue
+        title = re.sub(r"\s+", " ", match.group(1)).strip()
+        title = re.sub(r"\s*·\s*被引画像报告\s*$", "", title).strip()
+        if title:
+            return title[:80]
+    return folder.name
+
+
 @app.get("/api/results/folders")
 async def list_result_folders():
     folders = []
@@ -1009,7 +1027,7 @@ async def list_result_folders():
             files = [f for f in sub.iterdir() if f.is_file()]
             folders.append({
                 "name": sub.name,
-                "display_name": sub.name,
+                "display_name": _result_folder_label(sub),
                 "file_count": len(files),
                 "modified": max((f.stat().st_mtime for f in files), default=sub.stat().st_mtime),
                 "size": sum(f.stat().st_size for f in files),
