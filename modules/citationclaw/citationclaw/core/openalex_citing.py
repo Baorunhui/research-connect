@@ -38,6 +38,18 @@ TARGET_SELECT = "id,display_name,publication_year,doi,ids,cited_by_count"
 AUTHOR_WORK_SELECT = "id,display_name,publication_year,doi,ids,cited_by_count,authorships"
 PER_PAGE = 200
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def _citing_progress_text(progress: dict) -> str:
+    """One paper's citing count. Concurrent papers must not share a bare fraction."""
+    done = int(progress.get("done") or 0)
+    total = int(progress.get("total") or 0)
+    raw = str(progress.get("label") or "").strip()
+    prefix = ""
+    if raw.startswith("#") and raw[1:].isdigit():
+        prefix = f"第 {int(raw[1:])} 篇："
+    count = f"{done}/{total}" if total > 0 and done <= total else str(done)
+    return f"{prefix}已查到 {count} 条引用"
 _FORBIDDEN = ("pdf", "location", "abstract", "fulltext", "content_url")
 
 
@@ -324,7 +336,7 @@ class OpenAlexCitingFetcher:
             now = time.monotonic()
             if now - progress["last_log"] >= 5 or not cursor:
                 progress["last_log"] = now
-                self.log(f"已查到 {progress['done']}/{progress['total']} 条引用")
+                self.log(_citing_progress_text(progress))
         return None if self.should_cancel() else records
 
     async def fetch_citing(self, work_ids: List[str], expected: int = 0, label: str = "") -> dict:
