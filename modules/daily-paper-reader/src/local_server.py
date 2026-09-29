@@ -582,7 +582,8 @@ class RunStore:
 
     def _public_run(self, run: dict[str, Any]) -> dict[str, Any]:
         public = dict(run)
-        public.pop("secret_env", None)
+        for key in ("secret_env", "command", "log_path", "config_path"):
+            public.pop(key, None)
         return public
 
     def list(self) -> list[dict[str, Any]]:
@@ -600,7 +601,7 @@ class RunStore:
             return dict(run) if run else None
 
     def log(self, run_id: str) -> str:
-        run = self.get(run_id)
+        run = self._get_private(run_id)
         if not run:
             return ""
         path = Path(str(run.get("log_path") or ""))
@@ -696,15 +697,14 @@ class RunStore:
             env["PUBLIC_RERANK_API_BASE_URL"] = ""
             env["SILICONFLOW_RERANK_URL"] = ""
         tracker = _StepTracker(run_id)
+        print(
+            f"[papers] run {run_id} cwd={ROOT_DIR} config={config_path or '-'} "
+            f"command={' '.join(run['command'])}",
+            flush=True,
+        )
         try:
             with log_path.open("w", encoding="utf-8") as log:
-                log.write(f"[local-debug] started_at={utc_now()}\n")
-                log.write(f"[local-debug] cwd={ROOT_DIR}\n")
-                if config_path:
-                    log.write(f"[local-debug] config={config_path}\n")
-                if secret_env:
-                    log.write("[local-debug] secret_env=SUMMARY/DEEPSEEK/RERANK variables injected\n")
-                log.write(f"[local-debug] command={' '.join(run['command'])}\n\n")
+                log.write("开始生成。\n\n")
                 log.flush()
                 # Popen 逐行流式读 stdout：实时落盘日志 + 解析步骤锚点发进度事件。
                 popen_options: dict[str, Any] = {}
@@ -1211,9 +1211,12 @@ class SurveyJobStore:
         # result 里可能带整份报告正文，历史列表只需要摘要信息
         result = public.get("result")
         if isinstance(result, dict):
+            report = result.get("report")
+            if isinstance(report, dict):
+                report = {key: value for key, value in report.items() if key != "md_path"}
             public["result"] = {
                 "ok": result.get("ok"),
-                "report": result.get("report"),
+                "report": report,
                 "meta": result.get("meta"),
             }
         return public
@@ -1411,7 +1414,7 @@ def _run_survey_job(
         info = persist_survey_report(result)
         registration_error = str(info.get("registration_error") or "").strip()
         if registration_error:
-            log_lines.append(f"[survey] sidebar registration failed: {registration_error}")
+            print(f"[papers] survey sidebar failed: {registration_error}", flush=True)
             emit(
                 "render",
                 "报告已写好，但没能放进左侧列表。可以用报告地址打开。",
@@ -1419,7 +1422,6 @@ def _run_survey_job(
                     "paper_id": info["paper_id"],
                     "route": info["route"],
                     "registered": False,
-                    "registration_error": registration_error,
                 },
             )
         else:
@@ -1445,7 +1447,7 @@ def _run_survey_job(
             "warnings": [
                 *(result.get("warnings") or []),
                 *(
-                    [f"侧栏注册失败：{registration_error}"]
+                    ["报告已写好，但没能放进左侧列表。"]
                     if registration_error
                     else []
                 ),
