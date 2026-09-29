@@ -420,7 +420,7 @@ window.PaperSummarizer = (function () {
     var inp = document.querySelector('#paper-summarize-url');
     var url = (inp && inp.value || '').trim();
     if (!url) {
-      renderError('请先输入论文链接（如 https://arxiv.org/abs/xxxx）');
+      renderError('请先填写论文链接。');
       return;
     }
     return doSummarize({ source: 'url', url: url });
