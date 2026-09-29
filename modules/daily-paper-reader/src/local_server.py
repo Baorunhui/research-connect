@@ -536,6 +536,7 @@ class RunStore:
         config: dict[str, Any] | None = None,
         secret: dict[str, Any] | None = None,
         external_job_id: str = "",
+        reuse_active: bool = False,
     ) -> dict[str, Any]:
         run_id = uuid.uuid4().hex[:12]
         run_dir = self._runs_dir / run_id
@@ -570,6 +571,17 @@ class RunStore:
             "cancel_requested": False,
         }
         with self._lock:
+            if reuse_active:
+                active = [
+                    item for item in self._runs.values()
+                    if str(item.get("status") or "").lower() in self.ACTIVE_STATUSES
+                ]
+                if active:
+                    newest = max(active, key=lambda item: str(item.get("created_at") or ""))
+                    public = self._public_run(newest)
+                    public["already_running"] = True
+                    shutil.rmtree(run_dir, ignore_errors=True)
+                    return public
             self._runs[run_id] = run
             self._persist_locked(run)
         thread = threading.Thread(target=self._run_process, args=(run_id,), daemon=True)
@@ -2796,8 +2808,14 @@ class Handler(SimpleHTTPRequestHandler):
                 config=config,
                 secret=secret,
                 external_job_id=str(payload.get("externalJobId") or ""),
+                reuse_active=True,
             )
-            return self._json({"ok": True, "run": run})
+            already_running = bool(run.pop("already_running", False))
+            return self._json({
+                "ok": True,
+                "already_running": already_running,
+                "run": run,
+            })
         except Exception as exc:
             return self._json({"ok": False, "error": _user_visible_error(exc)}, status=400)
 

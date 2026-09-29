@@ -514,7 +514,7 @@ window.DPRWorkflowRunner = (function () {
     const run = data.run || {};
     activeRun = { local: true, runId: run.id };
     selectedRun = activeRun;
-    setStatus('已开始。', '#080', { waiting: true });
+    setStatus(data.already_running ? '上一次还在生成，接着看这一次。' : '已开始。', '#080', { waiting: true });
     await refreshLocalRun(run.id);
     refreshTimer = setInterval(() => {
       const r = selectedRun || activeRun;
