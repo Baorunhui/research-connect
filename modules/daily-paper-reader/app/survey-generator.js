@@ -21,7 +21,7 @@ window.SurveyGenerator = (function () {
     var text = String(message || '').replace(/\s+/g, ' ').trim();
     if (!text || text.length > 180) return fallback;
     if (/https?:\/\/|Traceback|\.py\b|Exception|timeout|日报流水线/i.test(text)) return fallback;
-    if (/缺少综述主题/.test(text)) return '请先填写综述主题。';
+    if (/缺少综述主题/.test(text) || /主题（query）不能为空/.test(text)) return '请先填写综述主题。';
     if (/arXiv id|缺少 url/.test(text)) return '请填写 arXiv 论文链接，或改用上传 PDF。';
     return text;
   }

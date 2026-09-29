@@ -1324,10 +1324,11 @@ def extract_papers(
                 consistency = None
             if consistency is not None and consistency < paradigm_min and not record.get("_degraded"):
                 dropped_paradigm += 1
-                ctx.warn(
-                    f"范式过滤：剔除「{record.get('title', '')[:50]}」"
-                    f"（范式一致性 {consistency:g}<{paradigm_min:g}，{record.get('task_paradigm') or '范式未知'}）"
+                print(
+                    f"[papers] survey paradigm drop: {consistency:g}<{paradigm_min:g}",
+                    flush=True,
                 )
+                ctx.warn(f"「{record.get('title', '')[:40]}」和这个题目不太一样，先不写进去。")
                 continue
         kept.append(record)
     dropped = dropped_relevance + dropped_paradigm
@@ -1336,8 +1337,14 @@ def extract_papers(
     if dropped_paradigm:
         ctx.warn(f"抽取后按范式一致性≥{paradigm_min:g} 过滤掉 {dropped_paradigm} 篇跨范式论文")
     if not kept:
-        raise RuntimeError("抽取后无符合相关度/任务范式的论文，请收窄主题或调整回溯范围")
-    ctx.progress("extract", f"抽取完成：保留 {len(kept)} 篇（过滤低相关 {dropped_relevance}、跨范式 {dropped_paradigm}）")
+        raise RuntimeError("留下的论文和这个题目不太相符，已停下。可以把题目说得更具体一些，或调整一下时间范围后再试。")
+    if dropped_relevance or dropped_paradigm:
+        ctx.progress(
+            "extract",
+            f"读完了，留下 {len(kept)} 篇。有 {dropped_relevance} 篇不太相关，有 {dropped_paradigm} 篇和题目不太一样。",
+        )
+    else:
+        ctx.progress("extract", f"读完了，留下 {len(kept)} 篇。")
     return kept
 
 
@@ -1789,7 +1796,7 @@ def build_outline(
             }
         )
     if not sections:
-        raise RuntimeError("大纲没有任何有效小节")
+        raise RuntimeError("综述提纲没写出来，请稍后重试。")
 
     # 脚手架兜底 1：任务定义节必居第二位（引言之后）——综述读者首先要看到任务是什么
     if not any(("任务定义" in s["heading"] or "研究现状" in s["heading"] or "问题定义" in s["heading"]) for s in sections):
