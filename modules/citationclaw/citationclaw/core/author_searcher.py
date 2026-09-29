@@ -853,7 +853,7 @@ class AuthorSearcher:
             tasks = []
             for task_info in tasks_to_process:
                 if cancel_check and cancel_check():
-                    self.log_callback("任务已取消")
+                    self.log_callback("这次查询已停下。")
                     break
                 tasks.append(asyncio.create_task(_run_and_save(task_info)))
 
@@ -890,7 +890,7 @@ class AuthorSearcher:
 
             for task_info in tasks_to_process:
                 if cancel_check and cancel_check():
-                    self.log_callback("任务已取消")
+                    self.log_callback("这次查询已停下。")
                     return
 
                 result = await self._search_single_paper(

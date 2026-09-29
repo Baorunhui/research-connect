@@ -1052,7 +1052,7 @@ class GoogleScholarScraper:
                     for idx, (year, expected_count) in enumerate(year_data):
                         # 检查是否取消
                         if cancel_check and cancel_check():
-                            self.log_callback("任务已取消")
+                            self.log_callback("这次查询已停下。")
                             break
 
                         # Wall-clock timeout check
@@ -1162,7 +1162,7 @@ class GoogleScholarScraper:
             while current_url != 'EMPTY':
                 # 检查是否取消
                 if cancel_check and cancel_check():
-                    self.log_callback("任务已取消")
+                    self.log_callback("这次查询已停下。")
                     break
 
                 # Wall-clock timeout check

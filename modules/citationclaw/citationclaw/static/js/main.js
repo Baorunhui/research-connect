@@ -991,7 +991,7 @@ function initIndexPage() {
             el.classList.remove('active');
         });
         const status = data && data.status ? data.status : 'failed';
-        const message = data && data.message ? data.message : '任务已结束';
+        const message = data && data.message ? data.message : '这次查询结束了。';
         const level = (status === 'cancelled' || status === 'no_results') ? 'WARNING' : 'ERROR';
         appendIndexLog({
             timestamp: new Date().toISOString(),
@@ -1028,7 +1028,7 @@ function initIndexPage() {
         appendIndexLog({
             timestamp: new Date().toISOString(),
             level: 'WARNING',
-            message: data && data.message ? data.message : '已收到取消请求，正在安全停止任务...'
+            message: data && data.message ? data.message : '正在停掉这次查询。'
         });
     });
 
@@ -1189,7 +1189,7 @@ function initIndexPage() {
     var cancelBtnEl = document.getElementById('idx-cancel-btn');
     if (cancelBtnEl) {
         cancelBtnEl.addEventListener('click', async () => {
-            if (!confirm('确定要取消当前任务吗？')) return;
+            if (!confirm('要停掉这次查询吗？')) return;
             cancelBtnEl.disabled = true;
             cancelBtnEl.innerHTML = '<i class="bi bi-hourglass-split"></i> 正在停止...';
             if (runBtn) {

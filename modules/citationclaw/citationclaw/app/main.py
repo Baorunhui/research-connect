@@ -95,8 +95,8 @@ def _make_task_done_callback(executor: TaskExecutor, lm: LogManager):
                 result = task.result()
                 _connect_task_state.update(status="completed", error="", result=result)
         except asyncio.CancelledError:
-            _connect_task_state.update(status="cancelled", error="任务已取消", result=None)
-            message = "任务已取消"
+            _connect_task_state.update(status="cancelled", error="这次查询已停下。", result=None)
+            message = "这次查询已停下。"
             lm.warning(message)
             lm.broadcast_event("task_finished", {
                 "status": "cancelled",
@@ -849,14 +849,14 @@ async def cancel_task(request: CancelTaskRequest | None = None):
     if requested_id and active_id and requested_id != active_id:
         return JSONResponse(
             status_code=409,
-            content={"status": "error", "error_code": "JOB_ID_MISMATCH", "message": "任务 ID 不匹配"},
+            content={"status": "error", "error_code": "JOB_ID_MISMATCH", "message": "对不上这次查询，请刷新后再停。"},
         )
     task_executor.cancel()
     return {
         "schema_version": "connect.job.v1",
         "status": "success",
         "job_id": active_id,
-        "message": "任务取消中...",
+        "message": "正在停掉这次查询。",
     }
 
 

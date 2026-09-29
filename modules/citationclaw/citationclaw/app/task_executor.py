@@ -1469,7 +1469,7 @@ class TaskExecutor:
             )
 
             if self.should_cancel:
-                message = "任务已取消"
+                message = "这次查询已停下。"
                 self.log_manager.warning(message)
                 await self._broadcast_task_finished("cancelled", message)
                 return
@@ -1494,7 +1494,7 @@ class TaskExecutor:
             )
 
             if self.should_cancel:
-                message = "任务已取消"
+                message = "这次查询已停下。"
                 self.log_manager.warning(message)
                 await self._broadcast_task_finished("cancelled", message)
                 return
@@ -1676,7 +1676,7 @@ class TaskExecutor:
             )
 
             if self.should_cancel:
-                message = "任务已取消"
+                message = "这次查询已停下。"
                 self.log_manager.warning(message)
                 await self._broadcast_task_finished("cancelled", message)
                 return
@@ -1799,7 +1799,7 @@ class TaskExecutor:
             )
 
             if self.should_cancel:
-                message = "任务已取消"
+                message = "这次查询已停下。"
                 self.log_manager.warning(message)
                 await self._broadcast_task_finished("cancelled", message)
                 return
@@ -2023,7 +2023,7 @@ class TaskExecutor:
                     citing_files.append((citing_file, canonical))
 
             if self.should_cancel:
-                message = "任务已取消"
+                message = "这次查询已停下。"
                 self.log_manager.warning(message)
                 await self._broadcast_task_finished("cancelled", message)
                 return
@@ -2058,7 +2058,7 @@ class TaskExecutor:
                 canonical_titles=canonical_titles,
             )
             if self.should_cancel:
-                message = "任务已取消"
+                message = "这次查询已停下。"
                 self.log_manager.warning(message)
                 await self._broadcast_task_finished("cancelled", message)
                 return
@@ -2092,7 +2092,7 @@ class TaskExecutor:
                     citation_desc_cache=desc_cache,
                 )
                 if self.should_cancel:
-                    message = "任务已取消"
+                    message = "这次查询已停下。"
                     self.log_manager.warning(message)
                     await self._broadcast_task_finished("cancelled", message)
                     return
@@ -2156,7 +2156,7 @@ class TaskExecutor:
                     skip_citing_analysis=config.dashboard_skip_citing_analysis,
                 )
                 if self.should_cancel:
-                    message = "任务已取消"
+                    message = "这次查询已停下。"
                     self.log_manager.warning(message)
                     await self._broadcast_task_finished("cancelled", message)
                     return
@@ -2600,7 +2600,7 @@ class TaskExecutor:
                 arxiv_db=arxiv_db, arxiv_client=arxiv_client,
             )
             if self.should_cancel:
-                await self._broadcast_task_finished("cancelled", "任务已取消")
+                await self._broadcast_task_finished("cancelled", "这次查询已停下。")
                 return
 
             total_citing = sum(len(citing) for _, _, citing in target_results)
@@ -2674,7 +2674,7 @@ class TaskExecutor:
                     record_idx += 1
 
             if self.should_cancel:
-                await self._broadcast_task_finished("cancelled", "任务已取消")
+                await self._broadcast_task_finished("cancelled", "这次查询已停下。")
                 return
 
             self.log_manager.info(
@@ -2778,7 +2778,7 @@ class TaskExecutor:
                 json_output=json_file,
             )
             if self.should_cancel:
-                await self._broadcast_task_finished("cancelled", "任务已取消")
+                await self._broadcast_task_finished("cancelled", "这次查询已停下。")
                 return
 
             # ── Step 6: 选择性 PDF 下载 + 引文语境提取（仅含知名学者的论文）──
@@ -2840,7 +2840,7 @@ class TaskExecutor:
                         f.write(_json.dumps(rec, ensure_ascii=False) + "\n")
 
                 if self.should_cancel:
-                    await self._broadcast_task_finished("cancelled", "任务已取消")
+                    await self._broadcast_task_finished("cancelled", "这次查询已停下。")
                     return
 
                 # Phase 4: 引文语境提取（pdf_paths 对齐，None 的会被快速跳过）
@@ -2858,7 +2858,7 @@ class TaskExecutor:
                     citation_desc_cache=desc_cache,
                 )
                 if self.should_cancel:
-                    await self._broadcast_task_finished("cancelled", "任务已取消")
+                    await self._broadcast_task_finished("cancelled", "这次查询已停下。")
                     return
 
                 # 合并引用描述回 Excel
@@ -2919,7 +2919,7 @@ class TaskExecutor:
                     skip_citing_analysis=config.dashboard_skip_citing_analysis,
                 )
                 if self.should_cancel:
-                    await self._broadcast_task_finished("cancelled", "任务已取消")
+                    await self._broadcast_task_finished("cancelled", "这次查询已停下。")
                     return
 
             # 运行后额度快照
@@ -3106,7 +3106,8 @@ class TaskExecutor:
                 exporter.highligh_renowned_scholar(flattened, [all_renowned, top_renowned])
                 self.log_manager.info("已重建知名学者文件")
             except Exception as exc:
-                self.log_manager.warning(f"知名学者文件重建失败（将使用空表）: {exc}")
+                print(f"[citationclaw] scholar file rebuild failed: {exc}", flush=True)
+                self.log_manager.warning("学者名单没能写进表格，报告里这一部分会空着。")
                 empty = pd.DataFrame()
                 empty.to_excel(all_renowned, index=False)
                 empty.to_excel(top_renowned, index=False)
@@ -3235,21 +3236,22 @@ class TaskExecutor:
             self.log_manager.info(f"自引检测：目标论文作者信息已获取（{len(response)}字符）")
             return response
         except Exception as e:
-            self.log_manager.warning(f"自引检测：无法获取目标论文《{title[:40]}》的作者，自引过滤将被跳过: {e}")
+            print(f"[citationclaw] target authors unavailable: {e}", flush=True)
+            self.log_manager.warning("这篇论文的作者没对上，这次不排除作者自己的引用。")
             return ""
 
     def cancel(self):
         """取消任务"""
         if self.is_running:
             self.should_cancel = True
-            message = "已收到取消请求，正在安全停止任务..."
+            message = "正在停掉这次查询。"
             self.log_manager.warning(message)
             self.log_manager.broadcast_event("cancel_requested", {"message": message})
             self.log_manager.set_task_log_suppressed(True)
             if self.current_task and not self.current_task.done():
                 self.current_task.cancel()
         else:
-            self._broadcast_task_finished_sync("cancelled", "当前没有正在运行的任务")
+            self._broadcast_task_finished_sync("cancelled", "现在没有在进行的查询。")
 
     def get_status(self) -> dict:
         """
