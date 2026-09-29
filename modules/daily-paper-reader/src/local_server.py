@@ -122,6 +122,38 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+_JOB_SILENCE_S = 20 * 60
+
+
+def _job_is_silent(job: dict[str, Any], *, now: datetime | None = None) -> bool:
+    if str(job.get("status") or "") not in ("queued", "running"):
+        return False
+    stamp = str(job.get("updated_at") or job.get("created_at") or "")
+    try:
+        updated = datetime.fromisoformat(stamp)
+    except ValueError:
+        return False
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    return (current - updated).total_seconds() >= _JOB_SILENCE_S
+
+
+def _mark_silent_job(job: dict[str, Any]) -> None:
+    if not _job_is_silent(job):
+        return
+    job_id = str(job.get("job_id") or "")
+    print(f"[papers] job {job_id} silent for {_JOB_SILENCE_S}s", flush=True)
+    message = "这次等太久了，请稍后重试。"
+    job["status"] = "failed"
+    job["error"] = message
+    job["updated_at"] = utc_now()
+    job["cancel_requested"] = True
+    events = job.get("events")
+    if isinstance(events, list):
+        events.append(_job_event("job.failed", job_id, message=message))
+
+
 def _user_visible_error(exc: BaseException) -> str:
     """Keep short messages we wrote. Hide tracebacks, URLs, and library errors."""
     text = " ".join(str(exc).split())
@@ -891,6 +923,8 @@ class SummarizeJobStore:
             "cancel_requested": False,
         }
         with self._lock:
+            for existing in self._jobs.values():
+                _mark_silent_job(existing)
             if reuse_active:
                 for existing in self._jobs.values():
                     if str(existing.get("status") or "") in ("queued", "running"):
@@ -906,6 +940,8 @@ class SummarizeJobStore:
     def get(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             job = self._jobs.get(job_id)
+            if job:
+                _mark_silent_job(job)
             return self._copy_public(job) if job else None
 
     def request_cancel(self, job_id: str) -> bool:
@@ -930,7 +966,7 @@ class SummarizeJobStore:
     def _set_status(self, job_id: str, status: str, **extra: Any) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
-            if not job:
+            if not job or str(job.get("status") or "") in ("completed", "failed", "cancelled"):
                 return
             job["status"] = status
             job["updated_at"] = utc_now()
@@ -1204,6 +1240,8 @@ class SurveyJobStore:
             "cancel_requested": False,
         }
         with self._lock:
+            for existing in self._jobs.values():
+                _mark_silent_job(existing)
             if reuse_active:
                 for existing in self._jobs.values():
                     if str(existing.get("status") or "") in ("queued", "running"):
@@ -1223,7 +1261,10 @@ class SurveyJobStore:
 
     def get(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
-            return self._copy_public(self._jobs.get(job_id))
+            job = self._jobs.get(job_id)
+            if job:
+                _mark_silent_job(job)
+            return self._copy_public(job)
 
     def request_cancel(self, job_id: str) -> bool:
         with self._lock:
@@ -1245,7 +1286,7 @@ class SurveyJobStore:
     def _set_status(self, job_id: str, status: str, **extra: Any) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
-            if not job:
+            if not job or str(job.get("status") or "") in ("completed", "failed", "cancelled"):
                 return
             job["status"] = status
             job["updated_at"] = utc_now()
