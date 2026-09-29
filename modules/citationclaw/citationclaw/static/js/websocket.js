@@ -54,10 +54,9 @@ class WebSocketManager {
                 // 自动重连
                 if (this.reconnectAttempts < this.maxReconnectAttempts) {
                     this.reconnectAttempts++;
-                    console.log(`${this.reconnectDelay/1000}秒后尝试重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
                     setTimeout(() => this.connect(), this.reconnectDelay);
-                } else {
-                    this.updateStatus('连接失败', 'danger');
+                } else if (!this.pollTimer) {
+                    this.connectPolling({ catchCompleted: true });
                 }
             };
         } catch (error) {
@@ -66,10 +65,18 @@ class WebSocketManager {
         }
     }
 
-    connectPolling() {
-        this.updateStatus('已连接（公网中继）', 'success');
+    connectPolling(options) {
+        if (this.pollTimer) return;
+        const catchCompleted = !!(options && options.catchCompleted);
+        this.updateStatus('改为定时刷新', 'warning');
+        this.emit('log', {
+            timestamp: new Date().toISOString(),
+            level: 'WARNING',
+            message: '实时连接中断，改为每 2 秒刷新进度。查完后结果仍会显示在这里。'
+        });
         let lastLogCount = 0;
         let previousStatus = 'idle';
+        let announced = false;
         const poll = async () => {
             try {
                 const base = String(window.CCR_PUBLIC_API_BASE || '').replace(/\/$/, '');
@@ -82,14 +89,20 @@ class WebSocketManager {
                 lastLogCount = logs.length;
                 if (data.progress) this.emit('progress', data.progress);
                 const status = data.status || (data.is_running ? 'running' : 'idle');
-                if (previousStatus === 'running' && status === 'completed') this.emit('all_done', data.result || {});
+                const runBtn = document.getElementById('idx-run-btn');
+                const waiting = !!(runBtn && runBtn.disabled);
+                if (!announced && status === 'completed' && data.result
+                    && (previousStatus === 'running' || (catchCompleted && waiting))) {
+                    announced = true;
+                    this.emit('all_done', data.result);
+                }
                 if (previousStatus === 'running' && (status === 'failed' || status === 'cancelled')) {
                     this.emit('task_finished', {status, message: data.error || '任务已结束'});
                 }
                 previousStatus = status;
-                this.updateStatus('已连接（公网中继）', 'success');
+                this.updateStatus('改为定时刷新', 'success');
             } catch (error) {
-                this.updateStatus('中继等待中', 'warning');
+                this.updateStatus('进度刷新失败', 'warning');
             }
         };
         poll();
