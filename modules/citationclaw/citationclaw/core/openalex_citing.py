@@ -127,23 +127,25 @@ class OpenAlexCitingFetcher:
                 if r.status_code == 200 or len(order) == 1:
                     self._client = client
                     self.route = "proxy" if use_proxy else "direct"
-                    self.log(f"[OpenAlex] 线路: {'代理' if use_proxy else '直连'}（探测 HTTP {r.status_code}）")
+                    self.log("已连上论文目录。")
                     return
             except httpx.HTTPError as e:
-                self.log(f"[OpenAlex] {'代理' if use_proxy else '直连'}不通: {type(e).__name__}")
+                print(f"[openalex] route {'proxy' if use_proxy else 'direct'} failed: {type(e).__name__}", flush=True)
                 if len(order) == 1:
                     self._client = client
                     return
             await client.aclose()
-        raise RuntimeError("OpenAlex 直连与代理均不可达")
+        raise RuntimeError("论文目录暂时连不上，请稍后重试。")
 
     @staticmethod
     def _check_url(url: str, params: dict):
         if not url.startswith(WORKS_URL):
-            raise ValueError(f"refusing non-OpenAlex-works URL: {url}")
+            print(f"[openalex] refused url: {url}", flush=True)
+            raise ValueError("这次请求超出了论文目录的范围，已停止。")
         probe = (url[len(BASE_URL):] + " " + str(params.get("select", ""))).lower()
         if any(f in probe for f in _FORBIDDEN):
-            raise ValueError(f"refusing PDF/location/full-text request: {url}")
+            print(f"[openalex] refused full-text request: {url}", flush=True)
+            raise ValueError("这次请求超出了论文目录的范围，已停止。")
 
     async def _get(self, url: str, params: dict, attempts: int = 6) -> Optional[dict]:
         self._check_url(url, params)
@@ -166,14 +168,15 @@ class OpenAlexCitingFetcher:
                     status, err = r.status_code, f"HTTP {r.status_code}"
                     retry_after = r.headers.get("Retry-After")
                     if status not in (429, 500, 502, 503, 504):
-                        self.log(f"[OpenAlex] {err} {url} {r.text[:160]}")
+                        print(f"[openalex] {err} {url} {r.text[:160]}", flush=True)
+                        self.log("论文目录这一页没有返回，先跳过。")
                         return None
             self.retries += 1
             try:
                 wait = float(retry_after) if retry_after else min(2 ** attempt, 30)
             except ValueError:
                 wait = min(2 ** attempt, 30)
-            self.log(f"[OpenAlex] {err}，{wait:.0f}s 后重试（{attempt + 1}/{attempts}）")
+            self.log("论文目录暂时没有响应，稍后会再试。")
             await asyncio.sleep(wait)
         return None
 
@@ -295,7 +298,7 @@ class OpenAlexCitingFetcher:
             data = await self._get(WORKS_URL, {"filter": filt, "select": CITING_SELECT,
                                                "per-page": PER_PAGE, "cursor": cursor})
             if data is None:
-                self.log(f"[OpenAlex] {label} 翻页失败，已取 {len(records)} 条，本分区不缓存")
+                self.log(f"这一部分没有拉完，已拿到 {len(records)} 条。")
                 return None
             batch = data.get("results") or []
             records.extend(compact_work(w) for w in batch)
@@ -305,9 +308,7 @@ class OpenAlexCitingFetcher:
             now = time.monotonic()
             if now - progress["last_log"] >= 5 or not cursor:
                 progress["last_log"] = now
-                rate = self.fetched_records / max(now - self._t0, 1e-6)
-                self.log(f"[OpenAlex] {progress['label']} 施引 {progress['done']}/{progress['total']}"
-                         f"（{rate:.0f} 条/s，已发 {self.requests} 次请求）")
+                self.log(f"已查到 {progress['done']}/{progress['total']} 条引用")
         return None if self.should_cancel() else records
 
     async def fetch_citing(self, work_ids: List[str], expected: int = 0, label: str = "") -> dict:
@@ -350,8 +351,7 @@ class OpenAlexCitingFetcher:
             else:
                 todo.append((name, filt))
         if todo:
-            self.log(f"[OpenAlex] {progress['label']}: 预计 {expected} 条施引，{len(parts)} 个分区"
-                     f"（缓存 {cached_parts}），开始翻页")
+            self.log(f"预计 {expected} 条引用，开始拉取。")
 
         async def run(name, filt):
             recs = await self._chain(filt, f"{progress['label']}/{name}", expected, progress)
