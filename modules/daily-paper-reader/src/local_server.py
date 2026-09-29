@@ -109,6 +109,10 @@ def ensure_runtime_docs_shell() -> None:
             rewritten = rewritten.replace(old, new)
         if rewritten != page:
             path.write_text(rewritten, encoding="utf-8")
+    guide = docs_dir / "tutorial" / "README.md"
+    fresh = ROOT_DIR / "docs_init" / "tutorial" / "README.md"
+    if guide.is_file() and fresh.is_file() and "推荐链路说明" in guide.read_text(encoding="utf-8"):
+        guide.write_text(fresh.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 ensure_runtime_docs_shell()
