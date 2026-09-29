@@ -517,7 +517,8 @@ def plan_recall_queries(
             client_factory(), system, f"Survey topic: {ctx.query}", "survey_query_plan", _QUERY_PLAN_SCHEMA
         )
     except Exception as exc:  # noqa: BLE001
-        ctx.warn(f"查询规划失败，回退为主题单查询：{exc}")
+        print(f"[papers] survey query plan failed: {exc}", flush=True)
+        ctx.warn("查询规划失败，先按你写的主题来找。")
         return []
     queries = [str(q).strip() for q in ((parsed or {}).get("queries") or []) if str(q).strip()]
     queries = queries[:8]
@@ -710,7 +711,7 @@ def _local_recall_lane(
     local_max_days = int(os.getenv("DPR_SURVEY_LOCAL_RECALL_MAX_DAYS") or 0) or 180
     local_days = min(int(fetch_days or 1), max(int(local_max_days), 1))
     if local_days < int(fetch_days or 1):
-        ctx.warn(f"本地库召回窗口截断为 {local_days} 天（库内仅存近期论文，长回溯由外部检索覆盖）")
+        ctx.warn(f"本地论文库只有最近 {local_days} 天，更早的论文要靠别的来源。")
     end_dt = datetime.now(timezone.utc)
     start_dt = end_dt - timedelta(days=local_days)
 
@@ -889,7 +890,7 @@ def coarse_rank_papers(
                     )
                 )
             )
-            ctx.progress("coarse", f"语义编码 {min(i + chunk, len(texts))}/{len(texts)} 篇")
+            ctx.progress("coarse", f"正在比较这些论文和题目 {min(i + chunk, len(texts))}/{len(texts)} 篇")
         p_vecs = np.concatenate(vec_parts, axis=0)
         scores = np.max(q_vecs @ p_vecs.T, axis=0)
         order = np.argsort(-scores)[:embed_pool]
@@ -901,7 +902,8 @@ def coarse_rank_papers(
         _log(f"粗排完成：{len(papers)} → {len(picked)}，耗时 {elapsed:.0f}s")
         return picked
     except Exception as exc:  # noqa: BLE001
-        ctx.warn(f"语义粗排失败，降级为直接截断候选池前 {embed_pool} 篇：{exc}")
+        print(f"[papers] survey coarse rank failed: {exc}", flush=True)
+        ctx.warn(f"这一步比较没做完，先按原来的顺序留下前面 {embed_pool} 篇。")
         return papers[:embed_pool]
 
 
@@ -1333,9 +1335,9 @@ def extract_papers(
         kept.append(record)
     dropped = dropped_relevance + dropped_paradigm
     if dropped_relevance:
-        ctx.warn(f"抽取后按 relevance≥{RELEVANCE_MIN_SCORE:g} 过滤掉 {dropped_relevance} 篇低相关论文")
+        ctx.warn(f"有 {dropped_relevance} 篇和题目不太相关，先不写进去。")
     if dropped_paradigm:
-        ctx.warn(f"抽取后按范式一致性≥{paradigm_min:g} 过滤掉 {dropped_paradigm} 篇跨范式论文")
+        ctx.warn(f"有 {dropped_paradigm} 篇和这个题目不太一样，先不写进去。")
     if not kept:
         raise RuntimeError("留下的论文和这个题目不太相符，已停下。可以把题目说得更具体一些，或调整一下时间范围后再试。")
     if dropped_relevance or dropped_paradigm:
@@ -1460,7 +1462,8 @@ def cluster_papers(
         k = max(min(3, n), 1)
         labels = _fallback_labels(n, k)
         method = f"order-partition(k={k})"
-        ctx.warn("sklearn 不可用，聚类退化为按序等分")
+        print("[papers] survey clustering fell back to order split", flush=True)
+        ctx.warn("没能按主题自动分组，先按顺序分成几组。")
 
     groups: Dict[int, List[int]] = {}
     for idx, label in enumerate(labels):
@@ -1498,7 +1501,8 @@ def cluster_papers(
         names = {int(item.get("cluster_id")): item for item in (parsed or {}).get("clusters", [])}
     except Exception as exc:  # noqa: BLE001
         names = {}
-        ctx.warn(f"簇命名失败，使用默认主题名：{exc}")
+        print(f"[papers] survey cluster naming failed: {exc}", flush=True)
+        ctx.warn("有一组论文没起上名字，先用默认名字。")
 
     for cluster in clusters:
         info = names.get(cluster["cluster_id"]) or {}
@@ -1761,7 +1765,8 @@ def build_outline(
         parsed = _chat_structured(client_factory(), _OUTLINE_SYSTEM, user, "survey_outline", _OUTLINE_SCHEMA)
     except Exception as exc:  # noqa: BLE001
         parsed = None
-        ctx.warn(f"大纲生成失败，使用默认骨架：{exc}")
+        print(f"[papers] survey outline failed: {exc}", flush=True)
+        ctx.warn("提纲没按设想写出来，先用一个基本结构。")
     if not parsed or not parsed.get("sections"):
         parsed = {
             "title_zh": f"{ctx.query} 研究综述",
@@ -1989,13 +1994,13 @@ def write_sections(
     for idx, section in enumerate(sections):
         content = (results.get(idx) or "").strip()
         if not content:
-            content = f"（本节写作失败：{section['heading']}）"
+            content = f"（{section['heading']}这一节没写出来）"
             ctx.warn(f"小节写作失败：{section['heading']}")
         content, removed = sanitize_citations(content, len(extractions))
         total_removed += removed
         section_markdowns.append(f"## {section['heading']}\n\n{content}")
     if total_removed:
-        ctx.warn(f"写作阶段剔除 {total_removed} 处非法引用编号")
+        ctx.warn(f"去掉了 {total_removed} 处对不上的非法引用。")
     ctx.progress("write", "正文写完了")
     return section_markdowns, sections
 
@@ -2022,7 +2027,7 @@ def review_draft(
 ) -> Tuple[str, List[str]]:
     ctx.check_cancel()
     if len(draft) > _REVIEW_INPUT_CHAR_CAP:
-        ctx.warn(f"草稿超过 {_REVIEW_INPUT_CHAR_CAP} 字符，跳过整体审校")
+        ctx.warn("文章比较长，这次不做最后通读，先用已经写好的正文。")
         return draft, []
     ctx.progress("review", "正在通读修改")
     user = f"综述报告草稿如下，请按审查维度修订：\n\n{draft}"
@@ -2138,17 +2143,17 @@ def run_survey(
         ctx.progress("seed", "正在分析种子论文")
         seed_analysis = analyze_seed(seed_text, factory)
         if not seed_analysis:
-            ctx.warn("种子分析失败，本次综述退化为无种子模式（主题归纳范式）")
+            ctx.warn("没读懂这篇种子论文，这次只按你写的主题来找。")
         else:
             n_queries = len(seed_analysis.get("queries") or [])
             n_cited = len(seed_analysis.get("cited_arxiv_ids") or [])
-            ctx.progress("seed", f"种子分析完成：{n_queries} 条查询 / {n_cited} 条引文 / {len(seed_analysis.get('dataset_names') or [])} 个数据集")
+            ctx.progress("seed", f"这篇种子论文看完了，它引用了 {n_cited} 篇。")
             if seed_analysis.get("cited_arxiv_ids"):
                 ctx.progress("seed", f"正在读取种子论文引用的 {n_cited} 篇")
                 seed_citations = fetch_citation_papers(
                     seed_analysis["cited_arxiv_ids"], deepxiv=deepxiv_client_obj, log=_log
                 )
-                ctx.progress("seed", f"引文直取完成：{len(seed_citations)} 篇入候选池")
+                ctx.progress("seed", f"读到它引用的 {len(seed_citations)} 篇。")
         ctx.check_cancel()
 
     # ---- 召回：种子派生查询（或 LLM 规划的英文查询组，或主题单查询）驱动多路融合 ----
