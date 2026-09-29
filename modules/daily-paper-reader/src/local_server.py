@@ -98,6 +98,14 @@ def _user_visible_error(exc: BaseException) -> str:
     return "这次没有完成，请稍后重试。"
 
 
+def _active_job_id(store) -> str:
+    """Return a queued or running job id, if one is already using the model."""
+    for job in store.list():
+        if str(job.get("status") or "") in ("queued", "running"):
+            return str(job.get("job_id") or "")
+    return ""
+
+
 def norm_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -2805,7 +2813,14 @@ class Handler(SimpleHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
             source = str(payload.get("source") or "").strip()
             if source not in ("url", "pdf"):
-                return self._json({"ok": False, "error": "source 必须是 url 或 pdf"}, status=400)
+                return self._json({"ok": False, "error": "请用论文链接或上传 PDF。"}, status=400)
+            active_id = _active_job_id(SUMMARIZE_JOB_STORE)
+            if active_id:
+                return self._json({
+                    "ok": False,
+                    "error": "已经有一篇总结在写，接着看这一次。",
+                    "job_id": active_id,
+                }, status=409)
             job = SUMMARIZE_JOB_STORE.create(payload)
             return self._json({
                 "ok": True,
@@ -2815,17 +2830,18 @@ class Handler(SimpleHTTPRequestHandler):
                 "events": job["events"],
             })
         except Exception as exc:
-            return self._json({"ok": False, "error": str(exc)}, status=500)
+            print(f"[papers] summarize create failed: {exc}", flush=True)
+            return self._json({"ok": False, "error": _user_visible_error(exc)}, status=500)
 
     def _paper_summarize_cancel(self, path: str) -> None:
         """POST /api/paper/summarize/<job_id>/cancel — 请求取消（best-effort）。"""
         parts = path.strip("/").split("/")
         job_id = parts[3] if len(parts) >= 4 else ""
         if not job_id:
-            return self._json({"ok": False, "error": "missing job_id"}, status=400)
+            return self._json({"ok": False, "error": "没有这次总结。"}, status=400)
         ok = SUMMARIZE_JOB_STORE.request_cancel(job_id)
         if not ok:
-            return self._json({"ok": False, "error": "job not found or already finished"}, status=404)
+            return self._json({"ok": False, "error": "没有找到这次总结，或它已经结束。"}, status=404)
         return self._json({"ok": True, "job_id": job_id, "status": "cancelling"})
 
     def _survey_create_job(self) -> None:
@@ -2841,7 +2857,14 @@ class Handler(SimpleHTTPRequestHandler):
                 runtime_credentials = {}
             query = str(payload.get("query") or "").strip()
             if not query:
-                return self._json({"ok": False, "error": "缺少综述主题 query"}, status=400)
+                return self._json({"ok": False, "error": "请先填写综述主题。"}, status=400)
+            active_id = _active_job_id(SURVEY_JOB_STORE)
+            if active_id:
+                return self._json({
+                    "ok": False,
+                    "error": "已经有一篇综述在写，接着看这一次。",
+                    "job_id": active_id,
+                }, status=409)
             job = SURVEY_JOB_STORE.create(payload, runtime_credentials=runtime_credentials)
             return self._json({
                 "ok": True,
@@ -2851,17 +2874,18 @@ class Handler(SimpleHTTPRequestHandler):
                 "events": job["events"],
             })
         except Exception as exc:  # noqa: BLE001
-            return self._json({"ok": False, "error": str(exc)}, status=500)
+            print(f"[papers] survey create failed: {exc}", flush=True)
+            return self._json({"ok": False, "error": _user_visible_error(exc)}, status=500)
 
     def _survey_cancel(self, path: str) -> None:
         """POST /api/survey/<job_id>/cancel — 请求取消（best-effort，协作式）。"""
         parts = path.strip("/").split("/")
         job_id = parts[2] if len(parts) >= 3 else ""
         if not job_id:
-            return self._json({"ok": False, "error": "missing job_id"}, status=400)
+            return self._json({"ok": False, "error": "没有这次综述。"}, status=400)
         ok = SURVEY_JOB_STORE.request_cancel(job_id)
         if not ok:
-            return self._json({"ok": False, "error": "job not found or already finished"}, status=404)
+            return self._json({"ok": False, "error": "没有找到这次综述，或它已经结束。"}, status=404)
         return self._json({"ok": True, "job_id": job_id, "status": "cancelling"})
 
     def _save_local_secret(self) -> None:

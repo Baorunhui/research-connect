@@ -487,16 +487,26 @@ window.SurveyGenerator = (function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-      .then(function (resp) { return resp.json().catch(function () { return {}; }); })
+      .then(function (resp) {
+        return resp.json().catch(function () { return {}; }).then(function (data) {
+          data = data || {};
+          data._status = resp.status;
+          return data;
+        });
+      })
       .then(function (data) {
         if (data && data.ok && data.job_id) {
           setStatus('已开始写综述。');
           rememberSurveyJob(data.job_id);
           listRuns();
           pollJob(data.job_id);
+        } else if (data && data._status === 409 && data.job_id) {
+          setStatus('已经有一篇综述在写，接着看这一次。');
+          rememberSurveyJob(data.job_id);
+          pollJob(data.job_id);
         } else {
           setBusy(false);
-          renderError('提交失败：' + ((data && (data.error || data.detail || data.message)) || '请稍后重试。'));
+          renderError((data && (data.error || data.detail || data.message)) || '提交失败，请稍后重试。');
         }
       })
       .catch(function () {

@@ -191,8 +191,22 @@ window.PaperSummarizer = (function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-      .then(function (resp) { return resp.json().catch(function () { return {}; }); })
+      .then(function (resp) {
+        return resp.json().catch(function () { return {}; }).then(function (data) {
+          data = data || {};
+          data._status = resp.status;
+          return data;
+        });
+      })
       .then(function (data) {
+        if (data && data._status === 409 && data.job_id) {
+          state.jobId = data.job_id;
+          state.pollFailures = 0;
+          rememberSummarizeJob(data.job_id);
+          setStatus('已经有一篇总结在写，接着看这一次。');
+          pollJob(data.job_id);
+          return;
+        }
         if (!data || !data.ok || !data.job_id) {
           state.busy = false;
           var msg = (data && (data.error || data.detail || data.message)) || '没有开始，请稍后重试。';
