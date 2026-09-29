@@ -98,14 +98,6 @@ def _user_visible_error(exc: BaseException) -> str:
     return "这次没有完成，请稍后重试。"
 
 
-def _active_job_id(store) -> str:
-    """Return a queued or running job id, if one is already using the model."""
-    for job in store.list():
-        if str(job.get("status") or "") in ("queued", "running"):
-            return str(job.get("job_id") or "")
-    return ""
-
-
 def norm_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -833,7 +825,7 @@ class SummarizeJobStore:
         self._lock = threading.Lock()
         self._jobs: dict[str, dict[str, Any]] = {}
 
-    def create(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def create(self, payload: dict[str, Any], reuse_active: bool = False) -> dict[str, Any]:
         job_id = "sum-" + uuid.uuid4().hex[:12]
         now = utc_now()
         job: dict[str, Any] = {
@@ -849,6 +841,13 @@ class SummarizeJobStore:
             "cancel_requested": False,
         }
         with self._lock:
+            if reuse_active:
+                for existing in self._jobs.values():
+                    if str(existing.get("status") or "") in ("queued", "running"):
+                        copied = self._copy_public(existing)
+                        if copied is not None:
+                            copied["already_running"] = True
+                        return copied  # type: ignore[return-value]
             self._jobs[job_id] = job
         thread = threading.Thread(target=self._worker, args=(job_id, payload), daemon=True)
         thread.start()
@@ -1128,6 +1127,7 @@ class SurveyJobStore:
         self,
         payload: dict[str, Any],
         runtime_credentials: dict[str, Any] | None = None,
+        reuse_active: bool = False,
     ) -> dict[str, Any]:
         job_id = "sv-" + uuid.uuid4().hex[:12]
         now = utc_now()
@@ -1144,6 +1144,13 @@ class SurveyJobStore:
             "cancel_requested": False,
         }
         with self._lock:
+            if reuse_active:
+                for existing in self._jobs.values():
+                    if str(existing.get("status") or "") in ("queued", "running"):
+                        copied = self._copy_public(existing)
+                        if copied is not None:
+                            copied["already_running"] = True
+                        return copied  # type: ignore[return-value]
             self._jobs[job_id] = job
             self._prune_finished_locked()
         thread = threading.Thread(
@@ -2833,14 +2840,13 @@ class Handler(SimpleHTTPRequestHandler):
             source = str(payload.get("source") or "").strip()
             if source not in ("url", "pdf"):
                 return self._json({"ok": False, "error": "请用论文链接或上传 PDF。"}, status=400)
-            active_id = _active_job_id(SUMMARIZE_JOB_STORE)
-            if active_id:
+            job = SUMMARIZE_JOB_STORE.create(payload, reuse_active=True)
+            if job.get("already_running"):
                 return self._json({
                     "ok": False,
                     "error": "已经有一篇总结在写，接着看这一次。",
-                    "job_id": active_id,
+                    "job_id": job.get("job_id") or "",
                 }, status=409)
-            job = SUMMARIZE_JOB_STORE.create(payload)
             return self._json({
                 "ok": True,
                 "schema_version": "connect.job.v1",
@@ -2877,14 +2883,17 @@ class Handler(SimpleHTTPRequestHandler):
             query = str(payload.get("query") or "").strip()
             if not query:
                 return self._json({"ok": False, "error": "请先填写综述主题。"}, status=400)
-            active_id = _active_job_id(SURVEY_JOB_STORE)
-            if active_id:
+            job = SURVEY_JOB_STORE.create(
+                payload,
+                runtime_credentials=runtime_credentials,
+                reuse_active=True,
+            )
+            if job.get("already_running"):
                 return self._json({
                     "ok": False,
                     "error": "已经有一篇综述在写，接着看这一次。",
-                    "job_id": active_id,
+                    "job_id": job.get("job_id") or "",
                 }, status=409)
-            job = SURVEY_JOB_STORE.create(payload, runtime_credentials=runtime_credentials)
             return self._json({
                 "ok": True,
                 "schema_version": "connect.job.v1",
@@ -3032,7 +3041,8 @@ class Handler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or "0")
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
         except Exception as exc:  # noqa: BLE001
-            return self._json({"ok": False, "error": f"请求体解析失败：{exc}"}, status=400)
+            print(f"[papers] request body failed: {exc}", flush=True)
+            return self._json({"ok": False, "error": "这次提交读不懂，请再试一次。"}, status=400)
         intent = str(payload.get("intent") or "").strip()
         if not intent:
             return self._json({"ok": False, "error": "请先填写检索需求（一句自然语言描述）"}, status=400)
@@ -3057,7 +3067,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = self._read_json_body()
         except Exception as exc:  # noqa: BLE001
-            return self._json({"ok": False, "error": f"请求体解析失败：{exc}"}, status=400)
+            print(f"[papers] request body failed: {exc}", flush=True)
+            return self._json({"ok": False, "error": "这次提交读不懂，请再试一次。"}, status=400)
         try:
             base_url, api_key = _resolve_chat_credentials(
                 str(payload.get("base_url") or ""), str(payload.get("api_key") or "")
@@ -3075,7 +3086,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = self._read_json_body()
         except Exception as exc:  # noqa: BLE001
-            return self._json({"ok": False, "error": f"请求体解析失败：{exc}"}, status=400)
+            print(f"[papers] request body failed: {exc}", flush=True)
+            return self._json({"ok": False, "error": "这次提交读不懂，请再试一次。"}, status=400)
         model = str(payload.get("model") or "").strip()
         if not model:
             return self._json({"ok": False, "error": "请先填写模型名称"}, status=400)
