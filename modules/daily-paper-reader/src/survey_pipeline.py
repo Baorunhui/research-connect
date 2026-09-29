@@ -2176,10 +2176,12 @@ def run_survey(
     except ValueError:
         min_cov = 0.2
     if coverage < min_cov:
+        print(
+            f"[papers] survey coverage {coverage:.2f} < {min_cov}",
+            flush=True,
+        )
         raise RuntimeError(
-            f"召回池与主题词面覆盖率过低（{coverage:.2f} < {min_cov}）：候选文献与主题明显错位，"
-            "已终止以免生成幻觉综述。建议：改用英文主题、提供种子论文（锚定任务范式并派生检索词）、"
-            "或调宽回溯范围；也可用 DPR_SURVEY_RECALL_COVERAGE_MIN 调整阈值。"
+            "找到的论文和题目覆盖率过低，已停下。可以换一种说法、加上一篇相关论文，或把时间拉长后再试。"
         )
 
     # ---- 语义粗排：万级候选 → embed_pool（本地 bge 直连），再进 rerank ----
