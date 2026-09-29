@@ -646,13 +646,29 @@ function initIndexPage() {
     };
     let currentPhase = '处理中...';
 
+    let _configLoaded = false;
+    const _configDirty = new Set();
+    ['profile-top-n', 'profile-min-cit', 'profile-llm-fallback', 'profile-full-mode',
+     'idx-service-tier', 'idx-renowned-scholar', 'idx-author-verify', 'idx-dashboard'].forEach(id => {
+        const node = document.getElementById(id);
+        if (!node) return;
+        const mark = () => _configDirty.add(id);
+        node.addEventListener('input', mark);
+        node.addEventListener('change', mark);
+    });
+
     // 加载配置并填充 Home 面板表单
-    (async () => {
+    const _configReady = (async () => {
         try {
             const resp = await safeFetch('/api/config');
             const cfg = await resp.json();
             window._ccConfiguredSecrets = cfg._configured_secrets || {};
             const el = id => document.getElementById(id);
+            const fill = (id, apply) => {
+                if (_configDirty.has(id)) return;
+                const node = el(id);
+                if (node) apply(node);
+            };
             if (el('idx-scraper-keys')) {
                 el('idx-scraper-keys').value = (cfg.scraper_api_keys || []).join(',');
                 if (window._ccConfiguredSecrets.scraper_api_keys) el('idx-scraper-keys').placeholder = '已配置，留空保持不变';
@@ -678,10 +694,10 @@ function initIndexPage() {
             }
             if (el('idx-result-folder-prefix')) el('idx-result-folder-prefix').value = cfg.result_folder_prefix || '';
             if (el('idx-output-prefix')) el('idx-output-prefix').value = cfg.default_output_prefix || 'paper';
-            if (el('idx-renowned-scholar')) el('idx-renowned-scholar').checked = cfg.enable_renowned_scholar_filter !== false;
-            if (el('idx-author-verify')) el('idx-author-verify').checked = cfg.enable_author_verification || false;
-            if (el('idx-dashboard')) el('idx-dashboard').checked = cfg.enable_dashboard !== false;
-            if (el('idx-service-tier')) el('idx-service-tier').value = cfg.service_tier || 'basic';
+            fill('idx-renowned-scholar', node => { node.checked = cfg.enable_renowned_scholar_filter !== false; });
+            fill('idx-author-verify', node => { node.checked = cfg.enable_author_verification || false; });
+            fill('idx-dashboard', node => { node.checked = cfg.enable_dashboard !== false; });
+            fill('idx-service-tier', node => { node.value = cfg.service_tier || 'basic'; });
             if (el('idx-dashboard-model')) el('idx-dashboard-model').value = cfg.dashboard_model || 'gemini-3-flash-preview-nothinking';
             if (el('idx-s2-api-key')) el('idx-s2-api-key').value = cfg.s2_api_key || '';
             if (el('idx-wos-api-key')) el('idx-wos-api-key').value = cfg.wos_api_key || '';
@@ -692,10 +708,10 @@ function initIndexPage() {
             if (el('idx-profile-fb-keys')) el('idx-profile-fb-keys').value = (cfg.profile_fallback_api_keys || []).join(',');
             if (el('idx-profile-fb-url')) el('idx-profile-fb-url').value = cfg.profile_fallback_base_url || '';
             if (el('idx-profile-fb-model')) el('idx-profile-fb-model').value = cfg.profile_fallback_model || '';
-            // Profile pipeline form fields
-            if (el('profile-top-n')) el('profile-top-n').value = cfg.profile_top_n ?? 30;
-            if (el('profile-min-cit')) el('profile-min-cit').value = cfg.profile_min_citations ?? 0;
-            if (el('profile-llm-fallback')) el('profile-llm-fallback').checked = cfg.profile_use_llm_fallback !== false;
+            fill('profile-top-n', node => { node.value = cfg.profile_top_n ?? 30; });
+            fill('profile-min-cit', node => { node.value = cfg.profile_min_citations ?? 0; });
+            fill('profile-llm-fallback', node => { node.checked = cfg.profile_use_llm_fallback !== false; });
+            fill('profile-full-mode', node => { node.checked = cfg.profile_mode === 'full'; });
             const runtime = cfg._runtime_defaults || {};
             const paperList = document.getElementById('paper-list');
             if (paperList && paperList.children.length === 0 && Array.isArray(runtime.papers)) {
@@ -703,6 +719,7 @@ function initIndexPage() {
                     if (group && group.title) window.addPaper(group.title, group.aliases || []);
                 });
             }
+            _configLoaded = true;
         } catch (e) {
             console.error('加载配置失败:', e);
         }
@@ -724,6 +741,8 @@ function initIndexPage() {
         if (_savingConfig) return;
         _savingConfig = true;
         try {
+            await _configReady;
+            if (!_configLoaded) return;
             const el = id => document.getElementById(id);
             const body = {};
             if (el('idx-scraper-keys')) {
