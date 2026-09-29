@@ -86,6 +86,18 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _user_visible_error(exc: BaseException) -> str:
+    """Keep short messages we wrote. Hide tracebacks, URLs, and library errors."""
+    text = " ".join(str(exc).split())
+    if isinstance(exc, ValueError) and text:
+        return text
+    noisy = bool(re.search(r"https?://|Traceback|\.py\b|\b[A-Za-z]+Error\b", text))
+    if text and len(text) <= 180 and not noisy:
+        return text
+    print(f"[papers] {type(exc).__name__}: {text}", flush=True)
+    return "这次没有完成，请稍后重试。"
+
+
 def norm_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -897,9 +909,10 @@ class SummarizeJobStore:
             self._set_status(job_id, "cancelled", error=str(exc))
             self._emit(job_id, _job_event("job.cancelled", job_id, message=str(exc)))
         except Exception as exc:
-            self._set_status(job_id, "failed", error=str(exc))
+            message = _user_visible_error(exc)
+            self._set_status(job_id, "failed", error=message)
             self._emit(job_id, _job_event("job.failed", job_id, stage="error",
-                                          message=str(exc), payload={"error_type": type(exc).__name__}))
+                                          message=message, payload={"error_type": type(exc).__name__}))
 
 
 SUMMARIZE_JOB_STORE = SummarizeJobStore()
@@ -1211,9 +1224,10 @@ class SurveyJobStore:
             self._set_status(job_id, "cancelled")
             self._emit(job_id, _job_event("job.cancelled", job_id, message=str(exc)))
         except Exception as exc:  # noqa: BLE001
-            self._set_status(job_id, "failed", error=str(exc))
+            message = _user_visible_error(exc)
+            self._set_status(job_id, "failed", error=message)
             self._emit(job_id, _job_event("job.failed", job_id, stage="error",
-                                          message=str(exc), payload={"error_type": type(exc).__name__}))
+                                          message=message, payload={"error_type": type(exc).__name__}))
 
 
 SURVEY_JOB_STORE = SurveyJobStore()
