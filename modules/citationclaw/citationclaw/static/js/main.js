@@ -725,42 +725,45 @@ function initIndexPage() {
         _savingConfig = true;
         try {
             const el = id => document.getElementById(id);
-            const keys = (el('idx-scraper-keys')?.value || '').split(',').map(k => k.trim()).filter(k => k);
-            const body = {
-                scraper_api_keys: keys,
-                openai_api_key: el('idx-openai-key')?.value || '',
-                openai_base_url: _searchBaseUrl,
-                openai_model: el('idx-openai-model')?.value || '',
-                light_api_key: el('idx-light-api-key')?.value || '',
-                light_base_url: el('idx-openai-url')?.value || '',
-                result_folder_prefix: el('idx-result-folder-prefix')?.value || '',
-                default_output_prefix: el('idx-output-prefix')?.value || 'paper',
-                enable_renowned_scholar_filter: el('idx-renowned-scholar')?.checked || false,
-                enable_author_verification: el('idx-author-verify')?.checked || false,
-                enable_dashboard: el('idx-dashboard')?.checked || false,
-                service_tier: el('idx-service-tier')?.value || 'basic',
-                skip_author_search: false,
-                // Derive citing-description settings directly from tier to ensure consistency
-                ...({
+            const body = {};
+            if (el('idx-scraper-keys')) {
+                body.scraper_api_keys = el('idx-scraper-keys').value.split(',').map(k => k.trim()).filter(Boolean);
+            }
+            if (el('idx-openai-key')) body.openai_api_key = el('idx-openai-key').value || '';
+            if (el('idx-openai-model')) {
+                body.openai_model = el('idx-openai-model').value || '';
+                body.openai_base_url = _searchBaseUrl;
+            }
+            if (el('idx-light-api-key')) body.light_api_key = el('idx-light-api-key').value || '';
+            if (el('idx-openai-url')) body.light_base_url = el('idx-openai-url').value || '';
+            if (el('idx-result-folder-prefix')) body.result_folder_prefix = el('idx-result-folder-prefix').value || '';
+            if (el('idx-output-prefix')) body.default_output_prefix = el('idx-output-prefix').value || 'paper';
+            if (el('idx-renowned-scholar')) body.enable_renowned_scholar_filter = el('idx-renowned-scholar').checked;
+            if (el('idx-author-verify')) body.enable_author_verification = el('idx-author-verify').checked;
+            if (el('idx-dashboard')) body.enable_dashboard = el('idx-dashboard').checked;
+            if (el('idx-service-tier')) {
+                body.service_tier = el('idx-service-tier').value || 'basic';
+                Object.assign(body, {
                     basic:    { enable_citing_description: false, citing_description_scope: 'all',           dashboard_skip_citing_analysis: true  },
                     advanced: { enable_citing_description: true,  citing_description_scope: 'renowned_only', dashboard_skip_citing_analysis: false },
                     full:     { enable_citing_description: true,  citing_description_scope: 'all',           dashboard_skip_citing_analysis: false },
-                }[el('idx-service-tier')?.value || 'basic']),
-                dashboard_model: el('idx-dashboard-model')?.value || '',
-                s2_api_key: el('idx-s2-api-key')?.value || '',
-                wos_api_key: el('idx-wos-api-key')?.value || '',
-                mineru_api_token: el('idx-mineru-token')?.value || '',
-                cdp_debug_port: parseInt(el('idx-cdp-debug-port')?.value || '0') || 0,
-                api_access_token: el('idx-api-access-token')?.value || '',
-                api_user_id: el('idx-api-user-id')?.value || '',
-                profile_top_n: parseInt(el('profile-top-n')?.value || '30') || 30,
-                profile_min_citations: parseInt(el('profile-min-cit')?.value || '0') || 0,
-                profile_use_llm_fallback: el('profile-llm-fallback')?.checked !== false,
-                profile_fallback_api_keys: (el('idx-profile-fb-keys')?.value || '')
-                    .split(',').map(k => k.trim()).filter(k => k),
-                profile_fallback_base_url: el('idx-profile-fb-url')?.value || '',
-                profile_fallback_model: el('idx-profile-fb-model')?.value || '',
-            };
+                }[body.service_tier] || {});
+            }
+            if (el('idx-dashboard-model')) body.dashboard_model = el('idx-dashboard-model').value || '';
+            if (el('idx-s2-api-key')) body.s2_api_key = el('idx-s2-api-key').value || '';
+            if (el('idx-wos-api-key')) body.wos_api_key = el('idx-wos-api-key').value || '';
+            if (el('idx-mineru-token')) body.mineru_api_token = el('idx-mineru-token').value || '';
+            if (el('idx-cdp-debug-port')) body.cdp_debug_port = parseInt(el('idx-cdp-debug-port').value || '0') || 0;
+            if (el('idx-api-access-token')) body.api_access_token = el('idx-api-access-token').value || '';
+            if (el('idx-api-user-id')) body.api_user_id = el('idx-api-user-id').value || '';
+            if (el('profile-top-n')) body.profile_top_n = parseInt(el('profile-top-n').value || '30') || 30;
+            if (el('profile-min-cit')) body.profile_min_citations = parseInt(el('profile-min-cit').value || '0') || 0;
+            if (el('profile-llm-fallback')) body.profile_use_llm_fallback = el('profile-llm-fallback').checked;
+            if (el('idx-profile-fb-keys')) {
+                body.profile_fallback_api_keys = el('idx-profile-fb-keys').value.split(',').map(k => k.trim()).filter(Boolean);
+            }
+            if (el('idx-profile-fb-url')) body.profile_fallback_base_url = el('idx-profile-fb-url').value || '';
+            if (el('idx-profile-fb-model')) body.profile_fallback_model = el('idx-profile-fb-model').value || '';
             const cfgResp = await safeFetch('/api/config');
             const existing = await cfgResp.json();
             // 敏感字段：空值不覆盖已有配置
