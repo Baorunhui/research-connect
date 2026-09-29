@@ -446,7 +446,7 @@
 
 {% block scripts %}
 <script src="/static/js/websocket.js?v=2.2"></script>
-<script src="/static/js/main.js?v=2.5"></script>
+<script src="/static/js/main.js?v=2.6"></script>
 <script>
 // ── API Key 检查 ────────────────────────────────────────────────
 function checkApiKeysAndAlert() {
@@ -573,6 +573,7 @@ async function uploadProfileHTML() {
 async function _launchProfilePipeline(endpoint, body, isForm) {
     const runBtn = document.getElementById('profile-run-btn');
     const upBtn = document.getElementById('profile-upload-btn');
+    let started = false;
     if (runBtn) { runBtn.disabled = true; runBtn.textContent = '运行中…'; }
     if (upBtn) { upBtn.disabled = true; }
     try { await saveIndexConfig(); } catch(e) { console.error('自动保存配置失败:', e); }
@@ -583,12 +584,18 @@ async function _launchProfilePipeline(endpoint, body, isForm) {
         if (data.status === 'success' && data.cached) {
             if (window._onProfileCached) window._onProfileCached(data);
         } else if (data.status === 'success') {
+            started = true;
             if (window._onProfileStarted) window._onProfileStarted();
         } else {
             alert(data.message || data.error || '启动失败');
         }
     } catch(e) { alert('网络错误: ' + e.message); }
-    finally { if (runBtn) { runBtn.disabled = false; runBtn.textContent = '快速分析'; } if (upBtn) { upBtn.disabled = false; } }
+    finally {
+        if (!started) {
+            if (runBtn) { runBtn.disabled = false; runBtn.textContent = '快速分析'; }
+            if (upBtn) upBtn.disabled = false;
+        }
+    }
 }
 </script>
 

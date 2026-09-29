@@ -1233,6 +1233,10 @@ function initIndexPage() {
     function resetRunBtn() {
         runBtn.disabled = false;
         runBtn.innerHTML = '<i class="bi bi-play-fill"></i> 开始分析';
+        const profileBtn = document.getElementById('profile-run-btn');
+        const uploadBtn = document.getElementById('profile-upload-btn');
+        if (profileBtn) { profileBtn.disabled = false; profileBtn.textContent = '快速分析'; }
+        if (uploadBtn) uploadBtn.disabled = false;
         var cancelBtn = document.getElementById('idx-cancel-btn');
         if (cancelBtn) {
             cancelBtn.disabled = false;
