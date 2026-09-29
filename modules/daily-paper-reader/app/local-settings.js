@@ -257,11 +257,11 @@
       '    <button type="button" class="secret-gate-btn primary dpr-smart-apply" data-dpr-smart-apply style="display:none;">把勾选的填进去</button>' +
       '  </fieldset>' +
       '  <div class="dpr-settings-field">' +
-      '    <label>关键词（BM25 召回，每行一个）</label>' +
+      '    <label>关键词（每行一个）</label>' +
       '    <textarea class="dpr-sub-profile-keywords" rows="3" placeholder="retrieval augmented generation">' + escapeAttr(keywordsText) + '</textarea>' +
       '  </div>' +
       '  <div class="dpr-settings-field">' +
-      '    <label>意图查询（向量语义召回，每行一条）</label>' +
+      '    <label>意图查询（每行一条）</label>' +
       '    <textarea class="dpr-sub-profile-queries" rows="3" placeholder="Find recent papers on retrieval-augmented generation and LLM grounding">' + escapeAttr(intentQueriesText) + '</textarea>' +
       '  </div>' +
       '  <div class="dpr-sub-profile-actions">' +
