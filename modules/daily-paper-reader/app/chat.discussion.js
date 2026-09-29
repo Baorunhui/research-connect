@@ -48,20 +48,13 @@ window.PrivateDiscussionChat = (function () {
     }
   };
 
-  // 从本地后端获取 Chat 模型名（缓存，仅首次网络请求）
-  let _chatBackendModel = null;
-  let _chatBackendModelResolved = false;
-
+  // 每次提问都读当前配置，避免改完页面设置后还用旧模型。
   const resolveChatConfig = async () => {
-    if (_chatBackendModelResolved) return _chatBackendModel;
     try {
       const resp = await fetch(apiUrl('/api/chat/config'));
       if (!resp.ok) return null;
       const data = await resp.json();
-      const model = (data && data.model) ? data.model : null;
-      _chatBackendModel = model;
-      _chatBackendModelResolved = true;
-      return model;
+      return (data && data.model) ? data.model : null;
     } catch {
       return null;
     }
@@ -263,7 +256,7 @@ window.PrivateDiscussionChat = (function () {
               aria-haspopup="listbox"
               aria-expanded="false"
             >
-              <span class="chat-model-picker-kicker">Model</span>
+              <span class="chat-model-picker-kicker">模型</span>
               <span id="chat-model-picker-label" class="chat-model-picker-label">选择模型</span>
               <span class="chat-model-picker-chevron" aria-hidden="true">⌄</span>
             </button>
@@ -1029,6 +1022,17 @@ window.PrivateDiscussionChat = (function () {
 
     const model = await resolveChatConfig();
     const modelSelect = document.getElementById('chat-llm-model-select');
+    if (model && modelSelect) {
+      const known = Array.from(modelSelect.options).some((opt) => opt.value === model);
+      if (!known) {
+        const opt = document.createElement('option');
+        opt.value = model;
+        opt.textContent = model;
+        modelSelect.appendChild(opt);
+      }
+      modelSelect.value = model;
+      syncChatModelPicker([model]);
+    }
 
     if (!model) {
       aiAnswerDiv.textContent =
@@ -1048,7 +1052,7 @@ window.PrivateDiscussionChat = (function () {
     savePreferredModelName(model);
 
     if (statusEl) {
-      statusEl.textContent = `正在调用 Chat 模型 ${model}...`;
+      statusEl.textContent = `正在用 ${model} 回答`;
       statusEl.style.color = '#666';
     }
     let thinkingBuffer = '';
@@ -1328,7 +1332,7 @@ window.PrivateDiscussionChat = (function () {
       }
 
       if (statusEl) {
-        statusEl.textContent = `已使用模型 ${model}`;
+        statusEl.textContent = `已用 ${model} 回答`;
         statusEl.style.color = '#4caf50';
       }
 
