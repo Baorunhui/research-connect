@@ -235,7 +235,8 @@ window.DPRWorkflowRunner = (function () {
 
   const localApiFetch = async (path, init) => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeoutMs = path.indexOf('/log') >= 0 ? 60000 : 10000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(getLocalApiUrl(path), {
         ...(init || {}),
@@ -283,15 +284,15 @@ window.DPRWorkflowRunner = (function () {
 
   // 日报流水线步骤定义（与后端 src/local_server.py 的 PIPELINE_STEPS 保持一致）。
   const PIPELINE_STEPS = [
-    { key: 'step_0_enrich', num: '0', label: 'LLM 扩充检索关键词' },
-    { key: 'step_1_fetch', num: '1', label: '抓取 arXiv 论文' },
-    { key: 'step_2_1_bm25', num: '2.1', label: 'BM25 关键词召回' },
-    { key: 'step_2_2_embedding', num: '2.2', label: '向量语义召回' },
-    { key: 'step_2_3_rrf', num: '2.3', label: 'RRF 融合候选池' },
-    { key: 'step_3_rerank', num: '3', label: 'Reranker 重排' },
-    { key: 'step_4_llm_refine', num: '4', label: 'LLM 精炼打分' },
-    { key: 'step_5_select', num: '5', label: '选择论文（精读/速读）' },
-    { key: 'step_6_generate', num: '6', label: '生成日报文档' },
+    { key: 'step_0_enrich', num: '0', label: '扩充检索词' },
+    { key: 'step_1_fetch', num: '1', label: '抓取新论文' },
+    { key: 'step_2_1_bm25', num: '2.1', label: '按关键词查找' },
+    { key: 'step_2_2_embedding', num: '2.2', label: '按语义查找' },
+    { key: 'step_2_3_rrf', num: '2.3', label: '合并候选' },
+    { key: 'step_3_rerank', num: '3', label: '精排' },
+    { key: 'step_4_llm_refine', num: '4', label: '打分' },
+    { key: 'step_5_select', num: '5', label: '选出精读和速读' },
+    { key: 'step_6_generate', num: '6', label: '写成日报' },
   ];
 
   // 从 run.events 里提取各步骤最新状态（started/completed/skipped/failed）。
@@ -329,7 +330,7 @@ window.DPRWorkflowRunner = (function () {
       return (
         '<div style="display:flex;align-items:center;gap:6px;padding:2px 6px;border-radius:4px;background:' + rowBg + ';">' +
         '<span style="width:14px;text-align:center;color:' + color + ';">' + icon + '</span>' +
-        '<span style="color:' + text + ';">Step ' + s.num + ' ' + escapeHtml(s.label) + '</span>' +
+        '<span style="color:' + text + ';">' + s.num + '. ' + escapeHtml(s.label) + '</span>' +
         '</div>'
       );
     });
@@ -453,7 +454,7 @@ window.DPRWorkflowRunner = (function () {
       : '<div style="color:#999;">暂无日志。</div>';
     runsEl.innerHTML = `
       <div style="margin-bottom:8px;">
-        <div style="font-weight:600;">本地运行 #${escapeHtml(run.run_number || run.id)}</div>
+        <div style="font-weight:600;">任务 #${escapeHtml(run.run_number || run.id)}</div>
         <div style="color:#666; margin-top:2px;">
           <span style="display:inline-block; padding:1px 6px; border-radius:999px; background:rgba(0,0,0,0.06); color:${badgeColor};">
             ${escapeHtml(formatRunBadgeText(status, conclusion))}
@@ -476,12 +477,13 @@ window.DPRWorkflowRunner = (function () {
       renderLocalRun(run, data.log || '');
       if (['completed', 'interrupted', 'cancelled'].indexOf(String(run.status || '').toLowerCase()) >= 0) {
         stopPolling();
+        const doneLabel = formatRunBadgeText(run.status, run.conclusion);
         setStatus(
-          `本地运行已结束：${run.conclusion || 'completed'}`,
+          doneLabel === '已完成' ? '已完成。' : `已结束：${doneLabel}`,
           run.conclusion === 'success' ? '#080' : '#c00',
         );
       } else {
-        setStatus('本地运行中：每 5 秒自动刷新...', '#1565c0', { waiting: true });
+        setStatus('正在生成，每 5 秒更新。', '#1565c0', { waiting: true });
       }
     } catch (e) {
       if (e && e.status === 404 && retryCount < 2) {
@@ -489,7 +491,7 @@ window.DPRWorkflowRunner = (function () {
         return refreshLocalRun(runId, retryCount + 1);
       }
       console.error(e);
-      setStatus(`刷新本地运行失败：${e.message || e}`, '#c00');
+      setStatus(`进度刷新失败：${e.message || e}`, '#c00');
       stopPolling();
       loadRecentRuns();
     }
@@ -512,7 +514,7 @@ window.DPRWorkflowRunner = (function () {
     const run = data.run || {};
     activeRun = { local: true, runId: run.id };
     selectedRun = activeRun;
-    setStatus(`本地运行已创建：run_id=${run.id}`, '#080', { waiting: true });
+    setStatus('已开始。', '#080', { waiting: true });
     await refreshLocalRun(run.id);
     refreshTimer = setInterval(() => {
       const r = selectedRun || activeRun;
@@ -576,8 +578,8 @@ window.DPRWorkflowRunner = (function () {
           </div>
         </div>
         <div id="dpr-workflow-body">
-          <div id="dpr-workflow-status" style="font-size:12px; color:#666; margin-bottom:10px;">准备就绪。</div>
-          <div style="font-weight:600; font-size:13px; margin-bottom:6px;">最近运行（各取 3 条）</div>
+          <div id="dpr-workflow-status" style="font-size:12px; color:#666; margin-bottom:10px;">可以开始。</div>
+          <div style="font-weight:600; font-size:13px; margin-bottom:6px;">最近的任务</div>
           <div id="dpr-workflow-recent" style="font-size:12px; color:#333; border:1px solid #eee; border-radius:8px; background:#fff; padding:10px; margin-bottom:12px;">
             <div style="color:#999;">加载中...</div>
           </div>
@@ -612,7 +614,7 @@ window.DPRWorkflowRunner = (function () {
         } else if (r && r.owner && r.repo && r.runId) {
           refreshRun(r.owner, r.repo, r.runId);
         } else {
-          setStatus('暂无可刷新的运行记录。', '#666');
+          setStatus('还没有正在查看的任务。', '#666');
         }
       });
     }
@@ -658,8 +660,11 @@ window.DPRWorkflowRunner = (function () {
     const c = String(conclusion || '');
     // 用户希望 completed / success 这种冗余展示去掉：优先展示 conclusion，其次 status
     const value = c || s || '';
+    if (value === 'success' || value === 'completed') return '已完成';
+    if (value === 'failure' || value === 'failed') return '失败';
+    if (value === 'running' || value === 'in_progress' || value === 'queued') return '进行中';
     if (value === 'interrupted') return '已中断';
-    if (value === 'cancelled') return '已取消';
+    if (value === 'cancelled' || value === 'cancelling') return '已取消';
     return value;
   };
 
@@ -771,7 +776,7 @@ window.DPRWorkflowRunner = (function () {
         const runs = Array.isArray(data.runs) ? data.runs.slice(0, 12) : [];
         recentEl.classList.remove('is-loading');
         if (!runs.length) {
-          recentEl.innerHTML = '<div style="color:#999;">暂无运行记录。</div>';
+          recentEl.innerHTML = '<div style="color:#999;">还没有任务。</div>';
           return;
         }
         recentEl.innerHTML = runs.map((run) => {
@@ -779,11 +784,11 @@ window.DPRWorkflowRunner = (function () {
           const isActive = ['queued', 'running', 'in_progress', 'cancelling'].indexOf(String(run.status || '').toLowerCase()) >= 0;
           return `<div class="dpr-wf-recent-local-row" data-run-row="${escapeHtml(run.id || '')}" style="display:flex;gap:6px;align-items:stretch;margin:0 0 6px;">
             <button type="button" class="dpr-wf-recent-item" data-run-id="${escapeHtml(run.id || '')}" style="display:block;flex:1;min-width:0;padding:8px;text-align:left;border:1px solid #eee;border-radius:6px;background:#fff;cursor:pointer;">
-              <strong>本地运行 #${escapeHtml(run.run_number || run.id || '')}</strong>
+              <strong>任务 #${escapeHtml(run.run_number || run.id || '')}</strong>
               <span style="margin-left:8px;color:#666;">${escapeHtml(status)}</span>
               <span style="float:right;color:#999;">${escapeHtml(formatRunTime(run.created_at))}</span>
             </button>
-            ${isActive ? '' : `<button type="button" class="dpr-wf-run-delete" data-run-delete="${escapeHtml(run.id || '')}" title="删除这条运行记录及日志" style="padding:0 9px;border:1px solid #fecaca;border-radius:6px;background:#fff;color:#b91c1c;cursor:pointer;">删除</button>`}
+            ${isActive ? '' : `<button type="button" class="dpr-wf-run-delete" data-run-delete="${escapeHtml(run.id || '')}" title="删除这条任务" style="padding:0 9px;border:1px solid #fecaca;border-radius:6px;background:#fff;color:#b91c1c;cursor:pointer;">删除</button>`}
           </div>`;
         }).join('');
         recentEl.querySelectorAll('.dpr-wf-recent-item').forEach((button) => {
@@ -799,7 +804,7 @@ window.DPRWorkflowRunner = (function () {
         recentEl.querySelectorAll('[data-run-delete]').forEach((button) => {
           button.addEventListener('click', async () => {
             const runId = button.getAttribute('data-run-delete') || '';
-            if (!runId || !window.confirm('删除这条运行记录及其日志？此操作不可恢复。')) return;
+            if (!runId || !window.confirm('删除这条任务？删掉后不能恢复。')) return;
             button.disabled = true;
             try {
               await localApiFetch(`${LOCAL_RUNS_API}/${encodeURIComponent(runId)}/delete`, {
@@ -809,7 +814,7 @@ window.DPRWorkflowRunner = (function () {
               if (selectedRun && selectedRun.local && selectedRun.runId === runId) {
                 selectedRun = null;
                 stopPolling();
-                if (runsEl) runsEl.innerHTML = '<div style="color:#999;">该运行记录已删除。</div>';
+                if (runsEl) runsEl.innerHTML = '<div style="color:#999;">这条任务已删除。</div>';
               }
               if (liveProgressRunId === runId) {
                 liveProgressRunId = '';
@@ -818,7 +823,7 @@ window.DPRWorkflowRunner = (function () {
               await loadRecentRuns();
             } catch (e) {
               button.disabled = false;
-              setStatus(`删除运行记录失败：${e.message || e}`, '#c00');
+              setStatus(`删除失败：${e.message || e}`, '#c00');
             }
           });
         });
