@@ -1763,11 +1763,8 @@ def build_command(workflow_key: str, workflow_file: str, inputs: dict[str, str])
         )
         return [python, "-c", orchestrator, params]
 
-    if workflow_file == "reset-content.yml" or workflow_key == "reset-content":
-        return [python, "-c", "import shutil, pathlib; root=pathlib.Path('.'); shutil.rmtree(root/'docs', ignore_errors=True); shutil.copytree(root/'docs_init', root/'docs'); print('docs reset from docs_init')"]
-
-    if workflow_file == "sync.yml" or workflow_key == "sync":
-        return ["git", "status", "--short"]
+    if workflow_file in {"reset-content.yml", "sync.yml"} or workflow_key in {"reset-content", "sync"}:
+        raise ValueError("这个操作不能在页面上做。")
 
     raise ValueError("当前服务还不支持这个操作。")
 

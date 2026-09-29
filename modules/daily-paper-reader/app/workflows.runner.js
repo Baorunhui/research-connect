@@ -6,8 +6,8 @@ window.DPRWorkflowRunner = (function () {
     {
       key: 'daily-now',
       id: 'daily-paper-reader.yml',
-      name: '立即爬取并处理论文',
-      desc: '触发 daily-paper-reader 工作流（抓取→召回→重排→生成 docs）。',
+      name: '生成论文日报',
+      desc: '按已保存的设置，抓取最近的论文并写成日报。',
       dispatchInputs: {
         run_enrich: 'false',
       },
@@ -539,7 +539,7 @@ window.DPRWorkflowRunner = (function () {
     stopPolling();
     activeRun = null;
     rawLogExpanded = false;
-    setStatus(`正在开始：${wf.name || '任务'} ...`, '#666', { waiting: true });
+    setStatus(`正在开始：${wf.name || '这次生成'}。`, '#666', { waiting: true });
     runsEl.innerHTML = '<div style="color:#999;">正在提交，请稍候...</div>';
     const data = await localApiFetch('/api/local/workflows/dispatch', {
       method: 'POST',
