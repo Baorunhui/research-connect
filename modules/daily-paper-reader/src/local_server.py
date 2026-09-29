@@ -1684,6 +1684,14 @@ def as_bool(value: Any, default: bool = False) -> bool:
     return text in {"1", "true", "yes", "y", "on"}
 
 
+def _bounded_int(value: Any, default: int, low: int, high: int) -> str:
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return str(default)
+    return str(min(high, max(low, n)))
+
+
 def build_command(workflow_key: str, workflow_file: str, inputs: dict[str, str]) -> list[str]:
     python = sys.executable
     if workflow_file == "daily-paper-reader.yml" or workflow_key == "daily-now":
@@ -1691,9 +1699,11 @@ def build_command(workflow_key: str, workflow_file: str, inputs: dict[str, str])
         if as_bool(inputs.get("run_enrich"), False):
             cmd.append("--run-enrich")
         if inputs.get("fetch_days"):
-            cmd.extend(["--fetch-days", str(inputs["fetch_days"])])
-        if inputs.get("fetch_mode"):
-            cmd.extend(["--fetch-mode", str(inputs["fetch_mode"])])
+            # 页面按钮是 10 天和 30 天。更大的窗口会把整段时间的论文都送去写，先卡在 90 天。
+            cmd.extend(["--fetch-days", _bounded_int(inputs["fetch_days"], 10, 1, 90)])
+        mode = str(inputs.get("fetch_mode") or "").strip().lower()
+        if mode in {"standard", "skims"}:
+            cmd.extend(["--fetch-mode", mode])
         if inputs.get("profile_tag"):
             cmd.extend(["--profile-tag", str(inputs["profile_tag"])])
         cmd.extend(["--embedding-device", "cpu", "--embedding-batch-size", "8"])
@@ -1714,11 +1724,11 @@ def build_command(workflow_key: str, workflow_file: str, inputs: dict[str, str])
                 "conference_pairs": conference_pairs,
                 "profile_tag": profile_tag,
                 "run_date": run_date,
-                "top_k": str(inputs.get("top_k") or "50"),
-                "rrf_top_n": str(inputs.get("rrf_top_n") or "200"),
+                "top_k": _bounded_int(inputs.get("top_k") or "50", 50, 1, 200),
+                "rrf_top_n": _bounded_int(inputs.get("rrf_top_n") or "200", 200, 1, 1000),
                 "run_rerank": run_rerank,
                 "run_llm_refine": run_llm_refine,
-                "llm_min_star": str(inputs.get("llm_min_star") or "4"),
+                "llm_min_star": _bounded_int(inputs.get("llm_min_star") or "4", 4, 1, 5),
             },
             ensure_ascii=False,
         )
