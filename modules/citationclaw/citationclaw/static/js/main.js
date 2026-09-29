@@ -1540,23 +1540,32 @@ function initIndexPage() {
             try {
                 const resp = await safeFetch('/api/results/list');
                 const files = await resp.json();
-                files.filter(f => f.type === '.xlsx' || f.type === '.json').slice(0, 2).forEach(f => {
+                const picked = [];
+                ['.html', '.xlsx', '.json'].forEach(type => {
+                    const file = Array.isArray(files) ? files.find(item => item && item.type === type) : null;
+                    if (file) picked.push(file);
+                });
+                picked.forEach(f => {
+                    const isHtml = f.type === '.html';
                     const isExcel = f.type === '.xlsx';
+                    const hrefPath = encodeResultPath(f.path || f.name);
+                    const href = publicApiHref((isHtml ? '/api/results/view/' : '/api/results/download/') + hrefPath);
                     html += `<div class="result-file-row">
-                        <span class="result-file-icon">${isExcel ? '📊' : '📋'}</span>
+                        <span class="result-file-icon">${isHtml ? '🔭' : (isExcel ? '📊' : '📋')}</span>
                         <span class="result-file-name">${escapeHtml(f.name)}</span>
-                        <a href="${publicApiHref('/api/results/download/' + encodeURIComponent(f.name))}"
-                           class="btn-download ${isExcel ? 'btn-dl-excel' : 'btn-dl-json'}" download>
-                            <i class="bi bi-download"></i> 下载
+                        <a href="${href}" ${isHtml ? 'target="_blank"' : 'download'}
+                           class="btn-download ${isHtml ? 'btn-dl-report' : (isExcel ? 'btn-dl-excel' : 'btn-dl-json')}">
+                            <i class="bi ${isHtml ? 'bi-eye' : 'bi-download'}"></i> ${isHtml ? '查看报告' : '下载'}
                         </a>
                     </div>`;
                 });
             } catch (e) {
-                html = '<p style="color:var(--muted);font-size:12px;padding:8px 0">无法加载结果文件列表</p>';
+                console.error('结果列表没有打开:', e);
+                html = '<p style="color:var(--muted);font-size:12px;padding:8px 0">结果列表没有打开，请稍后重试。</p>';
             }
         }
 
-        body.innerHTML = html || '<p style="color:var(--muted);font-size:12px;padding:8px 0">未检测到输出文件</p>';
+        body.innerHTML = html || '<p style="color:var(--muted);font-size:12px;padding:8px 0">没有找到结果文件。</p>';
 
         // Scroll into view
         section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
