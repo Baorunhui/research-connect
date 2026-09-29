@@ -100,7 +100,14 @@ class TaskExecutor:
     def _data_result_path(self, path) -> Optional[str]:
         if not path:
             return None
-        return Path(path).resolve().relative_to(DATA_DIR.resolve()).as_posix()
+        candidate = Path(str(path))
+        if not candidate.is_absolute():
+            candidate = DATA_DIR / candidate
+        try:
+            return candidate.resolve().relative_to(DATA_DIR.resolve()).as_posix()
+        except ValueError:
+            print("[citationclaw] result file is outside the data folder", flush=True)
+            return None
 
     async def _run_skill(self, skill_name: str, config: AppConfig, **kwargs):
         """Execute one pipeline skill with shared runtime context."""
