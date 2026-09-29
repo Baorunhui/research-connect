@@ -495,7 +495,7 @@ def plan_recall_queries(
     失败返回空列表，回退主题单查询（现状行为）。
     """
     ctx.check_cancel()
-    ctx.progress("recall", "查询规划：将主题转写为英文检索查询组")
+    ctx.progress("recall", "正在把主题写成检索词")
     system = (
         "You are an academic literature search planner. Given a survey topic in ANY language, "
         "produce 5-8 English search queries for retrieving relevant arXiv papers. "
@@ -713,7 +713,7 @@ def _local_recall_lane(
     )
     from filter import encode_queries  # noqa: E402
 
-    ctx.progress("recall", f"编码查询向量（{EMBED_MODEL_NAME}，{len(queries)} 条查询）")
+    ctx.progress("recall", f"正在整理检索词，共 {len(queries)} 条")
     embeddings = encode_queries(model, queries)
 
     mod21 = _load_step_module("2.1.retrieval_papers_bm25.py", "dpr_survey_step_21")
@@ -723,7 +723,7 @@ def _local_recall_lane(
     score_map: Dict[str, float] = {}
     papers_by_id: Dict[str, Dict[str, Any]] = {}
     for idx, query in enumerate(queries, start=1):
-        ctx.progress("recall", f"本地库召回 {idx}/{len(queries)}：{query[:60]}")
+        ctx.progress("recall", f"正在从本地论文库查找 {idx}/{len(queries)}")
         bm25_result = mod21.rank_papers_for_queries_via_supabase(
             [_build_bm25_query(query)],
             pool_cap,
@@ -774,7 +774,7 @@ def _deepxiv_recall_lane(
     start_date = (datetime.now(timezone.utc) - timedelta(days=max(int(fetch_days or 1), 1))).strftime("%Y-%m-%d")
     merged: Dict[str, Dict[str, Any]] = {}
     for idx, query in enumerate(queries, start=1):
-        ctx.progress("recall", f"DeepXiv 外部检索 {idx}/{len(queries)}：{query[:60]}")
+        ctx.progress("recall", f"正在从外部论文库查找 {idx}/{len(queries)}")
         hits = client.search(query, top_k=per_query_top_k, date_start=start_date, date_end=end_date)
         for rank, paper in enumerate(hits, start=1):
             pid = paper["paper_id"]
@@ -815,7 +815,7 @@ def _kaggle_recall_lane(
     merged: Dict[str, Dict[str, Any]] = {}
     with KaggleArxivIndex() as index:
         for idx, query in enumerate(queries, start=1):
-            ctx.progress("recall", f"Kaggle 快照粗筛 {idx}/{len(queries)}：{query[:60]}")
+            ctx.progress("recall", f"正在从论文快照里查找 {idx}/{len(queries)}")
             hits = index.search(query, top_k=per_query, date_start=start_date, date_end=end_date)
             for rank, paper in enumerate(hits, start=1):
                 pid = _normalize_arxiv_id(str(paper.get("paper_id") or "").strip())
@@ -856,7 +856,7 @@ def coarse_rank_papers(
     embed_pool = max(int(embed_pool or DEFAULT_EMBED_POOL), 1)
     if len(papers) <= embed_pool:
         return papers
-    ctx.progress("coarse", f"本地语义粗排：{len(papers)} 篇候选 → 收窄至 {embed_pool}")
+    ctx.progress("coarse", f"正在从 {len(papers)} 篇里先筛到 {embed_pool} 篇")
     started = time.time()
     try:
         model = _load_coarse_embedding_model()
@@ -890,7 +890,7 @@ def coarse_rank_papers(
         # 语义贴合度（观察指标）：头部候选对查询向量的平均最大余弦
         ctx.recall_coherence = round(float(np.sort(scores)[-min(10, len(scores)):].mean()), 4)
         elapsed = time.time() - started
-        ctx.progress("coarse", f"粗排完成：{len(papers)} → {len(picked)}（{elapsed:.0f}s，本地 bge 语义）")
+        ctx.progress("coarse", f"初筛完成：{len(papers)} 篇里留下 {len(picked)} 篇")
         _log(f"粗排完成：{len(papers)} → {len(picked)}，耗时 {elapsed:.0f}s")
         return picked
     except Exception as exc:  # noqa: BLE001
@@ -1094,8 +1094,8 @@ def recall_papers(
     ctx.funnel["fts_candidates"] = len(papers)
     _log(f"召回完成：{' / '.join(lane_tags) or '全部召回路为空'}，融合后候选池 {len(papers)} 篇")
     if not papers:
-        raise RuntimeError("各路召回（本地库/DeepXiv/种子引文/Kaggle 快照）均未命中论文，请调整主题或回溯范围")
-    ctx.progress("recall", f"召回完成，候选池 {len(papers)} 篇（{' / '.join(lane_tags)}）")
+        raise RuntimeError("没有找到相关论文。换一个更具体的主题，或把时间范围放宽后再试。")
+    ctx.progress("recall", f"找到 {len(papers)} 篇相关论文")
     return papers
 
 
@@ -1152,7 +1152,7 @@ def rerank_papers(ctx: _Ctx, papers: List[Dict[str, Any]], *, max_papers: int) -
     if len(papers) <= max_papers:
         return papers
     try:
-        ctx.progress("rerank", f"Reranker 精选 {max_papers} 篇（候选 {len(papers)}）")
+        ctx.progress("rerank", f"正在从 {len(papers)} 篇里挑出 {max_papers} 篇")
         reranker, rerank_model = _build_reranker()
         mod3 = _load_step_module("3.rank_papers.py", "dpr_survey_step_3")
         documents = [mod3.format_doc(p.get("title", ""), p.get("abstract", "")) for p in papers]
@@ -1178,8 +1178,9 @@ def rerank_papers(ctx: _Ctx, papers: List[Dict[str, Any]], *, max_papers: int) -
         ctx.progress("rerank", f"精排完成，入选 {len(selected)} 篇")
         return selected
     except Exception as exc:  # noqa: BLE001
-        ctx.warn(f"rerank 阶段失败，回退 RRF 序：{exc}")
-        ctx.progress("rerank", f"rerank 失败已回退 RRF 序（{exc}）")
+        print(f"[papers] survey rerank failed: {exc}", flush=True)
+        ctx.warn("精排没有完成，改用前面的排序继续。")
+        ctx.progress("rerank", "精排没有完成，改用前面的排序继续。")
         return papers[:max_papers]
 
 
@@ -1264,7 +1265,7 @@ def extract_papers(
 ) -> List[Dict[str, Any]]:
     ctx.check_cancel()
     total = len(papers)
-    ctx.progress("extract", f"逐篇结构化抽取（{total} 篇，并发 {concurrency}）", current=0, total=total)
+    ctx.progress("extract", f"正在抽出 {total} 篇的要点", current=0, total=total)
     results: Dict[int, Dict[str, Any]] = {}
     lock = threading.Lock()
     done = [0]
@@ -1431,7 +1432,7 @@ def cluster_papers(
     ctx.check_cancel()
     n = len(extractions)
     texts = [cluster_embedding_text(e) for e in extractions]
-    ctx.progress("cluster", f"论文向量编码（{n} 篇）")
+    ctx.progress("cluster", f"正在比较这 {n} 篇的主题")
     model = _load_embedding_model()
     from filter import compute_embeddings  # noqa: E402
 
@@ -1491,7 +1492,7 @@ def cluster_papers(
         cluster["keywords"] = [str(kw) for kw in (info.get("keywords") or [])][:5]
 
     _log(f"聚类完成：{method}，{len(clusters)} 簇：" + "、".join(c["name_zh"] for c in clusters))
-    ctx.progress("cluster", f"聚类完成（{method}）：{len(clusters)} 个主题簇")
+    ctx.progress("cluster", f"已分成 {len(clusters)} 个主题")
     return clusters
 
 
@@ -1533,7 +1534,7 @@ def deep_read_core_papers(
         return
     targets = _deep_read_targets(clusters, extractions)
     if not targets:
-        ctx.progress("deepread", "无需深读（无可用 PDF 或已有缓存）")
+        ctx.progress("deepread", "这些论文已经有全文，跳过细读。")
         return
     gd = _load_generate_docs_module()
     SURVEY_TEXTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1576,7 +1577,7 @@ def deep_read_core_papers(
         for future in as_completed(futures):
             future.result()
     got = sum(1 for i in targets if extractions[i].get("full_text"))
-    ctx.progress("deepread", f"深读完成：{got}/{total} 篇获得全文（缓存目录 {SURVEY_TEXTS_DIR.name}/）")
+    ctx.progress("deepread", f"细读完成：{got}/{total} 篇读到了全文")
 
 
 # --------------------------------------------------------------------------- #
@@ -1718,7 +1719,7 @@ def build_outline(
     client_factory: Callable[[], DeepSeekClient],
 ) -> Dict[str, Any]:
     ctx.check_cancel()
-    ctx.progress("outline", "生成报告大纲（导演模式，每节标注覆盖簇）")
+    ctx.progress("outline", "正在列大纲")
     cluster_lines = [
         (
             f"  - 簇 {c['cluster_id']}: 主题=\"{c['name_zh']}\", "
@@ -2119,7 +2120,7 @@ def run_survey(
                 ctx.warn(f"DeepXiv 客户端不可用（种子全文与引文富化将走兜底链路）：{exc}")
         ctx.progress("seed", "抓取种子论文全文")
         seed_text = fetch_seed_text(seed_paper, deepxiv=deepxiv_client_obj, log=_log)
-        ctx.progress("seed", f"种子分析中：{seed_text.get('title') or seed_text.get('arxiv_id')}"[:90])
+        ctx.progress("seed", "正在分析种子论文")
         seed_analysis = analyze_seed(seed_text, factory)
         if not seed_analysis:
             ctx.warn("种子分析失败，本次综述退化为无种子模式（主题归纳范式）")
@@ -2128,7 +2129,7 @@ def run_survey(
             n_cited = len(seed_analysis.get("cited_arxiv_ids") or [])
             ctx.progress("seed", f"种子分析完成：{n_queries} 条查询 / {n_cited} 条引文 / {len(seed_analysis.get('dataset_names') or [])} 个数据集")
             if seed_analysis.get("cited_arxiv_ids"):
-                ctx.progress("seed", f"引文直取中（arXiv API，{n_cited} 条）")
+                ctx.progress("seed", f"正在读取种子论文引用的 {n_cited} 篇")
                 seed_citations = fetch_citation_papers(
                     seed_analysis["cited_arxiv_ids"], deepxiv=deepxiv_client_obj, log=_log
                 )
@@ -2232,7 +2233,7 @@ def run_survey(
         for src, stat in lane_stats_final.items()
     )
     if lane_summary:
-        ctx.progress("analyse", f"召回路统计：{lane_summary}")
+        print(f"[papers] survey lanes: {lane_summary}", flush=True)
 
     clusters = cluster_papers(ctx, extractions, client_factory=factory)
     ctx.check_cancel()
