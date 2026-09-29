@@ -1221,9 +1221,17 @@ window.PrivateDiscussionChat = (function () {
           : resp.status === 429
             ? '模型暂时忙，请稍后再问。'
             : '这次没有答上来，请稍后重试。';
-        aiAnswerDiv.textContent = chatError;
+        let shown = chatError;
+        try {
+          const parsed = JSON.parse(errorText || '');
+          const serverMsg = parsed && typeof parsed.error === 'string' ? parsed.error : '';
+          if (serverMsg && serverMsg.length <= 180 && !/https?:\/\/|Traceback|\.py\b/.test(serverMsg)) {
+            shown = serverMsg;
+          }
+        } catch (parseErr) { /* 不是 JSON 就用上面的短句 */ }
+        aiAnswerDiv.textContent = shown;
         if (statusEl) {
-          statusEl.textContent = chatError;
+          statusEl.textContent = shown;
           statusEl.style.color = '#c00';
         }
         return;

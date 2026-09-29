@@ -3110,6 +3110,10 @@ class Handler(SimpleHTTPRequestHandler):
         payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
         cfg = _load_local_chat_config()
         api_key = _resolve_chat_api_key(cfg)
+        if not str(cfg.get("base_url") or "").strip():
+            return self._json({"ok": False, "error": "还没有模型地址。请打开页面设置填写。"}, status=400)
+        if not api_key:
+            return self._json({"ok": False, "error": "还没有可用的模型密钥。请打开页面设置填写。"}, status=400)
         body = build_chat_request_payload(cfg["model"], payload.get("messages") or [], max_tokens=payload.get("max_tokens"))
         endpoint = _build_chat_endpoint(cfg["base_url"])
         req = urllib.request.Request(
@@ -3121,10 +3125,22 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             upstream = urllib.request.urlopen(req, timeout=120)
         except urllib.error.HTTPError as exc:
-            upstream_status = getattr(exc, "code", 502)
-            return self._json({"ok": False, "error": f"upstream returned {upstream_status}"}, status=502)
+            code = int(getattr(exc, "code", 502) or 502)
+            print(f"[papers] chat upstream HTTP {code}", flush=True)
+            try:
+                exc.close()
+            except Exception:
+                pass
+            if code in (401, 403):
+                message, status = "模型没有接受这次请求。请打开页面设置检查密钥。", code
+            elif code == 429:
+                message, status = "模型暂时忙，请稍后再问。", 429
+            else:
+                message, status = "这次没有答上来，请稍后重试。", 502
+            return self._json({"ok": False, "error": message}, status=status)
         except urllib.error.URLError as exc:
-            return self._json({"ok": False, "error": f"upstream unavailable: {exc.reason}"}, status=502)
+            print(f"[papers] chat upstream unavailable: {exc.reason}", flush=True)
+            return self._json({"ok": False, "error": "没有连上模型，请稍后重试。"}, status=502)
         upstream_status = upstream.getcode() or 200
         self.send_response(upstream_status)
         self.send_header("Content-Type", "text/event-stream")
