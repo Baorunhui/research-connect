@@ -442,7 +442,6 @@ window.DPRWorkflowRunner = (function () {
           : status === 'in_progress'
             ? '#1565c0'
             : '#666';
-    const command = Array.isArray(run.command) ? run.command.join(' ') : '';
     const logLines = logText ? logText.split('\n').length : 0;
     const logHtml = logText
       ? `<details data-dpr-workflow-log-details="1" ${rawLogExpanded ? 'open' : ''} style="margin-top:4px;">
@@ -462,7 +461,6 @@ window.DPRWorkflowRunner = (function () {
           <span style="margin-left:8px;">${escapeHtml(formatRunTime(run.created_at))}</span>
         </div>
       </div>
-      <div style="font-size:12px; color:#666; margin-bottom:8px;">${escapeHtml(command)}</div>
       ${renderStepPanel(run)}
       ${logHtml}
     `;
@@ -490,10 +488,13 @@ window.DPRWorkflowRunner = (function () {
         await new Promise((resolve) => setTimeout(resolve, 800));
         return refreshLocalRun(runId, retryCount + 1);
       }
-      console.error(e);
-      setStatus(`进度刷新失败：${e.message || e}`, '#c00');
-      stopPolling();
-      loadRecentRuns();
+      if (e && e.status === 404) {
+        stopPolling();
+        setStatus('没有找到这次生成。', '#c00');
+        loadRecentRuns();
+        return;
+      }
+      setStatus('进度暂时没刷新，正在重试。', '#c90');
     }
   };
 
