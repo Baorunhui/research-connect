@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import ipaddress
 import json
 import mimetypes
 import os
@@ -13,6 +14,7 @@ import posixpath
 import re
 import signal
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -22,7 +24,7 @@ from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 from research_connect_core.llm import RetryPolicy, create_openai_client
 
 try:
@@ -2537,16 +2539,76 @@ def _resolve_summarize_source(kind: str, paper_meta: dict[str, Any]) -> tuple[st
     return ("pdf" if kind == "pdf" else "web"), venue
 
 
+def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _is_public_host(host: str) -> bool:
+    name = str(host or "").strip().lower().rstrip(".")
+    if not name or name == "localhost" or name.endswith(".localhost") or name.endswith(".local") or name.endswith(".internal"):
+        return False
+    try:
+        return _is_public_ip(ipaddress.ip_address(name))
+    except ValueError:
+        pass
+    try:
+        infos = socket.getaddrinfo(name, None)
+    except socket.gaierror:
+        return False
+    addresses = [ipaddress.ip_address(item[4][0]) for item in infos]
+    return bool(addresses) and all(_is_public_ip(ip) for ip in addresses)
+
+
+def _require_public_http_url(url: str) -> str:
+    """论文网页只访问公网的 http(s)。本机、内网和文件链接直接拒绝。"""
+    text = str(url or "").strip()
+    parsed = urlparse(text)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or not _is_public_host(parsed.hostname):
+        print(f"[papers] refused page url host={parsed.hostname or '-'}", flush=True)
+        raise ValueError("这个链接不能打开。请换一篇论文的网页链接。")
+    return text
+
+
+def _fetch_public_page(url: str, *, read_limit: int) -> bytes:
+    import urllib.error
+    import urllib.request
+
+    class _StopRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    current = _require_public_http_url(url)
+    opener = urllib.request.build_opener(_StopRedirect)
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; daily-paper-reader/1.0)"}
+    for _hop in range(4):
+        req = urllib.request.Request(current, headers=headers)
+        try:
+            with opener.open(req, timeout=25) as resp:
+                return resp.read(read_limit + 1)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {301, 302, 303, 307, 308}:
+                raise
+            location = exc.headers.get("Location") if exc.headers else ""
+            try:
+                exc.close()
+            except Exception:
+                pass
+            current = _require_public_http_url(urljoin(current, str(location or "")))
+    raise ValueError("这个链接不能打开。请换一篇论文的网页链接。")
+
+
 def _fetch_web_text(url: str) -> tuple[str, str]:
     """抓取论文网页，尽力提取标题与正文纯文本（元组：标题, 正文）。失败抛异常。"""
     from html.parser import HTMLParser
 
-    data = _http_get_with_retry(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; daily-paper-reader/1.0)"},
-        timeout=25,
-        read_limit=2 * 1024 * 1024,
-    ).decode("utf-8", errors="replace")
+    data = _fetch_public_page(url, read_limit=2 * 1024 * 1024).decode("utf-8", errors="replace")
 
     class _TextExtractor(HTMLParser):
         def __init__(self):
