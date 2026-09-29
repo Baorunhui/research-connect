@@ -103,7 +103,8 @@
         var payload = states[step.key] || {};
         var state = payload.state || '';
         var chip = textNode('span', 'dpr-task-progress-step is-' + (state || 'pending'), step.label || step.key);
-        chip.title = state || 'pending';
+        var stateText = { started: '进行中', running: '进行中', completed: '已完成', skipped: '跳过', failed: '失败' }[state] || '';
+        if (stateText) chip.title = stateText;
         strip.appendChild(chip);
       });
       container.appendChild(strip);
@@ -117,7 +118,14 @@
       var payload = ev.payload || {};
       var li = textNode('li', 'paper-summarize-progress-item', '');
       li.appendChild(textNode('span', 'paper-summarize-progress-dot', ''));
-      var stage = payload.step_label || ev.stage || ev.event_type || '';
+      var stage = payload.step_label || '';
+      if (!stage) {
+        var matched = steps.find(function (step) { return step.key === (payload.step || ev.stage); });
+        stage = matched && matched.label ? matched.label : '';
+      }
+      if (!stage && ev.stage && String(ev.stage).indexOf('step_') !== 0 && String(ev.stage).indexOf('run.') !== 0) {
+        stage = ev.stage;
+      }
       if (stage) li.appendChild(textNode('span', 'paper-summarize-progress-stage', stage));
       li.appendChild(textNode('span', 'paper-summarize-progress-msg', (ev.message || '') + formatSuffix(ev)));
       list.appendChild(li);

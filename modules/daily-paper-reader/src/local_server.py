@@ -249,16 +249,16 @@ def update_env_file(path: Path, values: dict[str, str]) -> None:
 # main.py 通过 run_step() 打印 `[INFO] Step X - 标签: 命令` 作为步骤锚点；
 # 这里把子进程 stdout 里的锚点解析成 run.progress 事件，供前端渲染步骤清单。
 PIPELINE_STEPS: list[tuple[str, str, str]] = [
-    # (步骤号, step key, 中文名)
-    ("0", "step_0_enrich", "LLM 扩充检索关键词"),
-    ("1", "step_1_fetch", "抓取 arXiv 论文"),
-    ("2.1", "step_2_1_bm25", "BM25 关键词召回"),
-    ("2.2", "step_2_2_embedding", "向量语义召回"),
-    ("2.3", "step_2_3_rrf", "RRF 融合候选池"),
-    ("3", "step_3_rerank", "Reranker 重排"),
-    ("4", "step_4_llm_refine", "LLM 精炼打分"),
-    ("5", "step_5_select", "选择论文（精读/速读）"),
-    ("6", "step_6_generate", "生成日报文档"),
+    # (步骤号, step key, 页面上的名称)
+    ("0", "step_0_enrich", "扩充检索词"),
+    ("1", "step_1_fetch", "抓取新论文"),
+    ("2.1", "step_2_1_bm25", "按关键词查找"),
+    ("2.2", "step_2_2_embedding", "按语义查找"),
+    ("2.3", "step_2_3_rrf", "合并候选"),
+    ("3", "step_3_rerank", "精排"),
+    ("4", "step_4_llm_refine", "打分"),
+    ("5", "step_5_select", "选出精读和速读"),
+    ("6", "step_6_generate", "写成日报"),
 ]
 _STEP_INDEX: dict[str, tuple[str, str]] = {num: (key, label) for num, key, label in PIPELINE_STEPS}
 _STEP_START_RE = re.compile(r"^\[INFO\] Step (\d+(?:\.\d+)?) - ([^:]+):")
@@ -333,7 +333,7 @@ class _StepTracker:
                 eta_seconds = ((total - current) / rate) if rate > 0 and total >= current else None
                 payload: dict[str, Any] = {
                     "step": "step_2_2_embedding",
-                    "step_label": "向量语义召回",
+                    "step_label": "按语义查找",
                     "state": "running",
                     "current": current,
                     "total": total,
@@ -347,7 +347,7 @@ class _StepTracker:
                         "run.progress",
                         self._run_id,
                         stage="step_2_2_embedding",
-                        message="正在编码候选论文向量",
+                        message="正在按语义查找",
                         current=current,
                         total=total,
                         payload=payload,
@@ -371,7 +371,7 @@ class _StepTracker:
             rate = current / elapsed if current > 0 and elapsed > 0 else 0.0
             payload = {
                 "step": "step_6_generate",
-                "step_label": "生成日报文档",
+                "step_label": "写成日报",
                 "state": "running",
                 "current": current,
                 "total": total,
