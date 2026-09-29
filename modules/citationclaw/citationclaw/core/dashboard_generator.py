@@ -23,10 +23,10 @@ def _escape(text):
     return html_module.escape(str(text)) if text else ''
 
 
-def _catalog_search(query: str, *, authors: bool = False) -> str:
+def _catalog_search(query: str, *, authors: bool = False, institutions: bool = False) -> str:
     """没有原文链接时打开 OpenAlex。这台服务器访问不了谷歌学术。"""
     text = " ".join(str(query or "").split())[:160]
-    kind = "authors" if authors else "works"
+    kind = "institutions" if institutions else "authors" if authors else "works"
     if not text:
         return f"https://openalex.org/{kind}"
     return f"https://openalex.org/{kind}?filter=default.search:{quote(text)}"
@@ -1897,8 +1897,7 @@ a.author-pill:hover { background: var(--teal-light); border-color: var(--teal); 
                     )
             meta_parts = []
             if institution:
-                _inst_q = institution.replace(" ", "+")[:50]
-                meta_parts.append(f'<a href="https://www.google.com/search?q={_inst_q}" target="_blank" rel="noopener" class="pdi-inst-tag" style="text-decoration:none;cursor:pointer">{institution[:55]}</a>')
+                meta_parts.append(f'<a href="{_catalog_search(institution, institutions=True)}" target="_blank" rel="noopener" class="pdi-inst-tag" style="text-decoration:none;cursor:pointer">{institution[:55]}</a>')
             if country:
                 meta_parts.append(f'<span class="pdi-country-tag">{country}</span>')
             meta_html = f'<div class="pdi-meta-row">{"".join(meta_parts)}</div>' if meta_parts else ""

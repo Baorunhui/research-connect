@@ -934,7 +934,7 @@ function initIndexPage() {
                 appendIndexLog({
                     timestamp: new Date().toISOString(),
                     level: 'WARNING',
-                    message: '超过 3 分钟未收到新消息，任务可能已结束或遇到问题。请检查服务端状态或尝试取消重试。'
+                    message: '还在查。这一步有时要好几分钟，页面没有卡住。'
                 });
             }
         }, 180000);
@@ -998,7 +998,7 @@ function initIndexPage() {
         stopRunTimer();
         resetRunBtn();
         GlobalProgress.hide();
-        const message = (data && (data.message || data.error)) ? (data.message || data.error) : '任务执行出错，请检查日志后重试。';
+        const message = (data && (data.message || data.error)) ? (data.message || data.error) : '这次没有完成，请稍后重试。';
         appendIndexLog({
             timestamp: new Date().toISOString(),
             level: 'ERROR',

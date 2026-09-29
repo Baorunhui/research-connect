@@ -39,7 +39,7 @@ def page_log_message(message: str) -> Optional[str]:
     if _LEAK.search(text) or _CHATTER.search(text):
         return None
     chinese = len(re.findall(r"[\u4e00-\u9fff]", text))
-    if chinese < 6:
+    if chinese < 4:
         return None
     return text
 

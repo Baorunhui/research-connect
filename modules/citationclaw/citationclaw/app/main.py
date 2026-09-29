@@ -359,9 +359,10 @@ async def import_task(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"[citationclaw] import failed: {e}", flush=True)
         return JSONResponse(
             status_code=500,
-            content={"status": "error", "message": f"导入失败: {str(e)}"}
+            content={"status": "error", "message": "导入失败，请稍后重试。"}
         )
     finally:
         if temp_path and temp_path.exists():
