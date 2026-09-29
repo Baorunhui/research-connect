@@ -1172,7 +1172,9 @@ function initIndexPage() {
             }
         } catch (e) {
             console.error('启动失败:', e);
-            alert('启动失败，请检查控制台');
+            const raw = e && e.message ? String(e.message) : '';
+            const noisy = /https?:\/\/|failed to fetch|networkerror|load failed/i.test(raw);
+            alert(!raw || noisy || raw.length > 180 ? '没有连上服务器，请稍后重试。' : raw);
             resetRunBtn();
         }
     });
