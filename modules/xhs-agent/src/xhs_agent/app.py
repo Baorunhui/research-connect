@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -13,6 +15,40 @@ from .webui import INDEX_HTML
 
 
 app = FastAPI(title="xhs_agent", version="0.1.0")
+
+_STAGE_TEXT = {
+    "brief": "正在整理论文要点",
+    "writer": "正在写正文和标题",
+    "card": "正在排卡片",
+    "qa": "正在核对事实",
+}
+_jobs: OrderedDict[str, dict] = OrderedDict()
+_jobs_lock = threading.Lock()
+_MAX_JOBS = 30
+
+
+class _JobProgress:
+    def __init__(self, job_id: str) -> None:
+        self.job_id = job_id
+
+    def progress(self, message: str, *, stage: str, **kwargs) -> None:
+        del kwargs
+        text = _STAGE_TEXT.get(stage) or message
+        with _jobs_lock:
+            job = _jobs.get(self.job_id)
+            if job and job["status"] == "running":
+                job["stage"] = stage
+                job["message"] = text
+
+
+def _remember_job(job_id: str, payload: dict) -> None:
+    _jobs[job_id] = payload
+    _jobs.move_to_end(job_id)
+    while len(_jobs) > _MAX_JOBS:
+        oldest = next((key for key, job in _jobs.items() if job["status"] != "running"), None)
+        if oldest is None:
+            break
+        _jobs.pop(oldest, None)
 
 
 def _output_root() -> Path:
@@ -34,15 +70,71 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/v1/xhs/packages", response_model=SocialContentResponse)
-def create_package(request: SocialContentRequest) -> SocialContentResponse:
+def _execute(request: SocialContentRequest, runtime: _JobProgress | None = None) -> SocialContentResponse:
     output_root = _output_root()
     offline = os.getenv("XHS_AGENT_OFFLINE", "false").lower() in {"1", "true", "yes"}
+    pipeline = XHSPipeline.offline() if offline else XHSPipeline()
+    pipeline.config = _pipeline_config()
+    if runtime is not None:
+        pipeline.runtime = runtime
+    result = pipeline.run(request)
+    return write_package(result, output_root)
+
+
+def _run_job(job_id: str, request: SocialContentRequest) -> None:
     try:
-        pipeline = XHSPipeline.offline() if offline else XHSPipeline()
-        pipeline.config = _pipeline_config()
-        result = pipeline.run(request)
-        return write_package(result, output_root)
+        response = _execute(request, runtime=_JobProgress(job_id))
+    except Exception as exc:
+        response = SocialContentResponse(
+            request_id=job_id,
+            status="failed",
+            error=str(exc),
+        )
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is None:
+            return
+        job["response"] = response.model_dump()
+        job["status"] = "failed" if response.status == "failed" else "completed"
+        job["message"] = response.error or "已完成"
+
+
+@app.post("/v1/xhs/jobs")
+def start_job(request: SocialContentRequest) -> dict[str, str]:
+    job_id = (request.request_id or "").strip() or f"web-{os.urandom(5).hex()}"
+    request = request.model_copy(update={"request_id": job_id})
+    with _jobs_lock:
+        existing = _jobs.get(job_id)
+        if existing and existing["status"] == "running":
+            return {
+                "job_id": job_id,
+                "status": "running",
+                "stage": existing.get("stage") or "brief",
+                "message": existing.get("message") or _STAGE_TEXT["brief"],
+            }
+        _remember_job(job_id, {
+            "status": "running",
+            "stage": "brief",
+            "message": _STAGE_TEXT["brief"],
+            "response": None,
+        })
+    threading.Thread(target=_run_job, args=(job_id, request), daemon=True).start()
+    return {"job_id": job_id, "status": "running", "stage": "brief", "message": _STAGE_TEXT["brief"]}
+
+
+@app.get("/v1/xhs/jobs/{job_id}")
+def get_job(job_id: str) -> dict:
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        return {"job_id": job_id, **job}
+
+
+@app.post("/v1/xhs/packages", response_model=SocialContentResponse)
+def create_package(request: SocialContentRequest) -> SocialContentResponse:
+    try:
+        return _execute(request)
     except Exception as exc:
         return SocialContentResponse(
             request_id=request.request_id,

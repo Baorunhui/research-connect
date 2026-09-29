@@ -49,6 +49,7 @@ except Exception:  # pragma: no cover - 兼容 package 导入路径
 # 本进程都能拿到 DEEPSEEK_API_KEY 等密钥；否则 sitecustomize 在脚本模式下未必触发。
 load_local_env()
 RUNS_DIR = ROOT_DIR / ".local-runs"
+_SCHEDULER_RUNNING = False
 CONFIG_PATH = ROOT_DIR / "config.yaml"
 SECRET_PATH = ROOT_DIR / "secret.private"
 ENV_PATH = ROOT_DIR / ".env"
@@ -2059,7 +2060,7 @@ def _generate_subscription_candidates(intent: str, tag_hint: str = "") -> dict[s
     api_key = _resolve_chat_api_key(cfg) or resolve_llm_api_key()
     if not api_key:
         raise ValueError(
-            "未配置 LLM API Key：请在「本地服务设置」里填 API Key，或在 .env 配置 DEEPSEEK_API_KEY"
+            "还没有可用的模型密钥。请打开页面设置填写。"
         )
     model = cfg["model"] or resolve_llm_model()
     base_url = cfg["base_url"] or resolve_llm_base_url()
@@ -2468,7 +2469,11 @@ class Handler(SimpleHTTPRequestHandler):
                 "content": CONFIG_PATH.read_text(encoding="utf-8") if CONFIG_PATH.exists() else "",
             })
         if parsed.path == "/api/local/config/structured":
-            return self._json({"ok": True, "local": _load_local_chat_full()})
+            return self._json({
+                "ok": True,
+                "local": _load_local_chat_full(),
+                "scheduler_running": _SCHEDULER_RUNNING,
+            })
         if parsed.path == "/api/local/secret":
             return self._json({
                 "ok": True,
@@ -2971,6 +2976,8 @@ def main() -> None:
             on_fire = lambda: _dispatch_daily_pipeline()
             sched_thread = SchedulerThread(sched_time, on_fire)
             sched_thread.start()
+            global _SCHEDULER_RUNNING
+            _SCHEDULER_RUNNING = True
             print(f"[local-server] 定时器已启动，每天 {sched_time} 自动跑流水线", flush=True)
 
     print(f"[local-server] serving http://{args.host}:{args.port}", flush=True)

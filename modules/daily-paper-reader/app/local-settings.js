@@ -275,8 +275,8 @@
     const list = (profiles || []).filter((p) => p && typeof p === 'object');
     container.innerHTML =
       '<div class="dpr-sub-section">' +
-      '  <h3 style="margin:16px 0 4px;">📚 订阅标签（intent_profiles）</h3>' +
-      '  <p style="font-size:12px;color:#666;margin:0 0 10px;">每个词条至少填一个标签即可；关键词/意图查询为可选增强（留空时会自动用标签本身召回）。保存后写回 config.yaml，改动过的关键词/查询会在下次运行重算向量缓存。</p>' +
+      '  <h3 style="margin:16px 0 4px;">订阅标签</h3>' +
+      '  <p style="font-size:12px;color:#666;margin:0 0 10px;">每个词条至少填一个标签。关键词可以留空，留空时用标签本身去找论文。保存后，下次生成日报会按新词重算。</p>' +
       '  <div id="dpr-sub-profile-list"></div>' +
       '  <button type="button" class="secret-gate-btn secondary" id="dpr-sub-add-profile" data-dpr-sub-add>+ 新增词条</button>' +
       '</div>';
@@ -448,7 +448,7 @@
     if (refs.qEl) refs.qEl.value = qResult.text;
     refs.statusEl.style.color = '#080';
     refs.statusEl.textContent = '已覆盖写入 ' + kwResult.count + ' 个关键词、' + qResult.count +
-      ' 条意图查询。点「保存」写回 config.yaml 后，下次运行生效。';
+      ' 条检索句。点「保存」后，下次生成日报生效。';
     refs.candsEl.innerHTML = '';
     refs.applyEl.style.display = 'none';
   }
@@ -480,9 +480,9 @@
     overlay.className = 'secret-gate-overlay dpr-local-settings-overlay';
     overlay.style.display = 'none';
     overlay.innerHTML =
-      '<div class="secret-gate-modal" role="dialog" aria-modal="true" aria-label="本地服务设置">' +
-      '  <h2 style="margin-top:0;">⚙️ 本地服务设置</h2>' +
-      '  <p style="font-size:13px;color:#555;margin:0 0 14px;">修改会直接写回本机 <code>config.yaml</code>，重启后对本地服务生效。</p>' +
+      '<div class="secret-gate-modal" role="dialog" aria-modal="true" aria-label="页面设置">' +
+      '  <h2 style="margin-top:0;">页面设置</h2>' +
+      '  <p style="font-size:13px;color:#555;margin:0 0 14px;">模型和精排保存后马上生效，不用重启。</p>' +
       '  <div class="dpr-settings-field"><label>API 端点（OpenAI 兼容）</label><input type="text" id="dpr-settings-chat-baseurl" placeholder="https://api.sinksilk.com:58443" /></div>' +
       '  <div class="dpr-settings-field"><label>API Key（留空表示沿用 .env，不修改）</label><input type="password" id="dpr-settings-chat-apikey" placeholder="sk-..." autocomplete="off" /></div>' +
       '  <div class="dpr-settings-field"><label>AI 问答模型</label>' +
@@ -500,10 +500,10 @@
       '    <p style="font-size:12px;color:#666;margin:4px 0 0;">向当前端点+模型发一次最小对话请求（max_tokens=8），成功会显示耗时。</p></div>' +
       '  <div class="dpr-settings-field"><label>召回模式（日报数据来源）</label>' +
       '    <select id="dpr-settings-recall-mode">' +
-      '      <option value="supabase">云端（Supabase RPC，默认）</option>' +
-      '      <option value="local">本地（arXiv API 增量 + 本地 FTS/embedding，不依赖 Supabase）</option>' +
+      '      <option value="supabase">云端（默认）</option>' +
+      '      <option value="local">本地抓取（不依赖云端库）</option>' +
       '    </select>' +
-      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">云端模式快但依赖共享数据库（偶发时段性超时）；本地模式每次运行先从 arXiv API 抓取窗口增量（约 3-5 分钟），再用本地索引 + embedding 精排（默认 qwen3-embedding，失败自动降级本地 bge-small），共享库故障时零影响。保存后下一次流水线生效。</p></div>' +
+      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">云端更快，但依赖共享库。本地每次会先抓一批新论文，大约多等几分钟。保存后，下一次生成按新选择运行。</p></div>' +
       '  <div class="dpr-settings-field"><label>Reranker 精选后端（日报与综述共用）</label>' +
       '    <select id="dpr-settings-rerank-profile">' +
       '      <option value="auto">自动（跟随 .env，缺省远程）</option>' +
@@ -512,11 +512,12 @@
       '      <option value="siliconflow-qwen3-0.6b">远程 · SiliconFlow</option>' +
       '      <option value="local-qwen3-0.6b">本地 GPU（Qwen3-Reranker-0.6B）</option>' +
       '    </select>' +
-      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">默认远程优先：不用本机 GPU、无需下载模型；公益端点实测速度与本地 GPU 打平。选本地需已安装 requirements-local-models.txt。保存后下一次流水线/综述即生效，无需重启服务。</p></div>' +
-      '  <div class="dpr-settings-field"><label><input type="checkbox" id="dpr-settings-sched-enabled" /> 每天定时自动跑流水线</label></div>' +
+      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">默认用远程精排，不用这台机器的显卡。保存后，下一次日报和综述就按新选择运行。</p></div>' +
+      '  <div class="dpr-settings-field"><label><input type="checkbox" id="dpr-settings-sched-enabled" /> 每天定时自动跑流水线</label>' +
+      '    <p id="dpr-settings-sched-hint" style="font-size:12px;color:#666;margin:4px 0 0;">正在确认定时器是否已启动。</p></div>' +
       '  <div class="dpr-settings-field"><label>定时时间（本地 24 小时制）</label><input type="text" id="dpr-settings-sched-time" placeholder="18:30" /></div>' +
       '  <div class="dpr-settings-field"><label><input type="checkbox" id="dpr-settings-run-enrich" /> 触发日报时启用 Step 0：LLM 扩充检索关键词</label>' +
-      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">开启后每次手动触发（含快速抓取、保存并生成日报）会先让 LLM 根据订阅关键词扩充检索词并写回 config.yaml；默认关闭。该偏好在本地浏览器记忆，两个入口共用。</p></div>' +
+      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">打开后，每次生成日报会先用模型把订阅词扩成更多检索词。默认关闭。这个开关记在当前浏览器里。</p></div>' +
       '  <div class="dpr-settings-field"><label>默认运行模式（快速抓取弹窗与本面板共用）</label>' +
       '    <select id="dpr-settings-fetch-mode">' +
       '      <option value="auto">自动（10 天走标准精读、30 天走速览）</option>' +
@@ -537,7 +538,7 @@
       '  <div id="dpr-settings-status" style="min-height:18px;font-size:12px;color:#666;margin:8px 0;"></div>' +
       '  <div class="secret-gate-actions">' +
       '    <button type="button" class="secret-gate-btn secondary" id="dpr-settings-cancel">取消</button>' +
-      '    <button type="button" class="secret-gate-btn secondary" id="dpr-settings-save" title="仅保存配置到 config.yaml，不跑流水线">保存</button>' +
+      '    <button type="button" class="secret-gate-btn secondary" id="dpr-settings-save" title="只保存，不生成日报">保存</button>' +
       '    <button type="button" class="secret-gate-btn primary" id="dpr-settings-save-run" title="保存配置后触发每日流水线，生成新的论文日报">🚀 保存并生成日报</button>' +
       '  </div>' +
       '</div>';
@@ -728,6 +729,12 @@
       }
       if (enabledEl) enabledEl.checked = Boolean(sched.enabled);
       if (timeEl) timeEl.value = sched.time || '';
+      const schedHint = document.getElementById('dpr-settings-sched-hint');
+      if (schedHint) {
+        schedHint.textContent = data.scheduler_running
+          ? '定时器已在运行。改时间后要重启服务，才会按新时间跑。'
+          : '当前服务没有启动定时器。勾选只会先记下来，不会自动跑。';
+      }
       const rerankEl = document.getElementById('dpr-settings-rerank-profile');
       if (rerankEl) {
         const savedProfile = String((local.rerank && local.rerank.profile) || '').trim();
