@@ -480,10 +480,10 @@ async def fetch_scholar_papers(request: ScholarProfileRequest):
         local_hits = enrich_papers_local(papers)
         return {"papers": papers, "total": len(papers), "local_metadata_hits": local_hits}
     except ValueError as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
+        return JSONResponse(status_code=400, content={"error": _public_failure(e)})
     except Exception as e:
-        return JSONResponse(status_code=500,
-            content={"error": f"爬取失败: {str(e)}"})
+        print(f"[citationclaw] scholar papers failed: {e}", flush=True)
+        return JSONResponse(status_code=500, content={"error": _public_failure(e)})
 
 
 @app.get("/api/paper/meta")

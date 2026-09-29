@@ -24,8 +24,8 @@ def no_papers_message(profile_url: str, scholar_blocked: bool,
     """User-facing reason why a profile URL yielded no paper list."""
     name = (parse_qs(urlparse(profile_url or "").query).get("name") or [""])[0].strip()
     if name and s2_rate_limited:
-        return ("未获取到学者论文列表：Semantic Scholar 免 key 公共接口当前被限流（HTTP 429），"
-                "不是姓名问题。请过几分钟重试、在设置里填 S2 API Key，或上传保存的 Google Scholar 主页 HTML。")
+        return ("未获取到学者论文列表：论文目录暂时限流（HTTP 429），不是姓名问题。"
+                "请过几分钟重试，或上传保存的主页 HTML。")
     if name:
         return (f"未获取到学者论文列表：Semantic Scholar 按姓名「{name}」没有找到论文，"
                 "请检查英文名拼写，或上传保存的 Google Scholar 主页 HTML。")
