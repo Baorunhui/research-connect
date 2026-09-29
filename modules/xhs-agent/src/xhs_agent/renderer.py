@@ -181,9 +181,18 @@ def screenshot_html_cards(
             args=["--no-sandbox", "--disable-dev-shm-usage"],
         )
         page = browser.new_page(viewport={"width": WIDTH, "height": HEIGHT}, device_scale_factor=1)
+
+        def allow_local(route):
+            url = route.request.url
+            if url.startswith(("file:", "data:", "blob:")):
+                route.continue_()
+                return
+            route.abort()
+
+        page.route("**/*", allow_local)
         for card, html_path in html_paths:
             path = out_dir / f"xhs-{card.page:02d}-{safe_name(card.role)}.png"
-            page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
+            page.goto(html_path.resolve().as_uri(), wait_until="domcontentloaded", timeout=10000)
             page.locator(selector).first.screenshot(path=str(path))
             paths.append(path)
         browser.close()
