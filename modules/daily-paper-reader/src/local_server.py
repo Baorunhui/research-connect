@@ -582,7 +582,7 @@ class RunStore:
 
     def _public_run(self, run: dict[str, Any]) -> dict[str, Any]:
         public = dict(run)
-        for key in ("secret_env", "command", "log_path", "config_path"):
+        for key in ("secret_env", "command", "log_path", "config_path", "returncode"):
             public.pop(key, None)
         return public
 
@@ -737,13 +737,20 @@ class RunStore:
                 latest = self.get(run_id) or {}
                 was_cancelled = bool(latest.get("cancel_requested"))
                 conclusion = "cancelled" if was_cancelled else ("success" if returncode == 0 else "failure")
-                log.write(f"\n[local-debug] completed_at={utc_now()} returncode={returncode}\n")
+                if was_cancelled:
+                    end_message = "已取消。"
+                elif conclusion == "success":
+                    end_message = "已完成。"
+                else:
+                    end_message = "这次生成没有完成。"
+                print(f"[papers] run {run_id} finished returncode={returncode}", flush=True)
+                log.write(f"\n{end_message}\n")
                 self._emit(
                     run_id,
                     _run_event(
                         "run.cancelled" if was_cancelled else ("run.completed" if conclusion == "success" else "run.failed"),
                         run_id,
-                        message="流水线执行完成" if conclusion == "success" else f"流水线执行失败（returncode={returncode}）",
+                        message=end_message,
                     ),
                 )
             self._update(
