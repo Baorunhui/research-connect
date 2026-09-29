@@ -634,15 +634,34 @@ async def honor_list_stats():
     return get_honor_list().stats()
 
 
+def _clamp_profile_top_n(value) -> int:
+    """Page and API both stay inside 1–500. Blank, zero, and negative become 30."""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return 30
+    if n < 1:
+        return 30
+    return min(n, 500)
+
+
+def _clamp_min_citations(value) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(n, 1_000_000))
+
+
 def _apply_profile_params(config, top_n=None, min_citations=None, use_llm_fallback=None,
                           mode=None):
     """Override config.profile_* fields from request params (None = keep config default)."""
     if mode in ("fast", "full"):
         config.profile_mode = mode
     if top_n is not None:
-        config.profile_top_n = top_n
+        config.profile_top_n = _clamp_profile_top_n(top_n)
     if min_citations is not None:
-        config.profile_min_citations = min_citations
+        config.profile_min_citations = _clamp_min_citations(min_citations)
     if use_llm_fallback is not None:
         config.profile_use_llm_fallback = use_llm_fallback
     return config

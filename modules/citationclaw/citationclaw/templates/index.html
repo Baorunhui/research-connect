@@ -459,6 +459,12 @@ function citationPublicApiUrl(path) {
     return base && String(path).startsWith('/') ? base + path : path;
 }
 
+function profileCount(id, fallback, min, max) {
+    const n = parseInt(document.getElementById(id)?.value || '', 10);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, n));
+}
+
 function isAuthorProfileUrl(raw) {
     let text = String(raw || '').trim();
     if (!/^https?:\/\//i.test(text)) text = 'https://' + text;
@@ -576,8 +582,8 @@ async function runProfilePipeline() {
     await _launchProfilePipeline('/api/profile/run', {
         profile_url: url,
         output_prefix: 'scholar_profile',
-        top_n: parseInt(document.getElementById('profile-top-n')?.value || '30') || 30,
-        min_citations: parseInt(document.getElementById('profile-min-cit')?.value || '0') || 0,
+        top_n: profileCount('profile-top-n', 30, 1, 500),
+        min_citations: profileCount('profile-min-cit', 0, 0, 1000000),
         use_llm_fallback: document.getElementById('profile-llm-fallback')?.checked !== false,
         force_refresh: document.getElementById('profile-force-refresh')?.checked === true,
         mode: document.getElementById('profile-full-mode')?.checked ? 'full' : 'fast',
@@ -590,8 +596,8 @@ async function uploadProfileHTML() {
     const fd = new FormData();
     fd.append('file', input.files[0]);
     fd.append('output_prefix', 'scholar_profile');
-    fd.append('top_n', parseInt(document.getElementById('profile-top-n')?.value || '30') || 30);
-    fd.append('min_citations', parseInt(document.getElementById('profile-min-cit')?.value || '0') || 0);
+    fd.append('top_n', profileCount('profile-top-n', 30, 1, 500));
+    fd.append('min_citations', profileCount('profile-min-cit', 0, 0, 1000000));
     fd.append('use_llm_fallback', document.getElementById('profile-llm-fallback')?.checked !== false);
     fd.append('force_refresh', document.getElementById('profile-force-refresh')?.checked === true);
     fd.append('mode', document.getElementById('profile-full-mode')?.checked ? 'full' : 'fast');
