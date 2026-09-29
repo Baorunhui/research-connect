@@ -108,6 +108,7 @@ window.SurveyGenerator = (function () {
     jobId: null,
     seenEventIds: {},
     timer: null,
+    pollFailures: 0,
     seedFile: null, // 已选种子 PDF File（与链接互斥：有文件优先）
   };
 
@@ -291,24 +292,34 @@ window.SurveyGenerator = (function () {
     if (state.polling || !jobId) return;
     state.jobId = jobId;
     state.seenEventIds = {};
+    state.pollFailures = 0;
     state.polling = true;
     schedulePoll(jobId);
   }
 
   function schedulePoll(jobId) {
     fetch(surveyEndpoint() + '/' + encodeURIComponent(jobId), { cache: 'no-store' })
-      .then(function (r) { return r.json().catch(function () { return {}; }); })
-      .then(function (data) {
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (data) {
+          return { ok: r.ok, status: r.status, data: data };
+        });
+      })
+      .then(function (res) {
         state.polling = false;
         if (state.jobId !== jobId) return;
-        var job = data && data.job;
-        if (!job) {
-          forgetSurveyJob();
-          renderError('没有找到这次综述，请重新提交。');
-          setStatus('');
-          setBusy(false);
-          return;
+        var data = res.data || {};
+        var job = data.job;
+        if (!res.ok || !job) {
+          if (res.status === 404) {
+            forgetSurveyJob();
+            renderError('没有找到这次综述，请重新提交。');
+            setStatus('');
+            setBusy(false);
+            return;
+          }
+          throw new Error('retry');
         }
+        state.pollFailures = 0;
         var status = String(job.status || 'unknown').toLowerCase();
         renderProgressCard(job);
         if (status === 'completed') {
@@ -336,7 +347,16 @@ window.SurveyGenerator = (function () {
       .catch(function () {
         state.polling = false;
         if (state.jobId !== jobId) return;
-        renderError('进度更新中断，请稍后刷新页面查看是否已完成。');
+        state.pollFailures += 1;
+        if (state.pollFailures < 5) {
+          setStatus('进度暂时没刷新，正在重试。');
+          state.timer = setTimeout(function () {
+            state.polling = true;
+            schedulePoll(jobId);
+          }, POLL_INTERVAL);
+          return;
+        }
+        renderError('进度更新中断，请稍后刷新页面。这次综述还在继续。');
         setStatus('');
         setBusy(false);
       });

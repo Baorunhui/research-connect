@@ -52,6 +52,7 @@ window.PaperSummarizer = (function () {
     result: null,
     jobId: null,       // 当前异步 job_id
     seenEventIds: {},  // 已展示过的事件 event_id 集合（去重）
+    pollFailures: 0,
   };
 
   function renderResult(summary, meta, figures) {
@@ -201,6 +202,7 @@ window.PaperSummarizer = (function () {
         }
         state.jobId = data.job_id;
         state.seenEventIds = {};
+        state.pollFailures = 0;
         rememberSummarizeJob(data.job_id);
         setStatus('已开始，正在写总结。');
         pollJob(data.job_id);
@@ -218,15 +220,25 @@ window.PaperSummarizer = (function () {
   function pollJob(jobId) {
     if (state.jobId !== jobId) return; // 已被新请求取代
     fetch(summarizeEndpoint() + '/' + encodeURIComponent(jobId), { cache: 'no-store' })
-      .then(function (resp) { return resp.json().catch(function () { return {}; }); })
-      .then(function (data) {
-        if (!data || !data.ok || !data.job) {
-          forgetSummarizeJob();
-          state.busy = false;
-          renderError('没有找到这次总结，请重新提交。');
-          setStatus('');
-          return;
+      .then(function (resp) {
+        return resp.json().catch(function () { return {}; }).then(function (data) {
+          return { ok: resp.ok, status: resp.status, data: data };
+        });
+      })
+      .then(function (res) {
+        if (state.jobId !== jobId) return;
+        var data = res.data || {};
+        if (!res.ok || !data.ok || !data.job) {
+          if (res.status === 404) {
+            forgetSummarizeJob();
+            state.busy = false;
+            renderError('没有找到这次总结，请重新提交。');
+            setStatus('');
+            return;
+          }
+          throw new Error('retry');
         }
+        state.pollFailures = 0;
         var job = data.job;
         var status = String(job.status || 'unknown').toLowerCase();
         var events = job.events || [];
@@ -245,14 +257,19 @@ window.PaperSummarizer = (function () {
           state.busy = false;
           setStatus('已取消');
         } else {
-          // queued / running：继续轮询
           setTimeout(function () { pollJob(jobId); }, POLL_INTERVAL);
         }
       })
       .catch(function () {
         if (state.jobId !== jobId) return;
+        state.pollFailures += 1;
+        if (state.pollFailures < 5) {
+          setStatus('进度暂时没刷新，正在重试。');
+          setTimeout(function () { pollJob(jobId); }, POLL_INTERVAL);
+          return;
+        }
         state.busy = false;
-        renderError('进度更新中断，请稍后刷新页面查看是否已完成。');
+        renderError('进度更新中断，请稍后刷新页面。这次总结还在继续。');
         setStatus('');
       });
   }
