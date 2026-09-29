@@ -1,4 +1,6 @@
 import asyncio
+import json
+import os
 import shutil
 import re
 from contextlib import asynccontextmanager
@@ -8,7 +10,7 @@ from typing import List, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from citationclaw.core.web_search_compat import web_search_extra
@@ -112,9 +114,29 @@ def _launch_task(coro, *, external_job_id: str = ""):
 
 
 # ==================== 页面路由 ====================
+def _public_base_path() -> str:
+    """Sub-path such as ``/citations`` when served behind a path-routing proxy."""
+    value = str(os.getenv("CITATIONCLAW_PUBLIC_BASE") or "").strip().rstrip("/")
+    return value if value.startswith("/") else ""
+
+
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "now": date.today().strftime("%Y-%m-%d")})
+    context = {"request": request, "now": date.today().strftime("%Y-%m-%d")}
+    base = _public_base_path()
+    if not base:
+        return templates.TemplateResponse("index.html", context)
+    rendered = templates.get_template("index.html").render(context)
+    marker = (
+        "<script>window.CCR_PUBLIC_API_BASE = " + json.dumps(base)
+        + "; window.CCR_WS_ENABLED = true;</script>\n"
+    )
+    rendered = rendered.replace("</head>", marker + "</head>", 1)
+    for prefix in ("/static/", "/docs-assets/"):
+        rendered = rendered.replace(f'href="{prefix}', f'href="{base}{prefix}')
+        rendered = rendered.replace(f'src="{prefix}', f'src="{base}{prefix}')
+    rendered = rendered.replace('href="/" class="agent-brand"', f'href="{base}/" class="agent-brand"')
+    return HTMLResponse(rendered)
 
 
 # ==================== API路由 ====================
@@ -439,6 +461,44 @@ class ProfileRunRequest(BaseModel):
     top_n: int = 30
     min_citations: int = 0
     use_llm_fallback: bool = True
+    force_refresh: bool = False
+
+
+async def _serve_cached_profile(profile_url: str = "", profile_html: str = "",
+                                scholar_name: str = "") -> Optional[dict]:
+    """Answer a scholar-profile request from the local cache without starting a task."""
+    from citationclaw.core.scholar_profile_cache import ScholarProfileCache, scholar_cache_keys
+    cached = ScholarProfileCache().lookup(
+        scholar_cache_keys(profile_url, profile_html, scholar_name)
+    )
+    if cached is None:
+        return None
+    result = await task_executor._serve_cached_scholar_profile(cached)
+    _connect_task_state.update(
+        schema_version="connect.job.v1", external_job_id="",
+        status="completed", result=result, error="",
+    )
+    return {
+        "status": "success",
+        "cached": True,
+        "message": f"该学者已有本地缓存结果（{cached.get('updated_at', '')}），直接展示，不再重新查询",
+        "result": {
+            name: task_executor._data_result_path(result.get(name))
+            for name in ("excel", "json", "dashboard")
+        },
+    }
+
+
+@app.get("/api/profile/cache")
+async def list_profile_cache():
+    """List scholars whose profile-pipeline results are served from the local cache."""
+    from citationclaw.core.scholar_profile_cache import ScholarProfileCache
+    entries = ScholarProfileCache().list_entries()
+    for entry in entries:
+        for name in ("excel", "json", "dashboard"):
+            if entry.get(name):
+                entry[name] = task_executor._data_result_path(entry[name])
+    return {"entries": entries}
 
 
 def _apply_profile_params(config, top_n=None, min_citations=None, use_llm_fallback=None):
@@ -468,11 +528,16 @@ async def run_profile_pipeline(request: ProfileRunRequest):
         min_citations=request.min_citations,
         use_llm_fallback=request.use_llm_fallback,
     )
+    if not request.force_refresh:
+        cached = await _serve_cached_profile(profile_url=url)
+        if cached is not None:
+            return cached
     _launch_task(
         task_executor.execute_scholar_profile(
             config=config,
             output_prefix=request.output_prefix or "scholar_profile",
             profile_url=url,
+            force_refresh=request.force_refresh,
         )
     )
     return {"status": "success", "message": f"学者主页流水线已启动: {url}"}
@@ -483,7 +548,8 @@ async def upload_profile_pipeline(file: UploadFile = File(...),
                                   output_prefix: str = "scholar_profile",
                                   top_n: int = 30,
                                   min_citations: int = 0,
-                                  use_llm_fallback: bool = True):
+                                  use_llm_fallback: bool = True,
+                                  force_refresh: bool = False):
     """Launch the scholar-profile fast pipeline from an uploaded HTML file."""
     if task_executor.is_running:
         return JSONResponse(status_code=400,
@@ -499,12 +565,17 @@ async def upload_profile_pipeline(file: UploadFile = File(...),
         min_citations=min_citations,
         use_llm_fallback=use_llm_fallback,
     )
+    if not force_refresh:
+        cached = await _serve_cached_profile(profile_html=html, scholar_name=file.filename or "")
+        if cached is not None:
+            return cached
     _launch_task(
         task_executor.execute_scholar_profile(
             config=config,
             output_prefix=output_prefix or "scholar_profile",
             profile_html=html,
             scholar_name=file.filename or "",
+            force_refresh=force_refresh,
         )
     )
     return {"status": "success", "message": f"已从上传文件启动学者主页流水线: {file.filename}"}

@@ -1232,7 +1232,9 @@ async function _launchProfilePipeline(endpoint, body, isForm) {
         const opts = isForm ? { method: 'POST', body } : { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) };
         const res = await fetch(citationPublicApiUrl(endpoint), opts);
         const data = await res.json();
-        if (data.status === 'success') {
+        if (data.status === 'success' && data.cached) {
+            if (window._onProfileCached) window._onProfileCached(data);
+        } else if (data.status === 'success') {
             if (window._onProfileStarted) window._onProfileStarted();
         } else {
             alert(data.message || data.error || '启动失败');

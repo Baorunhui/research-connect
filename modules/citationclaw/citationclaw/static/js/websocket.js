@@ -17,7 +17,7 @@ class WebSocketManager {
     }
 
     connect() {
-        if (window.CCR_PUBLIC_API_BASE) {
+        if (window.CCR_PUBLIC_API_BASE && !window.CCR_WS_ENABLED) {
             this.connectPolling();
             return;
         }

@@ -1267,6 +1267,17 @@ function initIndexPage() {
         GlobalProgress.show('学者主页快速分析', 0);
     };
 
+    window._onProfileCached = function(data) {
+        var logSection = document.getElementById('idx-log-section');
+        if (logSection) logSection.style.display = 'block';
+        appendIndexLog({
+            timestamp: new Date().toISOString(),
+            level: 'SUCCESS',
+            message: data.message || '命中本地缓存，直接展示已有结果'
+        });
+        showIndexResults(data.result || {});
+    };
+
     // 从缓存生成报告按钮
     const cacheRunBtn = document.getElementById('idx-cache-run-btn');
     if (cacheRunBtn) {

@@ -65,3 +65,6 @@ modules/citationclaw/docs/pipeline-and-api-keys.md
 Thumbs.db
 .idea/
 .vscode/
+
+# Standalone tool deployment: machine-local state (htpasswd, seeded configs)
+deploy/tool/state/

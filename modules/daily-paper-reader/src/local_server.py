@@ -2210,6 +2210,12 @@ def _extract_pdf_text(data_b64: str) -> str:
 _ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
+def _public_base_path() -> str:
+    """Sub-path such as ``/papers`` when served behind a path-routing proxy."""
+    value = str(os.getenv("DPR_PUBLIC_BASE") or "").strip().rstrip("/")
+    return value if value.startswith("/") else ""
+
+
 def _pdf_max_bytes() -> int:
     """PDF 上传/下载体积上限，默认 50MB，可用 DPR_PDF_MAX_MB（单位 MB）覆盖。"""
     try:
@@ -2523,7 +2529,25 @@ class Handler(SimpleHTTPRequestHandler):
             if len(parts) >= 4 and parts[3] == "log":
                 return self._json({"ok": True, "job": job, "log": _survey_job_log(job_id)})
             return self._json({"ok": True, "job": job})
+        if parsed.path in {"/", "/index.html"} and _public_base_path():
+            return self._index_with_public_base()
         return super().do_GET()
+
+    def _index_with_public_base(self) -> None:
+        """Serve index.html for a reverse proxy that mounts the UI under a sub-path."""
+        base = _public_base_path()
+        marker = (
+            "<script>window.DPR_LOCAL_API_BASE = " + json.dumps(base) + ";</script>\n"
+            '<base href="' + base + '/" data-research-connect-site-base="1">\n'
+        )
+        text = (ROOT_DIR / "index.html").read_text(encoding="utf-8", errors="replace")
+        text = text.replace("<head>", "<head>\n" + marker, 1)
+        data = text.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self) -> None:
         if not self._host_allowed():

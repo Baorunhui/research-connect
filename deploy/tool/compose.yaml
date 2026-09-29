@@ -1,0 +1,132 @@
+# Standalone browser deployment of the three Research Connect modules behind
+# one hostname (tool.sinksilk.com). No Feishu bot, Connect Hub or Report Hub.
+#
+#   /            landing page (gateway)
+#   /papers/     Daily Paper Reader
+#   /citations/  CitationClaw
+#   /xhs/        XHS Agent
+#
+# Usage: see deploy/tool/README.md (run ./init.sh once, then docker compose up).
+
+name: research-connect-tool
+
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: Dockerfile
+    network: host
+    args:
+      DOCLING_TORCH_INDEX_URL: ${DOCLING_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+      http_proxy: ${BUILD_HTTP_PROXY:-}
+      https_proxy: ${BUILD_HTTP_PROXY:-}
+  image: research-connect:local
+  init: true
+  restart: unless-stopped
+  user: "${RESEARCH_CONNECT_UID:-1000}:${RESEARCH_CONNECT_GID:-1000}"
+  entrypoint: []
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  networks: [tool]
+  shm_size: "1gb"
+  stop_grace_period: 30s
+
+x-app-env: &app-env
+  HOME: /data
+  RESEARCH_CONNECT_DATA_DIR: /data
+  PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+  HF_HOME: /data/cache/huggingface
+  XDG_CACHE_HOME: /data/cache
+  PYTHONUTF8: "1"
+  HTTP_PROXY: ${OUTBOUND_PROXY:-}
+  HTTPS_PROXY: ${OUTBOUND_PROXY:-}
+  http_proxy: ${OUTBOUND_PROXY:-}
+  https_proxy: ${OUTBOUND_PROXY:-}
+  NO_PROXY: localhost,127.0.0.1,daily-paper,citationclaw,xhs,gateway,.sinksilk.com
+  no_proxy: localhost,127.0.0.1,daily-paper,citationclaw,xhs,gateway,.sinksilk.com
+
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: rc-tool-gateway
+    restart: unless-stopped
+    depends_on: [daily-paper, citationclaw, xhs]
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-58888}:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./gateway/index.html:/usr/share/nginx/html/index.html:ro
+      - ./state/htpasswd:/etc/nginx/htpasswd:ro
+    networks: [tool]
+
+  daily-paper:
+    <<: *app
+    container_name: rc-daily-paper
+    working_dir: /app/modules/daily-paper-reader
+    command: ["python", "src/local_server.py", "--host", "0.0.0.0", "--port", "8567", "--serve", "--no-schedule"]
+    environment:
+      <<: *app-env
+      DAILY_PAPER_DIR: /app/modules/daily-paper-reader
+      DPR_PUBLIC_BASE: /papers
+      DEEPSEEK_API_KEY: ${LLM_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${LLM_BASE_URL:-}
+      DEEPSEEK_MODEL: ${LLM_MODEL:-}
+      SUMMARY_API_KEY: ${LLM_API_KEY:-}
+      SUMMARY_BASE_URL: ${LLM_BASE_URL:-}
+      SUMMARY_MODEL: ${LLM_MODEL:-}
+      LLM_PRIMARY_BASE_URL: ${LLM_BASE_URL:-}
+    ports:
+      - "127.0.0.1:${DAILY_PAPER_PORT:-58889}:8567"
+    volumes:
+      - ./state/daily-paper/config.yaml:/app/modules/daily-paper-reader/config.yaml
+      - tool-data:/data
+      - daily-paper-docs:/app/modules/daily-paper-reader/docs
+      - daily-paper-runs:/app/modules/daily-paper-reader/.local-runs
+      - daily-paper-archive:/app/modules/daily-paper-reader/archive
+
+  citationclaw:
+    <<: *app
+    container_name: rc-citationclaw
+    working_dir: /app/modules/citationclaw
+    command: ["python", "-m", "citationclaw", "--host", "0.0.0.0", "--port", "58890", "--no-browser"]
+    environment:
+      <<: *app-env
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      CITATIONCLAW_PUBLIC_BASE: /citations
+      # Optional read-only standalone CitationClaw data root; its one-file JSON
+      # caches are imported once into the indexed cache under /data.
+      CITATIONCLAW_DATA_DIR: /legacy-citationclaw
+    ports:
+      - "127.0.0.1:${CITATIONCLAW_PORT:-58890}:58890"
+    volumes:
+      - tool-data:/data
+      - ${LEGACY_CITATIONCLAW_DATA:-./state/empty}:/legacy-citationclaw:ro
+
+  xhs:
+    <<: *app
+    container_name: rc-xhs
+    working_dir: /app/modules/xhs-agent
+    command: ["python", "-m", "uvicorn", "xhs_agent.app:app", "--host", "0.0.0.0", "--port", "58891"]
+    environment:
+      <<: *app-env
+      USTC_LLM_API_KEY: ${LLM_API_KEY:-}
+      USTC_LLM_BASE_URL: ${LLM_BASE_URL:-}
+      XHS_AGENT_MODEL: ${XHS_MODEL:-${LLM_MODEL:-}}
+      XHS_AGENT_OUTPUT_DIR: /data/modules/xhs-agent/outputs
+      XHS_AGENT_TEMPLATE_ROOT: /app/modules/xhs-agent/templates/xhs
+      XHS_AGENT_TEMPLATE_ID: native.research-editorial
+      XHS_AGENT_RENDERER: html
+    ports:
+      - "127.0.0.1:${XHS_PORT:-58891}:58891"
+    volumes:
+      - tool-data:/data
+
+networks:
+  tool:
+
+volumes:
+  tool-data:
+  daily-paper-docs:
+  daily-paper-runs:
+  daily-paper-archive:

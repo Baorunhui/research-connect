@@ -14,6 +14,11 @@ from citationclaw.core.self_citation import SelfCitationDetector
 from citationclaw.core.scholar_prefilter import ScholarPreFilter
 from citationclaw.core.scholar_search_agent import ScholarSearchAgent
 from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper
+from citationclaw.core.scholar_profile_cache import (
+    ScholarProfileCache,
+    scholar_cache_keys,
+    scholar_identity_from_html,
+)
 from citationclaw.core.scholar_db import ScholarDB
 from citationclaw.core.scholar_profile_pipeline import (
     filter_top_papers, match_authors_with_db, fetch_target_citations,
@@ -2227,6 +2232,32 @@ class TaskExecutor:
                 except Exception:
                     pass
 
+    async def _serve_cached_scholar_profile(self, cached: dict) -> dict:
+        """Publish a previous scholar-profile result without any external lookup."""
+        label = cached.get("scholar_name") or cached.get("profile_url") or cached.get("result_dir")
+        self.log_manager.info("=" * 50)
+        self.log_manager.success(
+            f"[学者缓存] 命中本地缓存: {label}（{cached.get('updated_at', '')}），"
+            "跳过外部查询，直接展示已有结果"
+        )
+        self.log_manager.info(f"结果目录: {DATA_DIR / str(cached.get('result_dir') or '')}")
+        self.log_manager.info("如需重新查询，请在请求中设置 force_refresh=true")
+        self.log_manager.info("=" * 50)
+        await self.log_manager._broadcast({"type": "all_done", "data": {
+            "excel": self._data_result_path(cached.get("excel")),
+            "json": self._data_result_path(cached.get("json")),
+            "dashboard": self._data_result_path(cached.get("dashboard")),
+            "cost_summary": {},
+            "cached": True,
+        }})
+        return {
+            "excel": cached.get("excel", ""),
+            "json": cached.get("json", ""),
+            "dashboard": cached.get("dashboard", ""),
+            "cost_summary": {},
+            "cached": True,
+        }
+
     async def execute_scholar_profile(
         self,
         config: AppConfig,
@@ -2234,6 +2265,7 @@ class TaskExecutor:
         profile_url: str = "",
         profile_html: str = "",
         scholar_name: str = "",
+        force_refresh: bool = False,
     ):
         """学者主页快速流水线（profile → top-N → 被引 → 知名学者库 → 选择性 PDF）。
 
@@ -2243,9 +2275,18 @@ class TaskExecutor:
         - 用 Semantic Scholar 一次性获取每篇目标的施引文献（含作者名），跳过 GS 翻页/休眠
         - 优先用本地知名学者库 (ScholarDB) 匹配作者，LLM 仅作可选兜底
         - PDF 下载推迟到最后，且只下载含知名学者的施引论文，最大化提速
+        - 该学者已有完成的结果（ScholarProfileCache）时直接返回缓存结果，不再请求外部服务；
+          force_refresh=True 时才重新查询
         """
         from citationclaw.core.s2_client import S2Client
         from citationclaw.core.scholar_search_cache import ScholarSearchCache
+
+        profile_cache = ScholarProfileCache()
+        cache_keys = scholar_cache_keys(profile_url, profile_html, scholar_name)
+        if not force_refresh:
+            cached = profile_cache.lookup(cache_keys)
+            if cached is not None:
+                return await self._serve_cached_scholar_profile(cached)
 
         self.should_cancel = False
         cost_tracker = CostTracker()
@@ -2684,12 +2725,26 @@ class TaskExecutor:
                 "cost_summary": cost_summary,
             }})
 
-            return {
+            result = {
                 "excel": str(excel_file),
                 "json": str(json_file),
                 "dashboard": str(html_file) if html_file else "",
                 "cost_summary": cost_summary,
             }
+            profile_cache.store(
+                cache_keys,
+                result=result,
+                scholar_name=scholar_identity_from_html(profile_html, scholar_name)[1]
+                if profile_html else scholar_name,
+                profile_url=profile_url,
+                params={
+                    "top_n": top_n,
+                    "min_citations": min_cit,
+                    "target_papers": len(target_papers),
+                    "records": len(records),
+                },
+            )
+            return result
 
         except Exception as e:
             self.log_manager.error(f"任务错误: {e}")
