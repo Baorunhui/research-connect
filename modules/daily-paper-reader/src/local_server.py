@@ -3223,15 +3223,24 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _proxy_chat(self) -> None:
         import json, urllib.request, urllib.error
-        length = int(self.headers.get("Content-Length") or "0")
-        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[papers] chat body failed: {exc}", flush=True)
+            return self._json({"ok": False, "error": "这次提问读不懂，请再试一次。"}, status=400)
+        if not isinstance(payload, dict):
+            return self._json({"ok": False, "error": "这次提问读不懂，请再试一次。"}, status=400)
+        messages = payload.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return self._json({"ok": False, "error": "请先写一句想问的话。"}, status=400)
         cfg = _load_local_chat_config()
         api_key = _resolve_chat_api_key(cfg)
         if not str(cfg.get("base_url") or "").strip():
             return self._json({"ok": False, "error": "还没有模型地址。请打开页面设置填写。"}, status=400)
         if not api_key:
             return self._json({"ok": False, "error": "还没有可用的模型密钥。请打开页面设置填写。"}, status=400)
-        body = build_chat_request_payload(cfg["model"], payload.get("messages") or [], max_tokens=payload.get("max_tokens"))
+        body = build_chat_request_payload(cfg["model"], messages, max_tokens=payload.get("max_tokens"))
         endpoint = _build_chat_endpoint(cfg["base_url"])
         req = urllib.request.Request(
             endpoint,
