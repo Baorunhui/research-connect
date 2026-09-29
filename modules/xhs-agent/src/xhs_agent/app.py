@@ -82,14 +82,26 @@ def _execute(request: SocialContentRequest, runtime: _JobProgress | None = None)
     return write_package(result, output_root)
 
 
+def _public_job_error(exc: Exception) -> str:
+    text = str(exc)
+    if "API_KEY" in text or "api_key" in text or "API key" in text:
+        return "服务器还没有可用的模型密钥。"
+    if "empty content" in text or "JSON" in text or "json" in text:
+        return "模型这次没有写出可用的正文，请再试一次。"
+    if "template" in text:
+        return "卡片没有排出来，请再试一次。"
+    return "生成没有完成，请稍后重试。"
+
+
 def _run_job(job_id: str, request: SocialContentRequest) -> None:
     try:
         response = _execute(request, runtime=_JobProgress(job_id))
     except Exception as exc:
+        print(f"[xhs] job {job_id} failed: {exc}", flush=True)
         response = SocialContentResponse(
             request_id=job_id,
             status="failed",
-            error=str(exc),
+            error=_public_job_error(exc),
         )
     with _jobs_lock:
         job = _jobs.get(job_id)
