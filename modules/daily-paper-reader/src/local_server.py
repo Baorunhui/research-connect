@@ -2970,7 +2970,8 @@ class Handler(SimpleHTTPRequestHandler):
             CONFIG_PATH.write_text(content, encoding="utf-8")
             return self._json({"ok": True, "path": str(CONFIG_PATH), "savedAt": utc_now()})
         except Exception as exc:
-            return self._json({"ok": False, "error": str(exc)}, status=400)
+            print(f"[papers] config save failed: {exc!r}", flush=True)
+            return self._json({"ok": False, "error": "设置没有保存，请稍后重试。"}, status=400)
 
     def _save_local_config_partial(self) -> None:
         """支持只更新 config.yaml 的指定顶层段，其余保持不变。
@@ -2980,7 +2981,7 @@ class Handler(SimpleHTTPRequestHandler):
         未涉及的段保持原样。
         """
         if yaml is None:
-            return self._json({"ok": False, "error": "缺少 PyYAML，无法写入 config.yaml。"}, status=500)
+            return self._json({"ok": False, "error": "设置没保存：服务器上缺少配置组件。"}, status=500)
         try:
             import yaml as _yaml
             length = int(self.headers.get("Content-Length") or "0")
@@ -3026,7 +3027,8 @@ class Handler(SimpleHTTPRequestHandler):
             _apply_rerank_profile_to_env()
             return self._json({"ok": True, "savedAt": utc_now()})
         except Exception as exc:
-            return self._json({"ok": False, "error": str(exc)}, status=400)
+            print(f"[papers] settings save failed: {exc!r}", flush=True)
+            return self._json({"ok": False, "error": "设置没有保存，请稍后重试。"}, status=400)
 
     def _chat_config(self) -> None:
         cfg = _load_local_chat_config()
