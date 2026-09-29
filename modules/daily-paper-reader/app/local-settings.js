@@ -687,6 +687,15 @@
     return msg;
   }
 
+  let settingsReady = false;
+
+  function setSaveEnabled(on) {
+    ['dpr-settings-save', 'dpr-settings-save-run'].forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = !on;
+    });
+  }
+
   async function open() {
     const overlay = createOverlay();
     overlay.style.display = 'flex';
@@ -707,6 +716,8 @@
       } catch (err) { /* 忽略 */ }
     }
     setStatus('正在读取配置...');
+    settingsReady = false;
+    setSaveEnabled(false);
     try {
       const resp = await fetch(STRUCTURED_ENDPOINT());
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -764,7 +775,11 @@
         renderSubscriptions(subsContainer, (subs && subs.intent_profiles) || []);
       }
       setStatus('');
+      settingsReady = true;
+      setSaveEnabled(true);
     } catch (err) {
+      settingsReady = false;
+      setSaveEnabled(false);
       setStatus('读取配置失败：' + (err && err.message ? err.message : err), '#c00');
     }
   }
@@ -806,6 +821,10 @@
 
   // 把当前面板内容写回 config.yaml；成功返回 true，失败返回 false。
   async function persist() {
+    if (!settingsReady) {
+      setStatus('配置还在读取，请稍后再保存。', '#c00');
+      return false;
+    }
     const payload = buildCurrentPayload();
 
     const subsContainer = document.getElementById('dpr-settings-subscriptions');
