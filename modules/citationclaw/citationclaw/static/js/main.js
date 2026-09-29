@@ -272,10 +272,16 @@ async function safeFetch(url, opts = {}) {
         const noisy = /https?:\/\/|Traceback|\.py\b/.test(detail);
         const shown = detail && detail.length <= 180 && !noisy
             ? detail
-            : ('请求没有完成（' + resp.status + '）');
+            : '这次没有完成，请稍后重试。';
         throw new Error(shown);
     }
     return resp;
+}
+
+function plainNotice(fallback, raw) {
+    const text = String(raw || '').trim();
+    const noisy = /https?:\/\/|failed to fetch|networkerror|load failed|traceback|\.py\b/i.test(text);
+    alert(!text || noisy || text.length > 180 ? fallback : text);
 }
 
 function publicApiHref(url) {
@@ -439,7 +445,7 @@ async function resultsShowFolders() {
                     <small class="text-muted">${escapeHtml(String(folder.file_count))} 个文件 &nbsp;·&nbsp; ${sizeMB} MB &nbsp;·&nbsp; ${date}</small>
                 </div>
                 <i class="bi bi-chevron-right text-muted flex-shrink-0" style="cursor:pointer" data-folder="${safeName}" data-display="${safeDisplay}"></i>
-                <button class="btn btn-sm btn-outline-danger flex-shrink-0 ms-1" data-delete="${safeName}" title="删除此文件夹">
+                <button class="btn btn-sm btn-outline-danger flex-shrink-0 ms-1" data-delete="${safeName}" data-label="${safeDisplay}" title="删除这份结果">
                     <i class="bi bi-trash"></i>
                 </button>
             `;
@@ -450,12 +456,14 @@ async function resultsShowFolders() {
             item.querySelector('[data-delete]').addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const name = e.currentTarget.dataset.delete;
-                if (!confirm(`确定要删除文件夹 "${name}" 及其所有文件吗？此操作不可撤销。`)) return;
+                const label = e.currentTarget.dataset.label || '这份结果';
+                if (!confirm(`确定要删除「${label}」吗？删掉后不能恢复。`)) return;
                 try {
                     const r = await safeFetch(`/api/results/folder/${encodeURIComponent(name)}`, { method: 'DELETE' });
                     await resultsShowFolders();
                 } catch (err) {
-                    alert('删除失败：' + err.message);
+                    console.error('删除失败:', err);
+                    plainNotice('没有删掉，请稍后重试。', err && err.message);
                 }
             });
             list.appendChild(item);
@@ -1167,14 +1175,12 @@ function initIndexPage() {
             });
             const data = await resp.json();
             if (data.status !== 'success') {
-                alert('启动失败: ' + data.message);
+                plainNotice('这次没有开始，请稍后重试。', data && data.message);
                 resetRunBtn();
             }
         } catch (e) {
             console.error('启动失败:', e);
-            const raw = e && e.message ? String(e.message) : '';
-            const noisy = /https?:\/\/|failed to fetch|networkerror|load failed/i.test(raw);
-            alert(!raw || noisy || raw.length > 180 ? '没有连上服务器，请稍后重试。' : raw);
+            plainNotice('没有连上服务器，请稍后重试。', e && e.message);
             resetRunBtn();
         }
     });
@@ -1198,7 +1204,7 @@ function initIndexPage() {
                 }
             } catch (e) {
                 console.error('取消失败:', e);
-                alert('取消失败: ' + e.message);
+                plainNotice('这次没有停下来，请再试一次。', e && e.message);
                 resetRunBtn();
                 GlobalProgress.hide();
             }
@@ -1330,7 +1336,8 @@ function initIndexPage() {
                 const data = await resp.json();
                 // WS already connected; progress/logs will stream automatically
             } catch (e) {
-                alert('请求失败: ' + e.message);
+                console.error('从缓存生成失败:', e);
+                plainNotice('这次没有生成，请稍后重试。', e && e.message);
                 cacheRunBtn.disabled = false;
                 cacheRunBtn.innerHTML = '<i class="bi bi-lightning-charge-fill"></i> 生成报告';
             }
