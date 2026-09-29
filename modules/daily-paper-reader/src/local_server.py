@@ -168,6 +168,23 @@ def _user_visible_error(exc: BaseException) -> str:
     return "这次没有完成，请稍后重试。"
 
 
+_SECRET_LOG_RE = re.compile(
+    r"(api[_-]?key|authorization\s*:|bearer\s+\S|sk-[A-Za-z0-9]{8,})",
+    re.IGNORECASE,
+)
+
+
+def _redact_log_text(text: str) -> str:
+    """原始日志会在页面上展开。含密钥的行整行换成一句说明。"""
+    kept: list[str] = []
+    for line in str(text or "").splitlines():
+        if _SECRET_LOG_RE.search(line):
+            kept.append("（这一行含有密钥，已隐藏）")
+        else:
+            kept.append(line)
+    return "\n".join(kept)
+
+
 def norm_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -722,7 +739,7 @@ class RunStore:
         path = Path(str(run.get("log_path") or ""))
         if not path.exists():
             return ""
-        return path.read_text(encoding="utf-8", errors="replace")[-20000:]
+        return _redact_log_text(path.read_text(encoding="utf-8", errors="replace")[-20000:])
 
     def _update(self, run_id: str, **patch: Any) -> None:
         with self._lock:
