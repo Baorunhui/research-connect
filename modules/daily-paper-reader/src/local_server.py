@@ -98,6 +98,10 @@ def ensure_runtime_docs_shell() -> None:
         "贴上论文链接或上传 PDF，总结好后会打开一篇阅读页。",
         "综述由本地后端（`python src/local_server.py`，默认 8567）驱动，纯静态部署不可用。":
         "综述就在这个网站上写，不用另外启动程序。",
+        "综述就在这个网站上写，不用另外启动程序。\n首次使用前需要构建 Kaggle 快照索引（默认召回主路）：\n\n```bash\n# .env 配置 Kaggle 凭据（免费账号即可，Account → Settings → API 创建）\n# KAGGLE_API_TOKEN=KGAT_xxx\npython scripts/build_kaggle_arxiv_index.py --download\n```\n\n一次性下载约 2GB 快照并建立本地 SQLite FTS 索引（约 15 分钟，产物在\n`archive/kaggle_arxiv/`，已 gitignore）。快照由 Cornell 官方持续同步但存在\n周级滞后，建议每周重跑一次刷新。未建索引时 Kaggle 路自动跳过并在进度中提示，\n综述仍可用本地库 + 种子引文链路（覆盖会窄很多）。":
+        "综述就在这个网站上写。打开页面，填一个研究主题即可。论文库由这台服务器准备。如果进度里说本地论文库没接上，告诉维护服务器的人，不用自己下载。",
+        "## 前置准备":
+        "## 使用前",
         "页面会提示不可用，需先运行 `python src/local_server.py` 再刷新。":
         "如果页面提示暂时不可用，请稍后刷新再试。",
         "「论文总结」由本地后端（`python src/local_server.py`）驱动，核心思路是":

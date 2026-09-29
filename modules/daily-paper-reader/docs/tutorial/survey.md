@@ -4,21 +4,9 @@
 到生成一篇带引用编号、落盘为站点正式页面的领域综述报告，中间经过哪些阶段、
 每个阶段用什么技术、有哪些质量护栏。
 
-## 前置准备
+## 使用前
 
-综述就在这个网站上写，不用另外启动程序。
-首次使用前需要构建 Kaggle 快照索引（默认召回主路）：
-
-```bash
-# .env 配置 Kaggle 凭据（免费账号即可，Account → Settings → API 创建）
-# KAGGLE_API_TOKEN=KGAT_xxx
-python scripts/build_kaggle_arxiv_index.py --download
-```
-
-一次性下载约 2GB 快照并建立本地 SQLite FTS 索引（约 15 分钟，产物在
-`archive/kaggle_arxiv/`，已 gitignore）。快照由 Cornell 官方持续同步但存在
-周级滞后，建议每周重跑一次刷新。未建索引时 Kaggle 路自动跳过并在进度中提示，
-综述仍可用本地库 + 种子引文链路（覆盖会窄很多）。
+综述就在这个网站上写。打开页面，填一个研究主题即可。论文库由这台服务器准备。如果进度里说本地论文库没接上，告诉维护服务器的人，不用自己下载。
 
 ## 整体流程
 
