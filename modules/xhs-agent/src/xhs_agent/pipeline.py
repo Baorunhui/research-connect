@@ -78,10 +78,12 @@ class XHSPipeline:
                 last_error = exc
         value = fallback()
         if last_error:
+            print(f"[xhs] step {step} fell back: {last_error}", flush=True)
+            note = "这一步没有写好，已换成备用文案。发布前请再看一遍。"
             if hasattr(value, "human_check"):
-                value.human_check.append(f"{step} 模型输出异常，已使用降级结果：{last_error}")
+                value.human_check.append(note)
             if hasattr(value, "needs_human_check"):
-                value.needs_human_check.append(f"{step} 模型输出异常，已使用降级结果：{last_error}")
+                value.needs_human_check.append(note)
         return value
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from collections import OrderedDict
 from pathlib import Path
 
@@ -26,6 +27,7 @@ _STAGE_TEXT = {
 _jobs: OrderedDict[str, dict] = OrderedDict()
 _jobs_lock = threading.Lock()
 _MAX_JOBS = 30
+_JOB_LIMIT_S = 20 * 60
 
 
 class _JobProgress:
@@ -40,6 +42,28 @@ class _JobProgress:
             if job and job["status"] == "running":
                 job["stage"] = stage
                 job["message"] = text
+
+
+def _expire_locked(now: float | None = None) -> None:
+    now = time.time() if now is None else now
+    for job_id, job in _jobs.items():
+        if job.get("status") != "running":
+            continue
+        started = job.get("started_at")
+        if started is None:
+            job["started_at"] = now
+            continue
+        if now - float(started) < _JOB_LIMIT_S:
+            continue
+        print(f"[xhs] job {job_id} still running after {_JOB_LIMIT_S}s", flush=True)
+        message = "这次等太久了，请稍后重试。"
+        job["status"] = "failed"
+        job["message"] = message
+        job["response"] = SocialContentResponse(
+            request_id=job_id,
+            status="failed",
+            error=message,
+        ).model_dump()
 
 
 def _remember_job(job_id: str, payload: dict) -> None:
@@ -93,23 +117,38 @@ def _public_job_error(exc: Exception) -> str:
     return "生成没有完成，请稍后重试。"
 
 
-def _run_job(job_id: str, request: SocialContentRequest) -> None:
-    try:
-        response = _execute(request, runtime=_JobProgress(job_id))
-    except Exception as exc:
-        print(f"[xhs] job {job_id} failed: {exc}", flush=True)
-        response = SocialContentResponse(
-            request_id=job_id,
-            status="failed",
-            error=_public_job_error(exc),
-        )
+def _finish_job(job_id: str, response: SocialContentResponse) -> None:
     with _jobs_lock:
         job = _jobs.get(job_id)
-        if job is None:
+        if job is None or job.get("status") != "running":
             return
         job["response"] = response.model_dump()
         job["status"] = "failed" if response.status == "failed" else "completed"
         job["message"] = response.error or "已完成"
+
+
+def _run_job(job_id: str, request: SocialContentRequest) -> None:
+    try:
+        try:
+            response = _execute(request, runtime=_JobProgress(job_id))
+        except Exception as exc:
+            print(f"[xhs] job {job_id} failed: {exc}", flush=True)
+            response = SocialContentResponse(
+                request_id=job_id,
+                status="failed",
+                error=_public_job_error(exc),
+            )
+        _finish_job(job_id, response)
+    except Exception as exc:
+        print(f"[xhs] job {job_id} failed while saving: {exc}", flush=True)
+        _finish_job(
+            job_id,
+            SocialContentResponse(
+                request_id=job_id,
+                status="failed",
+                error="生成没有完成，请稍后重试。",
+            ),
+        )
 
 
 @app.post("/v1/xhs/jobs")
@@ -117,6 +156,7 @@ def start_job(request: SocialContentRequest) -> dict[str, str]:
     job_id = (request.request_id or "").strip() or f"web-{os.urandom(5).hex()}"
     request = request.model_copy(update={"request_id": job_id})
     with _jobs_lock:
+        _expire_locked()
         existing = _jobs.get(job_id)
         if existing and existing["status"] == "running":
             return {
@@ -132,6 +172,7 @@ def start_job(request: SocialContentRequest) -> dict[str, str]:
             "stage": "brief",
             "message": _STAGE_TEXT["brief"],
             "response": None,
+            "started_at": time.time(),
         })
     threading.Thread(target=_run_job, args=(job_id, request), daemon=True).start()
     return {"job_id": job_id, "status": "running", "stage": "brief", "message": _STAGE_TEXT["brief"]}
@@ -140,6 +181,7 @@ def start_job(request: SocialContentRequest) -> dict[str, str]:
 @app.get("/v1/xhs/jobs/{job_id}")
 def get_job(job_id: str) -> dict:
     with _jobs_lock:
+        _expire_locked()
         job = _jobs.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="job not found")
