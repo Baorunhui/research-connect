@@ -65,6 +65,18 @@ def ensure_runtime_docs_shell() -> None:
         template = template_dir / name
         if not target.exists() and template.is_file():
             target.write_bytes(template.read_bytes())
+    readme = docs_dir / "README.md"
+    if readme.is_file():
+        text = readme.read_text(encoding="utf-8")
+        updated = text.replace(
+            '<h3 class="dpr-home-notice-title">Daily Paper Reader</h3>',
+            '<h3 class="dpr-home-notice-title">论文日报</h3>',
+        ).replace(
+            "尚无论文日报。请从飞书机器人或本地工作流发起第一次任务。",
+            "还没有论文日报。点右下角的火箭生成一次，或在页面设置里点「保存并生成日报」。",
+        )
+        if updated != text:
+            readme.write_text(updated, encoding="utf-8")
 
 
 ensure_runtime_docs_shell()

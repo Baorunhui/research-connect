@@ -1,7 +1,7 @@
 // Docsify 配置与公共插件（评论区 + Zotero 元数据）
 // 注意：侧边栏由 app/dpr-sidebar.js 自建接管，这里不再让 docsify 渲染 _sidebar.md
 window.$docsify = {
-  name: 'Daily Paper Reader',
+  name: '论文日报',
   repo: '',
   // 文档内容与侧边栏都存放在 docs/ 下
   basePath: 'docs/', // 所有 Markdown 路由以 docs/ 为前缀
