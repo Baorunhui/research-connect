@@ -1464,7 +1464,7 @@ function initIndexPage() {
             html += `<div class="dashboard-cta">
                 <span class="result-file-icon">🔭</span>
                 <div class="dashboard-cta-text">
-                    <strong style="color:#bc8cff">多维画像分析报告已生成</strong><br>
+                    <strong style="color:#bc8cff">报告已生成</strong><br>
                     <span style="font-size:11.5px">${name}</span>
                 </div>
                 <a href="${publicApiHref('/api/results/view/' + hrefPath)}" target="_blank" class="btn-download btn-dl-report">
@@ -1473,26 +1473,21 @@ function initIndexPage() {
             </div>`;
         }
 
-        // 费用摘要卡片
-        if (data && data.cost_summary) {
-            var cs = data.cost_summary;
+        var cs = data && data.cost_summary;
+        var hasCost = cs && (Number(cs.scraper_requests) > 0 || cs.llm_tracked);
+        if (hasCost) {
             var costRows = '';
-            costRows += '<tr><td>ScraperAPI 消耗积分</td><td>' + escapeHtml(String(cs.scraper_credits)) + ' credits</td></tr>';
-            costRows += '<tr><td>ScraperAPI 请求次数</td><td>' + escapeHtml(String(cs.scraper_requests)) + ' 次</td></tr>';
-            costRows += '<tr><td>ScraperAPI 估算费用</td><td>$' + cs.scraper_cost_usd.toFixed(4) + ' <span style="font-size:10px;color:var(--light)">(按 $49/100k credits)</span></td></tr>';
+            if (Number(cs.scraper_requests) > 0) {
+                costRows += '<tr><td>外部查询次数</td><td>' + escapeHtml(String(cs.scraper_requests)) + ' 次</td></tr>';
+                costRows += '<tr><td>估算费用</td><td>$' + Number(cs.scraper_cost_usd || 0).toFixed(4) + '</td></tr>';
+            }
             if (cs.llm_tracked) {
-                costRows += '<tr><td>LLM API 消耗额度</td><td>' + cs.llm_quota_consumed.toFixed(4) + ' 实际额度 ≈ ¥' + cs.llm_cost_rmb.toFixed(2) + '</td></tr>';
-                costRows += '<tr><td>LLM API 剩余额度</td><td>' + cs.llm_remaining.toFixed(2) + ' 实际额度 ≈ ¥' + cs.llm_remaining_rmb.toFixed(2) + '</td></tr>';
+                costRows += '<tr><td>模型用量</td><td>' + Number(cs.llm_quota_consumed || 0).toFixed(4) + '</td></tr>';
             }
             html += '<div class="cost-summary-card">'
-                + '<div class="cost-summary-header"><i class="bi bi-coin"></i> 本次运行费用摘要</div>'
-                + '<table class="cost-summary-table"><tbody>' + costRows + '</tbody></table>';
-            if (cs.llm_tracked) {
-                html += '<div class="cost-summary-note">⚠️ LLM 额度通过运行前后差值计算（API 限制），可能包含同时段其他消耗。1 实际额度 = 2 RMB（默认 api.gpt.ge 计价）。</div>';
-            } else {
-                html += '<div class="cost-summary-note">💡 配置「系统令牌」和「用户ID」后可追踪 LLM API 额度消耗。在 API 中转站个人中心获取。</div>';
-            }
-            html += '</div>';
+                + '<div class="cost-summary-header">这次查询的用量</div>'
+                + '<table class="cost-summary-table"><tbody>' + costRows + '</tbody></table>'
+                + '</div>';
         }
 
         // Fallback
