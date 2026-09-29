@@ -566,8 +566,8 @@ async function uploadProfileHTML() {
     fd.append('min_citations', parseInt(document.getElementById('profile-min-cit')?.value || '0') || 0);
     fd.append('use_llm_fallback', document.getElementById('profile-llm-fallback')?.checked !== false);
     fd.append('force_refresh', document.getElementById('profile-force-refresh')?.checked === true);
-    const mode = document.getElementById('profile-full-mode')?.checked ? 'full' : 'fast';
-    await _launchProfilePipeline('/api/profile/upload?mode=' + mode, fd, true);
+    fd.append('mode', document.getElementById('profile-full-mode')?.checked ? 'full' : 'fast');
+    await _launchProfilePipeline('/api/profile/upload', fd, true);
 }
 
 async function _launchProfilePipeline(endpoint, body, isForm) {

@@ -635,7 +635,8 @@ async def run_profile_pipeline(request: ProfileRunRequest):
 
 
 @app.post("/api/profile/upload")
-async def upload_profile_pipeline(file: UploadFile = File(...),
+async def upload_profile_pipeline(request: Request,
+                                  file: UploadFile = File(...),
                                   output_prefix: str = Form("scholar_profile"),
                                   top_n: int = Form(30),
                                   min_citations: int = Form(0),
@@ -643,6 +644,8 @@ async def upload_profile_pipeline(file: UploadFile = File(...),
                                   force_refresh: bool = Form(False),
                                   mode: str = Form("")):
     """Launch the scholar-profile fast pipeline from an uploaded HTML file."""
+    if mode not in ("fast", "full"):
+        mode = request.query_params.get("mode", "")
     if task_executor.is_running:
         return JSONResponse(status_code=400,
             content={"status": "error", "message": "任务运行中，请等待"})
