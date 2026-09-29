@@ -1625,7 +1625,10 @@ def merge_local_section(existing: dict | None, incoming: dict | None) -> dict:
     for section in ("chat", "schedule", "rerank", "recall"):
         if section in inc_loc and isinstance(inc_loc[section], dict):
             base = dict(loc.get(section) or {})
-            base.update({k: v for k, v in inc_loc[section].items() if v is not None})
+            base.update({
+                k: v for k, v in inc_loc[section].items()
+                if v is not None and not (k == "api_key" and not str(v).strip())
+            })
             loc[section] = base
     merged["local"] = loc
     return merged
