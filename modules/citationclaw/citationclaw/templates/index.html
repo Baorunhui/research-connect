@@ -459,6 +459,23 @@ function citationPublicApiUrl(path) {
     return base && String(path).startsWith('/') ? base + path : path;
 }
 
+function isAuthorProfileUrl(raw) {
+    let text = String(raw || '').trim();
+    if (!/^https?:\/\//i.test(text)) text = 'https://' + text;
+    let parsed;
+    try { parsed = new URL(text); } catch (e) { return false; }
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'openalex.org' || host === 'www.openalex.org' || host === 'api.openalex.org') {
+        const parts = parsed.pathname.replace(/\/+$/, '').split('/');
+        const tail = parts[parts.length - 1] || '';
+        return /^A\d+$/.test(tail);
+    }
+    if (host.indexOf('scholar.google') !== -1) {
+        return !!(parsed.searchParams.get('user') || '').trim();
+    }
+    return false;
+}
+
 function toggleScholarImport() {
     const body = document.getElementById('scholar-import-body');
     const icon = document.getElementById('scholar-chevron');
@@ -470,8 +487,7 @@ function toggleScholarImport() {
 async function fetchScholarPapers() {
     const url = document.getElementById('scholar-url-input').value.trim();
     if (!url) { alert('请先填写 OpenAlex 的作者主页链接。'); return; }
-    const openAlexAuthor = /openalex\.org\/(?:authors\/)?A\d+(?:[/?#]|$)/i.test(url);
-    if (!url.includes('scholar.google') && !openAlexAuthor) {
+    if (!isAuthorProfileUrl(url)) {
         alert('请填写 OpenAlex 的作者主页（https://openalex.org/A…），或上传保存的主页。');
         return;
     }
@@ -553,8 +569,7 @@ function escHtml(s) {
 async function runProfilePipeline() {
     const url = document.getElementById('profile-url-fast').value.trim();
     if (!url) { alert('请先填写 OpenAlex 的作者主页链接。'); return; }
-    const openAlexAuthor = /openalex\.org\/(?:authors\/)?A\d+(?:[/?#]|$)/i.test(url);
-    if (!url.includes('scholar.google') && !openAlexAuthor) {
+    if (!isAuthorProfileUrl(url)) {
         alert('请填写 OpenAlex 的作者主页（https://openalex.org/A…），或上传保存的主页。');
         return;
     }

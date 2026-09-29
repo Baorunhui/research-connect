@@ -473,7 +473,11 @@ class ScholarProfileRequest(BaseModel):
 async def fetch_scholar_papers(request: ScholarProfileRequest):
     url = _validate_scholar_url(request.profile_url)
     config = config_manager.get()
-    from citationclaw.core.scholar_profile_cache import openalex_author_id_from_url
+    from citationclaw.core.scholar_profile_cache import is_author_profile_url, openalex_author_id_from_url
+    if not is_author_profile_url(url):
+        return JSONResponse(status_code=400, content={
+            "error": "请填写 OpenAlex 的作者主页（https://openalex.org/A…），或上传保存的主页。",
+        })
     oa_author = openalex_author_id_from_url(url)
     if oa_author:
         from citationclaw.core.openalex_citing import OpenAlexCitingFetcher

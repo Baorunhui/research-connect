@@ -62,9 +62,13 @@ def openalex_author_id_from_url(url: str) -> str:
 
 
 def is_author_profile_url(url: str) -> bool:
-    """Google Scholar profile or OpenAlex author profile."""
+    """Google Scholar profile (must carry user=) or OpenAlex author profile."""
     text = str(url or "")
-    return "scholar.google" in text or bool(openalex_author_id_from_url(text))
+    if openalex_author_id_from_url(text):
+        return True
+    if "scholar.google" not in text:
+        return False
+    return bool(scholar_user_id_from_url(text))
 
 
 def scholar_identity_from_html(profile_html: str, filename: str = "") -> tuple[str, str]:
