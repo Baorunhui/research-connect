@@ -346,7 +346,7 @@ def build_command(workflow_key: str, workflow_file: str, inputs: dict[str, str])
     if workflow_file == "sync.yml" or workflow_key == "sync":
         return ["git", "status", "--short"]
 
-    raise ValueError(f"本地调试后端暂不支持 workflow: {workflow_key or workflow_file}")
+    raise ValueError("当前服务还不支持这个操作。")
 
 
 class Handler(SimpleHTTPRequestHandler):

@@ -511,7 +511,7 @@ class RunStore:
         config_path = ""
         if config:
             if yaml is None:
-                raise RuntimeError("本地调试后端缺少 PyYAML，无法写入浏览器缓存配置。")
+                raise RuntimeError("日报没能开始：服务器上缺少配置组件。")
             config_path = str(run_dir / "config.yaml")
             Path(config_path).write_text(
                 yaml.safe_dump(config, allow_unicode=True, sort_keys=False, width=10**9),
@@ -1500,7 +1500,7 @@ def build_command(workflow_key: str, workflow_file: str, inputs: dict[str, str])
     if workflow_file == "sync.yml" or workflow_key == "sync":
         return ["git", "status", "--short"]
 
-    raise ValueError(f"本地调试后端暂不支持 workflow: {workflow_key or workflow_file}")
+    raise ValueError("当前服务还不支持这个操作。")
 
 
 def build_chat_request_payload(model: str, messages: list[dict], *, max_tokens: int | None = None) -> dict:
@@ -1886,9 +1886,11 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict[str, Any]:
         try:
             return _fetch_arxiv_abs_metadata(arxiv_id)
         except Exception as fallback_error:  # noqa: BLE001
-            raise RuntimeError(
-                f"arXiv 元数据获取失败：Atom={atom_error}; abs={fallback_error}"
-            ) from fallback_error
+            print(
+                f"[arxiv] 元数据获取失败 {arxiv_id}: atom={atom_error}; abs={fallback_error}",
+                flush=True,
+            )
+            raise RuntimeError("没取到这篇论文的标题和作者，请稍后重试，或改上传 PDF。") from fallback_error
     ns = {"a": "http://www.w3.org/2005/Atom"}
     root = ET.fromstring(data)
     entry = root.find("a:entry", ns)
