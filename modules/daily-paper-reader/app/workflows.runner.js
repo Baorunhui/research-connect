@@ -390,8 +390,15 @@ window.DPRWorkflowRunner = (function () {
         if (liveProgressEl) liveProgressEl.hidden = true;
         return;
       }
-      syncSidebarFromStep6(run);
-      const runId = String(run.id || '');
+      let detailed = run;
+      if (run.id) {
+        try {
+          const one = await localApiFetch(`${LOCAL_RUNS_API}/${encodeURIComponent(run.id)}`);
+          if (one && one.run) detailed = one.run;
+        } catch (err) { /* 列表里的摘要够用来显示卡片 */ }
+      }
+      syncSidebarFromStep6(detailed);
+      const runId = String(detailed.id || run.id || '');
       if (active && runId !== liveProgressRunId) dismissedLiveRunId = '';
       liveProgressRunId = runId;
       if (dismissedLiveRunId === runId) return;
@@ -399,12 +406,12 @@ window.DPRWorkflowRunner = (function () {
       card.hidden = false;
       const body = card.querySelector('.dpr-live-progress-body');
       window.DPRTaskProgress.render(body, {
-        events: Array.isArray(run.events) ? run.events : [],
-        status: run.conclusion || run.status || 'running',
+        events: Array.isArray(detailed.events) ? detailed.events : [],
+        status: detailed.conclusion || detailed.status || 'running',
         steps: PIPELINE_STEPS,
-        title: '⏳ 日报流水线正在执行 · #' + (run.run_number || run.id || ''),
-        doneTitle: '✅ 论文日报生成完成',
-        failedTitle: '❌ 论文日报生成失败',
+        title: '正在写论文日报',
+        doneTitle: '论文日报写好了',
+        failedTitle: '论文日报没有写完',
       });
     } catch (e) {
       // 公网快照可能恰好处于上传切换瞬间；下一轮继续，不用打断页面。

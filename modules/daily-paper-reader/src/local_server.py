@@ -588,7 +588,14 @@ class RunStore:
 
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
-            return sorted((self._public_run(item) for item in self._runs.values()), key=lambda r: r["created_at"], reverse=True)
+            runs = sorted(
+                (self._public_run(item) for item in self._runs.values()),
+                key=lambda item: item["created_at"],
+                reverse=True,
+            )
+        for run in runs:
+            run.pop("events", None)
+        return runs
 
     def get(self, run_id: str) -> dict[str, Any] | None:
         with self._lock:
