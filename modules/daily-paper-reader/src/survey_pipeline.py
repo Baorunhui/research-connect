@@ -1614,7 +1614,7 @@ def analyse_clusters(
 ) -> Tuple[List[Dict[str, Any]], str]:
     ctx.check_cancel()
     total = len(clusters)
-    ctx.progress("analyse", f"逐主题簇深入分析（{total} 簇，并发 {concurrency}）", current=0, total=total)
+    ctx.progress("analyse", f"正在整理 {total} 个主题", current=0, total=total)
     results: Dict[int, Dict[str, Any]] = {}
     lock = threading.Lock()
     done = [0]
@@ -1640,7 +1640,7 @@ def analyse_clusters(
                 "analysis": analysis,
             }
             done[0] += 1
-            ctx.progress("analyse", f"簇深析 {done[0]}/{total}", current=done[0], total=total)
+            ctx.progress("analyse", f"整理完第 {done[0]}/{total} 个主题", current=done[0], total=total)
 
     with ThreadPoolExecutor(max_workers=max(int(concurrency), 1)) as pool:
         futures = [pool.submit(_work, cluster) for cluster in clusters]
@@ -1649,7 +1649,7 @@ def analyse_clusters(
 
     cluster_analyses = [results[c["cluster_id"]] for c in clusters if c["cluster_id"] in results]
 
-    ctx.progress("analyse", "生成全局分析（6 模块）")
+    ctx.progress("analyse", "正在汇总这些主题")
     summaries = [
         {
             "cluster_id": item["cluster_id"],
@@ -1680,7 +1680,7 @@ def analyse_clusters(
         ctx.warn(f"全局分析失败：{exc}")
     if not global_analysis and cluster_analyses:
         global_analysis = "\n\n".join(f"## {item['theme']}\n\n{item['analysis']}" for item in cluster_analyses)
-    ctx.progress("analyse", "全局分析完成")
+    ctx.progress("analyse", "主题汇总好了")
     return cluster_analyses, global_analysis
 
 
@@ -1914,7 +1914,7 @@ def write_sections(
     ctx.check_cancel()
     sections = outline["sections"]
     total = len(sections)
-    ctx.progress("write", f"分节并行写作（{total} 节，并发 {concurrency}）", current=0, total=total)
+    ctx.progress("write", f"正在写 {total} 节", current=0, total=total)
     analysis_by_cluster = {item["cluster_id"]: item for item in cluster_analyses}
     results: Dict[int, str] = {}
     lock = threading.Lock()
@@ -1963,7 +1963,7 @@ def write_sections(
         with lock:
             results[idx] = content
             done[0] += 1
-            ctx.progress("write", f"小节完成 {done[0]}/{total}（{section['heading']}）", current=done[0], total=total)
+            ctx.progress("write", f"写完第 {done[0]}/{total} 节", current=done[0], total=total)
 
     with ThreadPoolExecutor(max_workers=max(int(concurrency), 1)) as pool:
         futures = [pool.submit(_work, idx, section) for idx, section in enumerate(sections)]
@@ -1982,7 +1982,7 @@ def write_sections(
         section_markdowns.append(f"## {section['heading']}\n\n{content}")
     if total_removed:
         ctx.warn(f"写作阶段剔除 {total_removed} 处非法引用编号")
-    ctx.progress("write", f"写作完成（剔除非法引用 {total_removed} 处）")
+    ctx.progress("write", "正文写完了")
     return section_markdowns, sections
 
 
@@ -2010,18 +2010,19 @@ def review_draft(
     if len(draft) > _REVIEW_INPUT_CHAR_CAP:
         ctx.warn(f"草稿超过 {_REVIEW_INPUT_CHAR_CAP} 字符，跳过整体审校")
         return draft, []
-    ctx.progress("review", "整体审校与修订中")
+    ctx.progress("review", "正在通读修改")
     user = f"综述报告草稿如下，请按审查维度修订：\n\n{draft}"
     try:
         parsed = _chat_structured(client_factory(), _REVIEW_SYSTEM, user, "survey_review", _REVIEW_SCHEMA)
     except Exception as exc:  # noqa: BLE001
         parsed = None
-        ctx.warn(f"审校失败，使用原稿：{exc}")
+        print(f"[papers] survey review failed: {exc}", flush=True)
+        ctx.warn("通读没有完成，先用已经写好的正文。")
     revised = str((parsed or {}).get("revised_markdown") or "").strip()
     issues = [str(i) for i in ((parsed or {}).get("issues_found") or [])]
     if not revised:
         return draft, []
-    ctx.progress("review", f"审校完成（发现 {len(issues)} 个问题）")
+    ctx.progress("review", "通读完了")
     return revised, issues
 
 
