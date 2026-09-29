@@ -2899,7 +2899,7 @@ class Handler(SimpleHTTPRequestHandler):
             result = _generate_subscription_candidates(intent, tag_hint)
         except Exception as exc:  # noqa: BLE001
             print(f"[SMART-QUERY][WARN] 候选生成失败：{exc}", flush=True)
-            return self._json({"ok": False, "error": f"候选生成失败：{exc}"}, status=502)
+            return self._json({"ok": False, "error": "候选没有生成出来，请稍后重试。"}, status=502)
         return self._json({"ok": True, **result})
 
     def _read_json_body(self) -> dict:
@@ -2924,7 +2924,8 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError as exc:
             return self._json({"ok": False, "error": str(exc)}, status=400)
         except Exception as exc:  # noqa: BLE001
-            return self._json({"ok": False, "error": f"拉取模型列表失败：{exc}"}, status=502)
+            print(f"[papers] model list failed: {exc}", flush=True)
+            return self._json({"ok": False, "error": "没有取到模型列表，请检查地址和密钥后再试。"}, status=502)
         return self._json({"ok": True, "models": models, "count": len(models)})
 
     def _chat_connectivity_test(self) -> None:
@@ -2952,7 +2953,8 @@ class Handler(SimpleHTTPRequestHandler):
                     reason = exc.read(512).decode("utf-8", errors="replace") or reason
                 except Exception:  # noqa: BLE001
                     pass
-            return self._json({"ok": False, "error": f"连接失败：{reason}"}, status=502)
+            print(f"[papers] chat test failed: {reason}", flush=True)
+            return self._json({"ok": False, "error": "没有连上这个模型，请检查地址、密钥和模型名后再试。"}, status=502)
         return self._json({
             "ok": True,
             "model": model,
