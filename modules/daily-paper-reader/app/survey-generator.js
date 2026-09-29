@@ -17,6 +17,15 @@ window.SurveyGenerator = (function () {
     return text;
   }
 
+  function plainFailure(message, fallback) {
+    var text = String(message || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length > 180) return fallback;
+    if (/https?:\/\/|Traceback|\.py\b|Exception|timeout|日报流水线/i.test(text)) return fallback;
+    if (/缺少综述主题/.test(text)) return '请先填写综述主题。';
+    if (/arXiv id|缺少 url/.test(text)) return '请填写 arXiv 论文链接，或改用上传 PDF。';
+    return text;
+  }
+
   function surveyEndpoint() {
     return apiUrl('/api/survey');
   }
@@ -166,7 +175,7 @@ window.SurveyGenerator = (function () {
     if (!out) return;
     out.textContent = '';
     out.classList.add('is-error');
-    out.appendChild(el('p', 'survey-error-text', '❌ ' + (msg || '综述生成失败')));
+    out.appendChild(el('p', 'survey-error-text', '❌ ' + plainFailure(msg, '这次综述没有完成，请稍后重试。')));
   }
 
   // ---- 进度渲染（事件按 event_id 去重，进度条按阶段权重推进） ----
@@ -329,7 +338,7 @@ window.SurveyGenerator = (function () {
         } else if (status === 'failed') {
           forgetSurveyJob();
           setBusy(false);
-          setStatus('综述失败：' + (job.error || ''), true);
+          setStatus(plainFailure(job.error, '这次综述没有完成，请稍后重试。'), true);
           renderError(job.error || '综述生成失败');
           listRuns();
         } else if (status === 'cancelled') {
@@ -418,7 +427,7 @@ window.SurveyGenerator = (function () {
           row.appendChild(btn);
           item.appendChild(row);
           if (status === 'failed') {
-            item.appendChild(el('div', 'survey-history-empty', '失败：' + (job.error || '')));
+            item.appendChild(el('div', 'survey-history-empty', plainFailure(job.error, '这次没有完成。')));
           }
           list.appendChild(item);
         });

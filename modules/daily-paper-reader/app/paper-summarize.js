@@ -148,12 +148,20 @@ window.PaperSummarizer = (function () {
     }
   }
 
+  function visibleMessage(text) {
+    var t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!t || t.length > 180) return '';
+    if (/https?:\/\/|Traceback|\.py\b|Exception|timeout/i.test(t)) return '';
+    if (/[A-Za-z]{3,}/.test(t) && !/\b(PDF|arXiv)\b/.test(t)) return '';
+    return t;
+  }
+
   function renderError(msg) {
     var out = document.querySelector('#paper-summarize-result');
     if (!out) return;
     out.textContent = '';
     out.classList.add('is-error');
-    out.appendChild(el('p', '', '❌ ' + (msg || '总结失败')));
+    out.appendChild(el('p', '', '❌ ' + (visibleMessage(msg) || '这次总结没有完成，请稍后重试。')));
   }
 
   function setStatus(text, isError) {
@@ -209,8 +217,8 @@ window.PaperSummarizer = (function () {
         }
         if (!data || !data.ok || !data.job_id) {
           state.busy = false;
-          var msg = (data && (data.error || data.detail || data.message)) || '没有开始，请稍后重试。';
-          renderError(msg);
+          var msg = visibleMessage(data && (data.error || data.detail || data.message));
+          renderError(msg || '没有开始，请稍后重试。');
           setStatus('');
           return;
         }
@@ -352,16 +360,15 @@ window.PaperSummarizer = (function () {
     var list = document.querySelector('#paper-summarize-progress-list');
     if (!list) return;
     fresh.forEach(function (ev) {
-      var stage = ev.stage || ev.event_type || '';
-      var msg = ev.message || '';
+      var msg = visibleMessage(ev.message);
+      if (!msg) return;
       var suffix = '';
       if (ev.current != null && ev.total != null) {
-        suffix = ' (' + ev.current + '/' + ev.total + ')';
+        suffix = '（' + ev.current + '/' + ev.total + '）';
       }
       var li = el('li', 'paper-summarize-progress-item');
       var dot = el('span', 'paper-summarize-progress-dot');
       li.appendChild(dot);
-      if (stage) li.appendChild(el('span', 'paper-summarize-progress-stage', stage));
       li.appendChild(el('span', 'paper-summarize-progress-msg', msg + suffix));
       list.appendChild(li);
     });
