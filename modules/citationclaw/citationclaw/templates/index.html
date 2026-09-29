@@ -192,25 +192,25 @@
     <div class="pipeline-phase" id="pp-phase1">
       <div class="pp-icon"><i class="bi bi-search"></i></div>
       <div class="pp-label">施引文献检索</div>
-      <div class="pp-source">Google Scholar</div>
+      <div class="pp-source">论文目录</div>
     </div>
     <div class="pipeline-arrow"><i class="bi bi-chevron-right"></i></div>
     <div class="pipeline-phase" id="pp-phase2">
       <div class="pp-icon"><i class="bi bi-database"></i></div>
       <div class="pp-label">作者信息采集</div>
-      <div class="pp-source">OpenAlex · S2 · arXiv</div>
+      <div class="pp-source">作者和单位</div>
     </div>
     <div class="pipeline-arrow"><i class="bi bi-chevron-right"></i></div>
     <div class="pipeline-phase" id="pp-phase3">
       <div class="pp-icon"><i class="bi bi-award"></i></div>
       <div class="pp-label">学者影响力评估</div>
-      <div class="pp-source">预过滤 + 搜索</div>
+      <div class="pp-source">对照学者名单</div>
     </div>
     <div class="pipeline-arrow"><i class="bi bi-chevron-right"></i></div>
     <div class="pipeline-phase" id="pp-phase4">
       <div class="pp-icon"><i class="bi bi-file-pdf"></i></div>
       <div class="pp-label">引文语境提取</div>
-      <div class="pp-source">PDF 下载解析</div>
+      <div class="pp-source">读取引用原文</div>
     </div>
     <div class="pipeline-arrow"><i class="bi bi-chevron-right"></i></div>
     <div class="pipeline-phase" id="pp-phase5">
@@ -469,10 +469,10 @@ function toggleScholarImport() {
 
 async function fetchScholarPapers() {
     const url = document.getElementById('scholar-url-input').value.trim();
-    if (!url) { alert('请输入 OpenAlex 作者主页或 Google Scholar 主页链接'); return; }
+    if (!url) { alert('请先填写 OpenAlex 的作者主页链接。'); return; }
     const openAlexAuthor = /openalex\.org\/(?:authors\/)?A\d+(?:[/?#]|$)/i.test(url);
     if (!url.includes('scholar.google') && !openAlexAuthor) {
-        alert('请输入 OpenAlex 作者主页（https://openalex.org/A…）或 Google Scholar 主页链接');
+        alert('请填写 OpenAlex 的作者主页（https://openalex.org/A…），或上传保存的主页。');
         return;
     }
     const btn = document.getElementById('scholar-fetch-btn');
@@ -546,10 +546,10 @@ function escHtml(s) {
 // ── 学者主页快速流水线 ───────────────────────────────────────
 async function runProfilePipeline() {
     const url = document.getElementById('profile-url-fast').value.trim();
-    if (!url) { alert('请输入 OpenAlex 作者主页或 Google Scholar 主页链接'); return; }
+    if (!url) { alert('请先填写 OpenAlex 的作者主页链接。'); return; }
     const openAlexAuthor = /openalex\.org\/(?:authors\/)?A\d+(?:[/?#]|$)/i.test(url);
     if (!url.includes('scholar.google') && !openAlexAuthor) {
-        alert('请输入 OpenAlex 作者主页（https://openalex.org/A…）或 Google Scholar 主页链接');
+        alert('请填写 OpenAlex 的作者主页（https://openalex.org/A…），或上传保存的主页。');
         return;
     }
     await _launchProfilePipeline('/api/profile/run', {
