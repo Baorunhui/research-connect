@@ -128,7 +128,8 @@ def build_fast_report(
     return {
         "mode": REPORT_MODE, "disclaimer": DISCLAIMER, "scholar_name": scholar_name,
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"), "coverage": coverage,
-        "honor_list": honor_stats, "honor_citers": honor_citers, "targets": targets_out,
+        "honor_list": honor_stats, "kaggle_index": kaggle is not None,
+        "honor_citers": honor_citers, "targets": targets_out,
         "data_sources": "OpenAlex cites（施引关系 + 作者单位）· Kaggle arXiv 快照（题录核对）· 本地荣誉名单",
         "match_rule": "姓名键一致，且（邮箱完整地址 / 邮箱域名 / 规范化单位）至少一项一致；仅姓名一致不计入",
     }
@@ -168,6 +169,9 @@ def render_html(report: dict) -> str:
         )
     else:
         honor_note = "这台服务器上还没有荣誉名单，所以这次没有做名单对照。"
+    kaggle_note = ""
+    if report.get("kaggle_index") is False:
+        kaggle_note = "<p>这台服务器上还没有本地论文快照，所以这次没有核对论文编号。</p>"
     stats_line = "".join(
         f"<li><b>{e(value)}</b><span>{e(label)}</span></li>"
         for label, value in (
@@ -204,6 +208,7 @@ p{{line-height:1.6}}
 <div class="banner">{e(report['disclaimer'])}</div>
 <ul class="stats">{stats_line}</ul>
 <p>{e(honor_note)}</p>
+{kaggle_note}
 <h3>对上的学者（{cov['honor_citers']}）</h3>
 <div class="wrap"><table><tr><th>学者</th><th>荣誉</th><th>怎么对上的</th><th>单位</th><th>引用了几篇</th><th>引用的论文</th></tr>{rows}</table></div>
 <h3>查过的论文</h3>

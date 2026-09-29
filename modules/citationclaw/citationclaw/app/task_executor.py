@@ -2356,6 +2356,8 @@ class TaskExecutor:
                 self.log_manager.info(f"  名单里有 {stats['total']} 人")
             kaggle = get_kaggle_meta()
             kaggle = kaggle if kaggle.available else None
+            if kaggle is None:
+                self.log_manager.warning("本地论文快照没加载，这次只对题名，不核对论文编号。")
             for tp in target_papers:
                 m = kaggle.lookup(title=tp.get("title", "")) if kaggle is not None else None
                 for key in ("arxiv_id", "doi") if m else ():
