@@ -423,6 +423,7 @@ window.DPRWorkflowRunner = (function () {
 
   // 原始日志默认折叠；跨重渲染保留用户展开状态。
   let rawLogExpanded = false;
+  let localRunFetchGen = 0;
 
   const renderLocalRun = (run, logText) => {
     if (!runsEl || !run) return;
@@ -443,14 +444,15 @@ window.DPRWorkflowRunner = (function () {
             ? '#1565c0'
             : '#666';
     const logLines = logText ? logText.split('\n').length : 0;
-    const logHtml = logText
-      ? `<details data-dpr-workflow-log-details="1" ${rawLogExpanded ? 'open' : ''} style="margin-top:4px;">
+    const logBody = logText
+      ? escapeHtml(logText)
+      : (rawLogExpanded ? '日志还在读取。' : '点开后显示。');
+    const logHtml = `<details data-dpr-workflow-log-details="1" ${rawLogExpanded ? 'open' : ''} style="margin-top:4px;">
            <summary style="cursor:pointer; font-size:12px; color:#666; user-select:none; outline:none;">
-             原始日志（${logLines} 行，点击${rawLogExpanded ? '收起' : '展开'}）
+             原始日志${logLines ? `（${logLines} 行，点击${rawLogExpanded ? '收起' : '展开'}）` : '（点击展开）'}
            </summary>
-           <pre data-dpr-workflow-log="1" style="white-space:pre-wrap; max-height:360px; overflow:auto; background:#111; color:#ddd; padding:10px; border-radius:6px; font-size:12px; margin-top:6px;">${escapeHtml(logText)}</pre>
-         </details>`
-      : '<div style="color:#999;">暂无日志。</div>';
+           <pre data-dpr-workflow-log="1" style="white-space:pre-wrap; max-height:360px; overflow:auto; background:#111; color:#ddd; padding:10px; border-radius:6px; font-size:12px; margin-top:6px;">${logBody}</pre>
+         </details>`;
     runsEl.innerHTML = `
       <div style="margin-bottom:8px;">
         <div style="font-weight:600;">任务 #${escapeHtml(run.run_number || run.id)}</div>
@@ -465,14 +467,28 @@ window.DPRWorkflowRunner = (function () {
       ${logHtml}
     `;
     scrollWorkflowLogToBottom(shouldFollowLog);
+    const details = runsEl.querySelector('[data-dpr-workflow-log-details]');
+    if (details) {
+      details.addEventListener('toggle', () => {
+        const opened = details.open;
+        if (opened === rawLogExpanded) return;
+        rawLogExpanded = opened;
+        if (!selectedRun || !selectedRun.local || !selectedRun.runId) return;
+        refreshLocalRun(selectedRun.runId);
+      });
+    }
   };
 
   const refreshLocalRun = async (runId, retryCount = 0) => {
+    const gen = ++localRunFetchGen;
+    const wantLog = rawLogExpanded;
     try {
-      const data = await localApiFetch(`${LOCAL_RUNS_API}/${encodeURIComponent(runId)}/log`);
+      const runPath = `${LOCAL_RUNS_API}/${encodeURIComponent(runId)}`;
+      const data = await localApiFetch(wantLog ? `${runPath}/log` : runPath);
+      if (gen !== localRunFetchGen) return;
       const run = data.run || {};
       syncSidebarFromStep6(run);
-      renderLocalRun(run, data.log || '');
+      renderLocalRun(run, wantLog ? (data.log || '') : '');
       if (['completed', 'interrupted', 'cancelled'].indexOf(String(run.status || '').toLowerCase()) >= 0) {
         stopPolling();
         const doneLabel = formatRunBadgeText(run.status, run.conclusion);
@@ -484,8 +500,10 @@ window.DPRWorkflowRunner = (function () {
         setStatus('正在生成，每 5 秒更新。', '#1565c0', { waiting: true });
       }
     } catch (e) {
+      if (gen !== localRunFetchGen) return;
       if (e && e.status === 404 && retryCount < 2) {
         await new Promise((resolve) => setTimeout(resolve, 800));
+        if (gen !== localRunFetchGen) return;
         return refreshLocalRun(runId, retryCount + 1);
       }
       if (e && e.status === 404) {
