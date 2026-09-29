@@ -423,7 +423,7 @@
     } catch (err) {
       progress.stop();
       refs.statusEl.style.color = '#c00';
-      refs.statusEl.textContent = '候选生成失败：' + (err && err.message ? err.message : err);
+      refs.statusEl.textContent = plainSettingsError(err, '候选没有生成出来，请稍后重试。');
     } finally {
       refs.genBtn.disabled = false;
     }
@@ -679,6 +679,12 @@
 
   // 本地服务进程早于新代码启动时，新端点不存在，后端统一返回 404 not found——
   // 必须明确提示重启，否则用户只看到一句 not found 无从下手。
+  function plainSettingsError(err, fallback) {
+    const msg = err && err.message ? String(err.message) : '';
+    if (msg && msg.length <= 80 && !/https?:\/\/|[A-Za-z]{3,}/.test(msg)) return msg;
+    return fallback;
+  }
+
   function describeChatToolError(err, resp) {
     const msg = err && err.message ? String(err.message) : '';
     if ((resp && resp.status === 404) || /not found/i.test(msg)) {
@@ -851,7 +857,7 @@
       }
       return true;
     } catch (err) {
-      setStatus('保存失败：' + (err && err.message ? err.message : err), '#c00');
+      setStatus(plainSettingsError(err, '设置没有保存，请稍后重试。'), '#c00');
       return false;
     }
   }
