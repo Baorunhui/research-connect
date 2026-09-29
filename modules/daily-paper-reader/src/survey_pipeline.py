@@ -816,8 +816,8 @@ def _kaggle_recall_lane(
     # FTS 只认英文词：纯中文主题提不出任何词时显式提示（静默 0 命中曾产出主题漂移综述）
     if queries and not any(extractable_terms(q) for q in queries):
         ctx.warn(
-            "Kaggle 快照粗筛只支持英文检索词，当前查询组无可提取英文词（该路跳过）。"
-            "请使用英文主题，或提供种子论文让流水线自动派生英文查询。"
+            "论文快照只支持英文检索词。这次没找到英文词，这条路先跳过。"
+            "可以换一种英文说法，或加上一篇相关论文。"
         )
         return []
     merged: Dict[str, Dict[str, Any]] = {}
@@ -1034,6 +1034,7 @@ def recall_papers(
     supabase_conf = get_supabase_read_config(config)
     if str(os.getenv("DPR_SURVEY_DISABLE_LOCAL_LANE") or "").strip().lower() in {"1", "true", "yes", "on"}:
         ctx.warn("DPR_SURVEY_DISABLE_LOCAL_LANE=1：本地库召回路已按需跳过")
+        ctx.warn("这次不查本地论文库。")
     elif supabase_conf.get("url") and supabase_conf.get("anon_key"):
         try:
             t0 = time.time()
