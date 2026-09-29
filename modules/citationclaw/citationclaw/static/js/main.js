@@ -930,7 +930,7 @@ function initIndexPage() {
             appendIndexLog({
                 timestamp: new Date().toISOString(),
                 level: 'INFO',
-                message: data.disclaimer || '快查报告：OpenAlex 施引 + Kaggle 题录核对 + 荣誉名单，不是谷歌学术全量爬取'
+                message: data.disclaimer || '施引来自 OpenAlex 的论文目录，不是谷歌学术的完整列表。'
             });
         }
         showIndexResults(data);

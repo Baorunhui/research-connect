@@ -22,9 +22,8 @@ from citationclaw.core.kaggle_arxiv_meta import KaggleArxivMeta, normalize_title
 
 REPORT_MODE = "openalex_citing_honor_match"
 DISCLAIMER = (
-    "施引数据来自 OpenAlex（按论文分页拉取全部施引 works，仅题录与作者单位），"
-    "题录经本地 Kaggle arXiv 快照核对/补全；不是谷歌学术全量爬取，"
-    "OpenAlex 未收录的施引不会被统计。"
+    "施引来自 OpenAlex 的论文目录，不是谷歌学术的完整列表。"
+    "OpenAlex 没有收录的引用不会出现在这里。"
 )
 
 
@@ -121,9 +120,9 @@ def build_fast_report(
         "name_only_candidates_not_counted": n_name_only,
         "profile_citations_total": sum(int(t.get("citations") or 0) for t in target_papers),
     }
-    log(f"[快查] 目标 {len(target_papers)} 篇，OpenAlex 找到 {n_resolved} 篇；施引记录 {n_fetched} 条，"
-        f"去重后他引 {len(seen_citing)} 篇（Kaggle 题录核对 {n_kaggle} 篇），跳过自引 {len(seen_self)} 篇")
-    log(f"[快查] 荣誉名单命中 {len(honor_citers)} 人；仅姓名相同、单位/邮箱不符的候选 {n_name_only} 个未计入")
+    log(f"[快查] 查了 {len(target_papers)} 篇，目录里找到 {n_resolved} 篇；"
+        f"施引 {n_fetched} 条，去掉重复后 {len(seen_citing)} 篇，跳过本人引用 {len(seen_self)} 篇")
+    log(f"[快查] 对上荣誉名单 {len(honor_citers)} 人；只是同名、单位或邮箱对不上的 {n_name_only} 个没有算进去")
     return {
         "mode": REPORT_MODE, "disclaimer": DISCLAIMER, "scholar_name": scholar_name,
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"), "coverage": coverage,
@@ -143,7 +142,7 @@ def render_html(report: dict) -> str:
         f"<td>{e(c['listed_affiliation'])}</td><td>{len(c['citing_papers'])}</td>"
         f"<td>{e('; '.join(c['citing_papers'][:3]))}</td></tr>"
         for c in report["honor_citers"]
-    ) or "<tr><td colspan='6'>OpenAlex 施引作者中未匹配到荣誉名单学者（名单外或单位/邮箱不符的不计入）</td></tr>"
+    ) or "<tr><td colspan='6'>这次没有对上荣誉名单里的学者。只是同名、单位或邮箱对不上的不算。</td></tr>"
     trows = "".join(
         f"<tr><td>{e(t['title'])}</td><td>{e(t['year'])}</td><td>{e(t['citations'])}</td>"
         f"<td>{e(t['arxiv_id'] or '-')}</td><td>{e(t['openalex_cited_by'])}</td>"
@@ -151,26 +150,24 @@ def render_html(report: dict) -> str:
         f"<td>{len(t['honor_hits'])}</td></tr>"
         for t in report["targets"]
     )
-    sources = "、".join(f"{k} {v}" for k, v in (stats.get("sources") or {}).items()) or "未加载"
     return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
-<title>{e(report['scholar_name'])} · 他引快查</title>
+<title>{e(report['scholar_name'])} · 查他引</title>
 <style>body{{font-family:system-ui,sans-serif;margin:24px;color:#222}}
 .banner{{background:#fff4e5;border:1px solid #f0b35a;padding:12px 16px;border-radius:8px}}
 table{{border-collapse:collapse;width:100%;margin:12px 0}}td,th{{border:1px solid #ddd;padding:6px;font-size:13px;vertical-align:top}}
 th{{background:#f5f5f5}}.kv span{{display:inline-block;margin-right:18px}}</style></head><body>
-<h2>{e(report['scholar_name'] or '学者')} · 他引快查（OpenAlex 施引 + Kaggle 题录 + 荣誉名单）</h2>
-<div class="banner"><b>数据来源：</b>{e(report['disclaimer'])}</div>
-<p class="kv"><span>目标论文 {cov['target_papers']}</span><span>OpenAlex 找到 {cov['targets_resolved_openalex']}</span>
-<span>OpenAlex 被引合计 {cov['openalex_cited_by_total']}</span><span>拉取施引记录 {cov['citing_records_fetched']}</span>
-<span>去重他引论文 {cov['unique_citing_works']}</span><span>Kaggle 题录核对 {cov['citing_verified_kaggle']}</span>
-<span>跳过自引 {cov['self_citations_skipped']}</span><span>主页显示总被引 {cov['profile_citations_total']}</span>
-<span>未取完的目标 {cov['targets_incomplete']}</span></p>
-<p>荣誉名单：{e(stats.get('total', 0))} 条（{e(sources)}）。匹配规则：{e(report['match_rule'])}。
-仅姓名相同但单位/邮箱不符的候选 {cov['name_only_candidates_not_counted']} 个，未计入。</p>
-<h3>命中的荣誉学者（{cov['honor_citers']}）</h3>
-<table><tr><th>学者</th><th>荣誉</th><th>匹配依据</th><th>名单单位</th><th>施引篇数</th><th>施引论文（前 3）</th></tr>{rows}</table>
-<h3>目标论文</h3>
-<table><tr><th>标题</th><th>年份</th><th>主页被引</th><th>arXiv</th><th>OpenAlex 被引</th><th>已拉取施引</th><th>荣誉命中</th></tr>{trows}</table>
+<h2>{e(report['scholar_name'] or '学者')} · 查他引</h2>
+<div class="banner">{e(report['disclaimer'])}</div>
+<p class="kv"><span>查了 {cov['target_papers']} 篇</span><span>目录里找到 {cov['targets_resolved_openalex']} 篇</span>
+<span>目录记载的引用 {cov['openalex_cited_by_total']}</span><span>拉到的施引 {cov['citing_records_fetched']}</span>
+<span>去掉重复后 {cov['unique_citing_works']} 篇</span><span>题录核对上了 {cov['citing_verified_kaggle']} 篇</span>
+<span>跳过本人引用 {cov['self_citations_skipped']} 篇</span><span>主页上的总引用 {cov['profile_citations_total']}</span>
+<span>还没查完 {cov['targets_incomplete']} 篇</span></p>
+<p>名单里有 {e(stats.get('total', 0))} 人。姓名要对上，并且单位或邮箱至少有一项也对上。只是同名的 {cov['name_only_candidates_not_counted']} 个没有算进去。</p>
+<h3>对上的学者（{cov['honor_citers']}）</h3>
+<table><tr><th>学者</th><th>荣誉</th><th>怎么对上的</th><th>单位</th><th>引用了几篇</th><th>引用的论文</th></tr>{rows}</table>
+<h3>查过的论文</h3>
+<table><tr><th>论文</th><th>年份</th><th>主页上的引用数</th><th>论文编号</th><th>目录里的引用数</th><th>已查到的施引</th><th>对上几位</th></tr>{trows}</table>
 <p style="color:#888">生成于 {e(report['generated_at'])}</p></body></html>"""
 
 
