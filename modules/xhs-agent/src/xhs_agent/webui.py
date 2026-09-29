@@ -148,9 +148,29 @@ async function loadHistory() {
   } catch (e) { /* history is optional */ }
 }
 
+function formProblem(title, summary, materialLines) {
+  if (!title || !summary) return '请先填写标题和一句话摘要。';
+  if (title.length > 200) return '标题太长了，请缩短到 200 字以内。';
+  if (summary.length > 4000) return '摘要太长了，请缩短到 4000 字以内。';
+  if (materialLines.length > 30) return '要点太多了，请留在 30 条以内。';
+  var materialLength = 0;
+  materialLines.forEach(function (line) { materialLength += line.length; });
+  if (materialLength > 12000) return '要点太长了，请缩短后再生成。';
+  return '';
+}
+
 $('xhs-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
-  const materials = lines('materials').map((text, i) => ({ id: 'M' + (i + 1), type: 'fact', text }));
+  const title = $('title').value.trim();
+  const summary = $('summary').value.trim();
+  const materialLines = lines('materials');
+  const problem = formProblem(title, summary, materialLines);
+  if (problem) {
+    $('status').className = 'status error';
+    $('status').textContent = problem;
+    return;
+  }
+  const materials = materialLines.map((text, i) => ({ id: 'M' + (i + 1), type: 'fact', text }));
   const links = lines('links').map(url => ({ type: 'source', url }));
   const body = {
     schema_version: 'xhs_agent.request.v1',
@@ -158,7 +178,7 @@ $('xhs-form').addEventListener('submit', async (ev) => {
     intent: $('intent').value,
     mode: 'generate_package',
     source: { kind: $('intent').value === 'paper_promo' || $('intent').value === 'daily_paper' ? 'paper' : 'project',
-              title: $('title').value.trim(), summary: $('summary').value.trim(), materials, links, entities: {} },
+              title: title, summary: summary, materials, links, entities: {} },
     requirements: { card_count: Math.max(1, Math.min(8, parseInt($('cards').value || '5', 10))) },
   };
   if ($('audience').value.trim()) body.audience = { who: $('audience').value.trim() };

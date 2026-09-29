@@ -170,8 +170,32 @@ def _run_job(job_id: str, request: SocialContentRequest) -> None:
         )
 
 
+def _prepare_request(request: SocialContentRequest) -> SocialContentRequest:
+    """Refuse a blank or oversized brief before any model call."""
+    title = request.source.title.strip()
+    summary = request.source.summary.strip()
+    if not title or not summary:
+        raise HTTPException(status_code=400, detail="请先填写标题和一句话摘要。")
+    if len(title) > 200:
+        raise HTTPException(status_code=400, detail="标题太长了，请缩短到 200 字以内。")
+    if len(summary) > 4000:
+        raise HTTPException(status_code=400, detail="摘要太长了，请缩短到 4000 字以内。")
+    materials = [item for item in request.source.materials if item.text.strip()]
+    if len(materials) > 30:
+        raise HTTPException(status_code=400, detail="要点太多了，请留在 30 条以内。")
+    if sum(len(item.text) for item in materials) > 12000:
+        raise HTTPException(status_code=400, detail="要点太长了，请缩短后再生成。")
+    source = request.source.model_copy(update={
+        "title": title,
+        "summary": summary,
+        "materials": materials,
+    })
+    return request.model_copy(update={"source": source})
+
+
 @app.post("/v1/xhs/jobs")
 def start_job(request: SocialContentRequest) -> dict[str, str]:
+    request = _prepare_request(request)
     job_id = (request.request_id or "").strip() or f"web-{os.urandom(5).hex()}"
     request = request.model_copy(update={"request_id": job_id})
     with _jobs_lock:
@@ -209,6 +233,7 @@ def get_job(job_id: str) -> dict:
 
 @app.post("/v1/xhs/packages", response_model=SocialContentResponse)
 def create_package(request: SocialContentRequest) -> SocialContentResponse:
+    request = _prepare_request(request)
     try:
         return _execute(request)
     except Exception as exc:
