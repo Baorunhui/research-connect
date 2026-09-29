@@ -1461,7 +1461,7 @@ class TaskExecutor:
             file_prefix = f"{output_prefix}-{timestamp}"
 
             self.log_manager.info(f"文件前缀: {file_prefix}")
-            self.log_manager.info(f"结果目录: {result_dir}")
+            print(f"[citationclaw] result dir: {result_dir}", flush=True)
 
             # ==================== 阶段1: 抓取引用列表 ====================
             self.log_manager.info("=" * 50)
@@ -1887,7 +1887,7 @@ class TaskExecutor:
             folder_name = f"{_folder_prefix}-result-{timestamp}" if _folder_prefix else f"result-{timestamp}"
             result_dir = DATA_DIR / folder_name
             result_dir.mkdir(parents=True, exist_ok=True)
-            self.log_manager.info(f"结果目录: {result_dir}")
+            print(f"[citationclaw] result dir: {result_dir}", flush=True)
 
             # 运行前快照 LLM 额度 (token masked in logs)
             self.log_manager.info(
@@ -2245,7 +2245,7 @@ class TaskExecutor:
             f"[学者缓存] 命中本地缓存: {label}（{cached.get('updated_at', '')}），"
             "跳过外部查询，直接展示已有结果"
         )
-        self.log_manager.info(f"结果目录: {DATA_DIR / str(cached.get('result_dir') or '')}")
+        print(f"[citationclaw] cached result dir: {DATA_DIR / str(cached.get('result_dir') or '')}", flush=True)
         self.log_manager.info("设置没变，所以打开的是上次的结果。勾选「重新查」会再查一次。")
         self.log_manager.info("=" * 50)
         await self.log_manager._broadcast({"type": "all_done", "data": {
@@ -2447,7 +2447,7 @@ class TaskExecutor:
             )
 
             self.log_manager.success(f"查完了，用时 {report['elapsed_seconds']} 秒。{DISCLAIMER}")
-            self.log_manager.info(f"结果目录: {result_dir}")
+            print(f"[citationclaw] result dir: {result_dir}", flush=True)
             await self.log_manager._broadcast({"type": "all_done", "data": {
                 "excel": self._data_result_path(files["excel"]),
                 "json": self._data_result_path(files["json"]),
@@ -2528,7 +2528,7 @@ class TaskExecutor:
             result_dir.mkdir(parents=True, exist_ok=True)
             self.log_manager.info("=" * 50)
             self.log_manager.info("学者主页快速流水线")
-            self.log_manager.info(f"结果目录: {result_dir}")
+            print(f"[citationclaw] result dir: {result_dir}", flush=True)
             self.log_manager.info("=" * 50)
 
             if config.api_access_token and config.api_user_id:
@@ -3105,7 +3105,7 @@ class TaskExecutor:
             folder_name = f"{_folder_prefix}-result-{timestamp}" if _folder_prefix else f"result-{timestamp}"
             result_dir = DATA_DIR / folder_name
             result_dir.mkdir(parents=True, exist_ok=True)
-            self.log_manager.info(f"结果目录: {result_dir}")
+            print(f"[citationclaw] result dir: {result_dir}", flush=True)
 
             # 保存主 Excel（Phase 5 输入）
             citing_desc_excel = result_dir / f"{output_prefix}_results_with_citing_desc.xlsx"
