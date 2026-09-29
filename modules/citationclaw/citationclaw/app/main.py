@@ -302,7 +302,7 @@ async def start_task(request: TaskStartRequest):
     if task_executor.is_running:
         return JSONResponse(
             status_code=400,
-            content={"status": "error", "message": "任务正在运行中,请等待完成"}
+            content={"status": "error", "message": "已经有一次查询在进行，请等它完成。"}
         )
 
     url = _validate_scholar_url(request.url)
@@ -316,7 +316,7 @@ async def start_task(request: TaskStartRequest):
             resume_page=request.resume_page
         )
     )
-    return {"status": "success", "message": "阶段1已启动: 开始抓取引用列表"}
+    return {"status": "success", "message": "已开始查询这些论文被谁引用。"}
 
 
 @app.post("/api/task/continue")
@@ -324,17 +324,17 @@ async def continue_task():
     if task_executor.is_running:
         return JSONResponse(
             status_code=400,
-            content={"status": "error", "message": "任务正在运行中,请等待完成"}
+            content={"status": "error", "message": "已经有一次查询在进行，请等它完成。"}
         )
 
     if not task_executor.stage1_result:
         return JSONResponse(
             status_code=400,
-            content={"status": "error", "message": "未找到阶段1的结果，请先执行阶段1"}
+            content={"status": "error", "message": "还没有上一步的结果，请从首页重新开始查询。"}
         )
 
     _launch_task(task_executor.execute_stage2_and_3())
-    return {"status": "success", "message": "阶段2/3已启动: 开始搜索作者信息"}
+    return {"status": "success", "message": "已开始核对作者和单位。"}
 
 
 @app.post("/api/task/import")

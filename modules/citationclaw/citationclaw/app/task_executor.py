@@ -1761,8 +1761,9 @@ class TaskExecutor:
             }
 
         except Exception as e:
-            self.log_manager.error(f"导入失败: {str(e)}")
-            return {"success": False, "message": str(e)}
+            print(f"[citationclaw] import failed: {e}", flush=True)
+            self.log_manager.error("导入失败，请稍后重试。")
+            return {"success": False, "message": "导入失败，请稍后重试。"}
 
     async def execute_stage2_and_3(self):
         """
@@ -1770,7 +1771,7 @@ class TaskExecutor:
         需要先执行阶段1，或者有保存的阶段1结果
         """
         if not self.stage1_result:
-            self.log_manager.error("错误: 未找到阶段1的结果，请先执行阶段1或导入历史记录")
+            self.log_manager.error("还没有上一步的结果，请从首页重新开始查询。")
             return
 
         # Note: is_running is set synchronously by the caller before creating the task.
