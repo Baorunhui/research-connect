@@ -119,8 +119,14 @@ class _Ctx:
             self.cancel_check()
 
     def warn(self, message: str) -> None:
-        self.warnings.append(str(message))
-        _log(f"[WARN] {message}")
+        text = " ".join(str(message).split())
+        _log(f"[WARN] {text}")
+        head, sep, tail = text.rpartition("：")
+        if not sep:
+            head, sep, tail = text.rpartition(":")
+        if sep and re.search(r"[A-Za-z]{3,}", tail):
+            text = head.strip() or "有一步没有完成，已换用备用结果继续。"
+        self.warnings.append(text)
 
 
 # --------------------------------------------------------------------------- #
