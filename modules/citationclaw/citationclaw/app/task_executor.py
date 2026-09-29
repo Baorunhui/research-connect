@@ -87,6 +87,16 @@ class TaskExecutor:
             self._task_finished_payload(status, message, **extra),
         )
 
+    def _log_failure(self, exc: BaseException) -> None:
+        """Show a short reason on the page. Keep the traceback in the server log."""
+        import traceback
+        print(traceback.format_exc(), flush=True)
+        text = " ".join(str(exc).split())
+        if text and len(text) <= 180 and "Traceback" not in text and ".py" not in text and "://" not in text:
+            self.log_manager.error(text)
+        else:
+            self.log_manager.error("这次没有完成，请稍后重试。")
+
     def _data_result_path(self, path) -> Optional[str]:
         if not path:
             return None
@@ -1623,9 +1633,7 @@ class TaskExecutor:
             }})
 
         except Exception as e:
-            self.log_manager.error(f"任务执行错误: {str(e)}")
-            import traceback
-            self.log_manager.error(traceback.format_exc())
+            self._log_failure(e)
             raise
         finally:
             self.is_running = False
@@ -1709,9 +1717,7 @@ class TaskExecutor:
             })
 
         except Exception as e:
-            self.log_manager.error(f"阶段1执行错误: {str(e)}")
-            import traceback
-            self.log_manager.error(traceback.format_exc())
+            self._log_failure(e)
             raise
         finally:
             self.is_running = False
@@ -1840,9 +1846,7 @@ class TaskExecutor:
             self.stage1_result = None
 
         except Exception as e:
-            self.log_manager.error(f"阶段2/3执行错误: {str(e)}")
-            import traceback
-            self.log_manager.error(traceback.format_exc())
+            self._log_failure(e)
             raise
         finally:
             self.is_running = False
@@ -2218,8 +2222,7 @@ class TaskExecutor:
             }
 
         except Exception as e:
-            self.log_manager.error(f"任务错误: {e}")
-            import traceback; self.log_manager.error(traceback.format_exc())
+            self._log_failure(e)
             raise
         finally:
             self.is_running = False
@@ -2308,12 +2311,12 @@ class TaskExecutor:
             folder_name = f"{_folder_prefix}-result-{timestamp}" if _folder_prefix else f"result-{timestamp}"
             result_dir = DATA_DIR / folder_name
             self.log_manager.info("=" * 50)
-            self.log_manager.info("学者他引快查（OpenAlex 施引 + Kaggle 题录核对 + 荣誉名单）")
+            self.log_manager.info("开始查他引")
             self.log_manager.info("=" * 50)
 
             # Step 1: 学者身份与论文列表 —— 上传 HTML 完全本地；OpenAlex 作者页走 works；
             # Google Scholar URL 只做一次主页解析
-            self.log_manager.info("Step 1 · 学者身份与论文列表")
+            self.log_manager.info("正在读取论文列表")
             scraper = None
             oa_author = ""
             if profile_html:
@@ -2361,14 +2364,14 @@ class TaskExecutor:
             top_n = getattr(config, "profile_top_n", 30) or 0
             min_cit = getattr(config, "profile_min_citations", 0) or 0
             target_papers = filter_top_papers(all_papers, top_n=top_n, min_citations=min_cit)
-            self.log_manager.info(f"Step 2 · 取引用量最高 {len(target_papers)} 篇（共 {len(all_papers)} 篇）")
+            self.log_manager.info(f"按引用从高到低，这次查 {len(target_papers)} 篇（一共 {len(all_papers)} 篇）")
 
             honor = get_honor_list()
             stats = honor.stats()
             if not stats["available"]:
-                self.log_manager.warning(f"荣誉名单未加载（{stats['path'] or '未配置 CITATIONCLAW_HONOR_DB'}），将不会有荣誉命中")
+                self.log_manager.warning("荣誉名单没加载，这次对不上名单里的学者。")
             else:
-                self.log_manager.info(f"  荣誉名单 {stats['total']} 条: {stats['sources']}")
+                self.log_manager.info(f"  名单里有 {stats['total']} 人")
             kaggle = get_kaggle_meta()
             kaggle = kaggle if kaggle.available else None
             for tp in target_papers:
@@ -2387,14 +2390,14 @@ class TaskExecutor:
             )
             citing: dict = {}
             try:
-                self.log_manager.info(f"Step 3 · OpenAlex 施引：解析 {len(target_papers)} 篇目标论文的 work id")
+                self.log_manager.info(f"正在查这 {len(target_papers)} 篇论文被谁引用")
                 resolved = await asyncio.gather(*(
                     fetcher.resolve(tp.get("title", ""), tp.get("doi", ""), tp.get("arxiv_id", ""), tp.get("year"))
                     for tp in target_papers))
                 expected = sum(r["cited_by_count"] for r in resolved)
                 self.log_manager.info(
-                    f"  找到 {sum(1 for r in resolved if r['works'])}/{len(target_papers)} 篇，"
-                    f"OpenAlex 被引合计 {expected} 条，开始 cursor 翻页（每页 200）")
+                    f"  目录里找到 {sum(1 for r in resolved if r['works'])}/{len(target_papers)} 篇，"
+                    f"记载大约 {expected} 条引用，开始一页页拉取")
 
                 async def _pull(i, tp, res):
                     ids = [w["id"] for w in res["works"]]
@@ -2409,18 +2412,15 @@ class TaskExecutor:
                 await fetcher.close()
             took = time.monotonic() - started
             self.log_manager.info(
-                f"  OpenAlex 完成：{fetcher.fetched_records} 条新拉取（其余来自缓存），{fetcher.requests} 次请求，"
-                f"重试 {fetcher.retries} 次，线路 {fetcher.route if fetcher.requests else '未联网（全部命中缓存）'}，累计 {took:.1f}s")
+                f"  引用记录拉完了，新拿到 {fetcher.fetched_records} 条，用了 {fetcher.requests} 次请求，累计 {took:.0f} 秒")
             if self.should_cancel:
                 await self._broadcast_task_finished("cancelled", "已取消")
                 return
 
-            # Step 4: Kaggle 题录核对 + 荣誉名单匹配（本地，无外部请求）
-            n_verified = 0
+            self.log_manager.info("正在核对题录，并对照荣誉名单")
             if kaggle is not None:
-                n_verified = await asyncio.to_thread(
+                await asyncio.to_thread(
                     lambda: sum(verify_with_kaggle(c["records"], kaggle) for c in citing.values()))
-            self.log_manager.info(f"Step 4 · Kaggle 题录核对命中 {n_verified} 条；荣誉名单匹配中")
             report = await asyncio.to_thread(
                 build_fast_report, target_papers, name, honor, citing, kaggle, self.log_manager.info,
             )
@@ -2446,7 +2446,7 @@ class TaskExecutor:
                 ),
             )
 
-            self.log_manager.success(f"快查完成，用时 {report['elapsed_seconds']}s。{DISCLAIMER}")
+            self.log_manager.success(f"查完了，用时 {report['elapsed_seconds']} 秒。{DISCLAIMER}")
             self.log_manager.info(f"结果目录: {result_dir}")
             await self.log_manager._broadcast({"type": "all_done", "data": {
                 "excel": self._data_result_path(files["excel"]),
@@ -2465,8 +2465,7 @@ class TaskExecutor:
                 "mode": REPORT_MODE,
             }
         except Exception as e:
-            self.log_manager.error(f"任务错误: {e}")
-            import traceback; self.log_manager.error(traceback.format_exc())
+            self._log_failure(e)
             raise
         finally:
             self.is_running = False
@@ -2984,8 +2983,7 @@ class TaskExecutor:
             return result
 
         except Exception as e:
-            self.log_manager.error(f"任务错误: {e}")
-            import traceback; self.log_manager.error(traceback.format_exc())
+            self._log_failure(e)
             raise
         finally:
             self.is_running = False
@@ -3166,8 +3164,7 @@ class TaskExecutor:
             return {"html": str(html_file), "excel": str(citing_desc_excel)}
 
         except Exception as e:
-            self.log_manager.error(f"缓存报告生成错误: {e}")
-            import traceback; self.log_manager.error(traceback.format_exc())
+            self._log_failure(e)
             raise
         finally:
             self.is_running = False
