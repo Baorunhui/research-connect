@@ -233,6 +233,14 @@ window.DPRWorkflowRunner = (function () {
     return `${base}${path}`;
   };
 
+  const plainNotice = (message, fallback) => {
+    const text = String(message || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length > 180 || /https?:\/\/|Traceback|\.py\b|[A-Za-z]{3,}/.test(text)) {
+      return fallback;
+    }
+    return text;
+  };
+
   const localApiFetch = async (path, init) => {
     const controller = new AbortController();
     const timeoutMs = path.indexOf('/log') >= 0 ? 60000 : 10000;
@@ -853,13 +861,13 @@ window.DPRWorkflowRunner = (function () {
               await loadRecentRuns();
             } catch (e) {
               button.disabled = false;
-              setStatus(`删除失败：${e.message || e}`, '#c00');
+              setStatus(plainNotice(e && e.message, '没有删掉，请稍后重试。'), '#c00');
             }
           });
         });
       } catch (e) {
         recentEl.classList.remove('is-loading');
-        recentEl.innerHTML = `<div style="color:#c00;">${escapeHtml(e.message || String(e))}</div>`;
+        recentEl.innerHTML = `<div style="color:#c00;">${escapeHtml(plainNotice(e && e.message, '任务列表暂时打不开，请稍后重试。'))}</div>`;
       }
       return;
     }
@@ -986,12 +994,12 @@ window.DPRWorkflowRunner = (function () {
         return await dispatchLocalAndMonitor(wf, workflowFile, dispatchInputs);
       } catch (e) {
         console.error(e);
-        const msg = e.message || String(e);
-        setStatus(`没有开始：${msg}`, '#c00');
-        const debugHint = String(window.DPR_LOCAL_API_BASE || '').trim()
-          ? '请稍后重试。若仍失败，检查服务器上的论文日报服务。'
-          : '请确认本机服务已启动：<code>python src/local_server.py</code>';
-        runsEl.innerHTML = `<div style="color:#c00;">${escapeHtml(msg)}<br/>${debugHint}</div>`;
+        const msg = plainNotice(e && e.message, '这次没有开始，请稍后重试。');
+        setStatus(msg, '#c00');
+        const localHint = String(window.DPR_LOCAL_API_BASE || '').trim()
+          ? ''
+          : '<br/>请确认本机服务已启动：<code>python src/local_server.py</code>';
+        runsEl.innerHTML = `<div style="color:#c00;">${escapeHtml(msg)}${localHint}</div>`;
         return;
       }
     }
