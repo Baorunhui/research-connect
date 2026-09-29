@@ -483,21 +483,21 @@
       '<div class="secret-gate-modal" role="dialog" aria-modal="true" aria-label="页面设置">' +
       '  <h2 style="margin-top:0;">页面设置</h2>' +
       '  <p style="font-size:13px;color:#555;margin:0 0 14px;">模型和精排保存后马上生效，不用重启。</p>' +
-      '  <div class="dpr-settings-field"><label>API 端点（OpenAI 兼容）</label><input type="text" id="dpr-settings-chat-baseurl" placeholder="https://api.sinksilk.com:58443" /></div>' +
-      '  <div class="dpr-settings-field"><label>API Key（留空表示不修改已保存的密钥）</label><input type="password" id="dpr-settings-chat-apikey" placeholder="" autocomplete="off" /></div>' +
+      '  <div class="dpr-settings-field"><label>模型地址</label><input type="text" id="dpr-settings-chat-baseurl" placeholder="https://api.sinksilk.com:58443" /></div>' +
+      '  <div class="dpr-settings-field"><label>模型密钥（留空表示不修改已保存的密钥）</label><input type="password" id="dpr-settings-chat-apikey" placeholder="" autocomplete="off" /></div>' +
       '  <div class="dpr-settings-field"><label>AI 问答模型</label>' +
       '    <div style="display:flex;gap:6px;align-items:center;">' +
       '      <input type="text" id="dpr-settings-chat-model" placeholder="deepseek-v4-flash" style="flex:1;min-width:0;" />' +
       '      <button type="button" class="secret-gate-btn secondary" id="dpr-settings-chat-fetch-models" style="white-space:nowrap;padding:4px 10px;font-size:12px;">获取模型列表</button>' +
       '    </div>' +
       '    <select id="dpr-settings-chat-model-select" style="margin-top:6px;width:100%;display:none;"></select>' +
-      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">填好端点和密钥后点「获取模型列表」，从下拉里选择会自动填入；也可以直接手输模型名。密钥留空时用已经保存的密钥拉取。</p></div>' +
+      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">填好地址后点「获取模型列表」，从下拉里选择会自动填入；也可以直接手输模型名。密钥留空时用已经保存的密钥。</p></div>' +
       '  <div class="dpr-settings-field"><label>连通性测试</label>' +
       '    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
       '      <button type="button" class="secret-gate-btn secondary" id="dpr-settings-chat-test" style="padding:4px 10px;font-size:12px;">测试连通性</button>' +
       '      <span id="dpr-settings-chat-test-status" style="font-size:12px;color:#666;"></span>' +
       '    </div>' +
-      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">向当前端点+模型发一次最小对话请求（max_tokens=8），成功会显示耗时。</p></div>' +
+      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">用当前地址和模型试着问一句，成功会显示花了多久。</p></div>' +
       '  <div class="dpr-settings-field"><label>召回模式（日报数据来源）</label>' +
       '    <select id="dpr-settings-recall-mode">' +
       '      <option value="supabase">云端（默认）</option>' +
@@ -584,7 +584,7 @@
         const baseUrl = String((document.getElementById('dpr-settings-chat-baseurl') || {}).value || '').trim();
         const apiKey = String((document.getElementById('dpr-settings-chat-apikey') || {}).value || '').trim();
         if (!baseUrl) {
-          setChatToolStatus('请先填写 API 端点', '#c00');
+          setChatToolStatus('请先填写模型地址', '#c00');
           return;
         }
         const originalText = fetchModelsBtn.textContent;
@@ -600,7 +600,7 @@
           const data = await resp.json().catch(() => ({}));
           if (!resp.ok || !data.ok) throw new Error((data && data.error) || ('HTTP ' + resp.status));
           const models = Array.isArray(data.models) ? data.models : [];
-          if (!models.length) throw new Error('端点返回了空模型列表');
+          if (!models.length) throw new Error('这个地址没有返回可用的模型。');
           modelSelect.innerHTML = '';
           modelSelect.appendChild(new Option('共 ' + models.length + ' 个模型，点选自动填入 ↓', ''));
           models.forEach((m) => modelSelect.appendChild(new Option(m, m)));
@@ -629,7 +629,7 @@
         const apiKey = String((document.getElementById('dpr-settings-chat-apikey') || {}).value || '').trim();
         const model = String((document.getElementById('dpr-settings-chat-model') || {}).value || '').trim();
         if (!baseUrl) {
-          setChatToolStatus('请先填写 API 端点', '#c00');
+          setChatToolStatus('请先填写模型地址', '#c00');
           return;
         }
         if (!model) {
@@ -680,11 +680,12 @@
   // 本地服务进程早于新代码启动时，新端点不存在，后端统一返回 404 not found——
   // 必须明确提示重启，否则用户只看到一句 not found 无从下手。
   function describeChatToolError(err, resp) {
-    const msg = err && err.message ? err.message : String(err || '');
+    const msg = err && err.message ? String(err.message) : '';
     if ((resp && resp.status === 404) || /not found/i.test(msg)) {
       return '当前服务还没有这个功能。更新并重启论文日报服务后再试。';
     }
-    return msg;
+    if (msg && msg.length <= 80 && !/https?:\/\/|[A-Za-z]{3,}/.test(msg)) return msg;
+    return '这次没有完成，请检查地址和密钥后再试。';
   }
 
   let settingsReady = false;

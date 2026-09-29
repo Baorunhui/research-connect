@@ -2048,7 +2048,7 @@ def _fetch_chat_model_list(base_url: str, api_key: str) -> list[str]:
     )
     models = _parse_model_ids(body)
     if not models:
-        raise ValueError("端点返回了空模型列表（响应不含 data[].id）")
+        raise ValueError("这个地址没有返回可用的模型。")
     return models
 
 
