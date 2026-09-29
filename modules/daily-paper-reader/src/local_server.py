@@ -829,7 +829,7 @@ class RunStore:
             run["updated_at"] = utc_now()
         if proc is not None and proc.poll() is None:
             _terminate_process_tree(proc)
-        self._emit(run_id, _run_event("run.cancelled", run_id, message="任务已取消，子进程树已停止"))
+        self._emit(run_id, _run_event("run.cancelled", run_id, message="这次生成已停下。"))
         self._update(
             run_id,
             status="cancelled",
