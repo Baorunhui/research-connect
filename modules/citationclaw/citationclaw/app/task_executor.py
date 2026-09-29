@@ -2411,11 +2411,24 @@ class TaskExecutor:
             finally:
                 await fetcher.close()
             took = time.monotonic() - started
-            self.log_manager.info(
-                f"  引用记录拉完了，新拿到 {fetcher.fetched_records} 条，用了 {fetcher.requests} 次请求，累计 {took:.0f} 秒")
+            incomplete_n = sum(
+                1 for item in citing.values()
+                if item.get("openalex_ids") and not item.get("complete")
+            )
+            print(
+                f"[citationclaw] citing fetched={fetcher.fetched_records} "
+                f"requests={fetcher.requests} incomplete={incomplete_n} elapsed={took:.0f}s",
+                flush=True,
+            )
             if self.should_cancel:
-                await self._broadcast_task_finished("cancelled", "已取消")
+                await self._broadcast_task_finished("cancelled", "这次查询已停下。")
                 return
+            if incomplete_n:
+                self.log_manager.warning(
+                    f"有 {incomplete_n} 篇论文的施引没拉全，已拿到的会写进报告。"
+                )
+            else:
+                self.log_manager.info("引用记录拉完了。")
 
             self.log_manager.info("正在核对题录，并对照荣誉名单")
             if kaggle is not None:
@@ -2446,7 +2459,11 @@ class TaskExecutor:
                 ),
             )
 
-            self.log_manager.success(f"查完了，用时 {report['elapsed_seconds']} 秒。{DISCLAIMER}")
+            missing = int((report.get("coverage") or {}).get("targets_incomplete") or 0)
+            done = f"查完了，用时 {report['elapsed_seconds']} 秒。"
+            if missing:
+                done += f"有 {missing} 篇论文的施引没拉全。"
+            self.log_manager.success(done + DISCLAIMER)
             print(f"[citationclaw] result dir: {result_dir}", flush=True)
             await self.log_manager._broadcast({"type": "all_done", "data": {
                 "excel": self._data_result_path(files["excel"]),
