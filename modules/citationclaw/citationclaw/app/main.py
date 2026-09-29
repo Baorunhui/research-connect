@@ -828,117 +828,14 @@ class ChatUIRequest(BaseModel):
 
 @app.post("/api/chat/ui")
 async def chat_ui(request: ChatUIRequest):
-    config = config_manager.get()
-    light_api_key = config.effective_light_api_key()
-    light_base_url = config.effective_light_base_url()
-    if not light_api_key or not light_base_url:
-        return JSONResponse(status_code=400,
-                            content={"error": "未配置 LLM API"})
-
-    messages_to_send = [{"role": "system", "content": _UI_SYSTEM_PROMPT}] + [
-        {"role": m["role"], "content": m["content"]} for m in request.messages
-    ]
-
-    def _stream():
-        try:
-            client = _make_openai_client(light_api_key, light_base_url, timeout=60.0)
-            stream = client.chat.completions.create(
-                model=config.dashboard_model,
-                messages=messages_to_send,
-                stream=True, max_tokens=800,
-            )
-            for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-        except Exception as e:
-            yield f"\n\n[错误：{e}]"
-
-    return StreamingResponse(_stream(), media_type="text/plain; charset=utf-8")
+    del request
+    return StreamingResponse(iter(["页面上的助手已关闭。"]), media_type="text/plain; charset=utf-8")
 
 
 @app.post("/api/chat/report")
 async def chat_report(request: ChatReportRequest):
-    config = config_manager.get()
-    light_api_key = config.effective_light_api_key()
-    light_base_url = config.effective_light_base_url()
-    if not light_api_key or not light_base_url:
-        return JSONResponse(status_code=400,
-                            content={"error": "未配置 LLM API"})
-
-    system_prompt = _build_report_system_prompt(request.context)
-    history = [{"role": m["role"], "content": m["content"]} for m in request.messages]
-    last_user_msg = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
-
-    light_model  = config.dashboard_model
-    search_model = config.openai_model
-
-    def _stream():
-        try:
-            light_client = _make_openai_client(light_api_key, light_base_url, timeout=90.0)
-
-            needs_search = False
-            if search_model and search_model != light_model:
-                try:
-                    cls_resp = light_client.chat.completions.create(
-                        model=light_model,
-                        messages=[
-                            {"role": "system",
-                             "content": "判断用户问题是否需要联网搜索才能回答（报告中未包含的实时信息、最新研究动态等）。只回答 Y 或 N，不要其他内容。"},
-                            {"role": "user", "content": last_user_msg},
-                        ],
-                        stream=False, max_tokens=3,
-                    )
-                    verdict = (cls_resp.choices[0].message.content or "").strip().upper()
-                    needs_search = verdict.startswith("Y")
-                except Exception:
-                    needs_search = False
-
-            if needs_search:
-                yield "__SEARCHING__\n"
-                try:
-                    if not config.openai_api_key or not config.openai_base_url:
-                        raise RuntimeError("未配置 Search LLM API")
-                    search_client = _make_openai_client(config.openai_api_key,
-                                                        config.openai_base_url, timeout=90.0)
-                    search_resp = search_client.chat.completions.create(
-                        model=search_model,
-                        messages=[{"role": "system", "content": system_prompt}] + history,
-                        stream=False, max_tokens=2000,
-                    )
-                    raw_answer = search_resp.choices[0].message.content or ""
-                except Exception as e:
-                    raw_answer = f"（搜索失败：{e}）"
-
-                summarize_msgs = [
-                    {"role": "system", "content": system_prompt},
-                    *history[:-1],
-                    {"role": "user",
-                     "content": (f"用户问：{last_user_msg}\n\n"
-                                 f"联网搜索结果如下，请结合报告数据，用简洁专业的语言综合作答：\n\n{raw_answer}")},
-                ]
-                stream = light_client.chat.completions.create(
-                    model=light_model,
-                    messages=summarize_msgs,
-                    stream=True, max_tokens=1200,
-                )
-                for chunk in stream:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
-
-            else:
-                stream = light_client.chat.completions.create(
-                    model=light_model,
-                    messages=[{"role": "system", "content": system_prompt}] + history,
-                    stream=True, max_tokens=1500,
-                )
-                for chunk in stream:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
-
-        except Exception as e:
-            yield f"\n\n[错误：{e}]"
-
-    return StreamingResponse(_stream(), media_type="text/plain; charset=utf-8")
+    del request
+    return StreamingResponse(iter(["报告里的助手已关闭。"]), media_type="text/plain; charset=utf-8")
 
 
 class CancelTaskRequest(BaseModel):
