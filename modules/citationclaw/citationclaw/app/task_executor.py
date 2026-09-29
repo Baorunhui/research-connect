@@ -151,11 +151,9 @@ class TaskExecutor:
                 openai_api_key=config.effective_light_api_key(),
                 openai_base_url=config.effective_light_base_url(),
                 model=config.dashboard_model or config.openai_model,
-                log_callback=self.log_manager.info,
+                log_callback=lambda message: print(f"[citationclaw] {message}", flush=True),
             )
-            self.log_manager.info(f"📋 WOS 结构化作者提取已启用（WOS + S2 双源融合）")
-        else:
-            self.log_manager.info("⚪ 未配置 WOS Key，使用默认 S2+OpenAlex 流程")
+        self.log_manager.info("正在核对作者单位")
         self_cite_detector = SelfCitationDetector()
         prefilter = ScholarPreFilter()
 
@@ -175,17 +173,7 @@ class TaskExecutor:
                 target_authors_map[ct] = []
 
         # ── Phase 2b: 作者信息采集 (structured APIs) ──
-        self.log_manager.info("=" * 50)
-        _s2_key = getattr(config, 's2_api_key', '') or ''
-        if _s2_key:
-            self.log_manager.info(
-                f"Phase 2 · 作者信息采集: S2 优先模式 (API Key: {_s2_key[:6]}***) — 高速并行查询"
-            )
-        else:
-            self.log_manager.info(
-                "Phase 2 · 作者信息采集: S2 优先模式 (无 API Key — 免费限速 1req/s，建议填入 S2 Key 提速)"
-            )
-        self.log_manager.info("=" * 50)
+        self.log_manager.info("正在查询施引论文的作者")
 
         # Flatten all Phase 1 files into papers
         all_papers: List[Tuple[dict, str]] = []  # (paper_dict, canonical_title)
@@ -527,14 +515,7 @@ class TaskExecutor:
         await collector.close()
 
         # ── Phase 2 · PDF 下载 + 解析 + 交叉验证 ──
-        self.log_manager.info("=" * 50)
-        self.log_manager.info("Phase 2 · PDF 并行下载 + MinerU 解析 + 作者交叉验证")
-        self.log_manager.warning(
-            "[PDF下载提示] 即将进入 Phase 2 PDF 下载，下载过程中可能会打开浏览器窗口进行自动化下载。"
-            "若出现登录、机构访问、Cloudflare 或验证码页面，请手动完成验证后保持浏览器打开。"
-            "通常情况下，验证只需要完成一次，后续下载会复用登录状态和验证结果。"
-        )
-        self.log_manager.info("=" * 50)
+        self.log_manager.info("正在下载论文原文。下不到的会跳过。")
 
         downloader = PDFDownloader(
             scraper_api_keys=config.scraper_api_keys,
