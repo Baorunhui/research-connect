@@ -12,6 +12,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
+from urllib.parse import quote
 
 import pandas as pd
 from research_connect_core.llm import create_openai_client as OpenAI
@@ -20,6 +21,15 @@ from research_connect_core.llm import create_openai_client as OpenAI
 def _escape(text):
     """HTML-escape a string to prevent XSS from LLM-generated content."""
     return html_module.escape(str(text)) if text else ''
+
+
+def _catalog_search(query: str, *, authors: bool = False) -> str:
+    """没有原文链接时打开 OpenAlex。这台服务器访问不了谷歌学术。"""
+    text = " ".join(str(query or "").split())[:160]
+    kind = "authors" if authors else "works"
+    if not text:
+        return f"https://openalex.org/{kind}"
+    return f"https://openalex.org/{kind}?filter=default.search:{quote(text)}"
 
 
 def _is_truthy(val):
@@ -1393,8 +1403,7 @@ a.author-pill:hover { background: var(--teal-light); border-color: var(--teal); 
             if _p_link and _p_link not in ("nan", "None"):
                 _p_name = f'<a href="{_p_link}" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">{p["title"]}</a>'
             else:
-                _gs_q = p["title"].replace(" ", "+")[:80]
-                _p_name = f'<a href="https://scholar.google.com/scholar?q={_gs_q}" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">{p["title"]}</a>'
+                _p_name = f'<a href="{_catalog_search(p["title"])}" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">{p["title"]}</a>'
             citing_list_items += f"""
         <div class="citing-paper-item{extra_cls}"{extra_style}>
           <span class="citing-paper-num">{str(i+1).zfill(2)}</span>
@@ -1652,8 +1661,7 @@ a.author-pill:hover { background: var(--teal-light); border-color: var(--teal); 
             if paper_link and paper_link not in ("nan", "None", ""):
                 title_html = f'<a href="{paper_link}" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">{title_full}</a>'
             else:
-                _gs_q = cp["paper_title"].replace(" ", "+")[:80]
-                title_html = f'<a href="https://scholar.google.com/scholar?q={_gs_q}" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">{title_full}</a>'
+                title_html = f'<a href="{_catalog_search(cp["paper_title"])}" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2);font-weight:500">{title_full}</a>'
 
             # Year + Venue
             year_str = str(cp.get("year", "")) if cp.get("year") else ""
@@ -1671,7 +1679,7 @@ a.author-pill:hover { background: var(--teal-light); border-color: var(--teal); 
                 s_safe = _esc(s_raw)[:50]
                 # Try to make scholar name clickable (Google Scholar search)
                 s_name = s_raw.split('(')[0].split(':')[-1].strip()[:30] if '(' in s_raw or ':' in s_raw else s_raw.strip()[:30]
-                s_url = f'https://scholar.google.com/scholar?q="{s_name.replace(" ", "+")}"'
+                s_url = _catalog_search(s_name, authors=True)
                 scholar_html += (
                     f'<a href="{s_url}" target="_blank" rel="noopener" '
                     f'style="font-size:10px;color:var(--accent);text-decoration:none;display:block;margin:1px 0">'
@@ -1782,7 +1790,7 @@ a.author-pill:hover { background: var(--teal-light); border-color: var(--teal); 
 
             # Scholar name with search link
             name_safe = _esc(s["name"])
-            scholar_search_url = f'https://scholar.google.com/scholar?q="{s["name"].replace(" ", "+")}"'
+            scholar_search_url = _catalog_search(s["name"], authors=True)
             name_html = f'<a href="{scholar_search_url}" target="_blank" rel="noopener" style="color:var(--text-body);text-decoration:none;border-bottom:1px dashed var(--border2)">{name_safe}</a>'
 
             # Paper links column — each paper as a clickable short title
@@ -1869,9 +1877,7 @@ a.author-pill:hover { background: var(--teal-light); border-color: var(--teal); 
                 title_part = (f'<a href="{link}" target="_blank" class="pdi-title-link">'
                               f'{p["title"]}</a>')
             else:
-                # Fallback: Google Scholar search
-                _gs_q = p["title"].replace(" ", "+")[:80]
-                title_part = (f'<a href="https://scholar.google.com/scholar?q={_gs_q}" '
+                title_part = (f'<a href="{_catalog_search(p["title"])}" '
                               f'target="_blank" class="pdi-title-link">{p["title"]}</a>')
             # Authors as clickable pills
             authors_html = ""
@@ -1883,11 +1889,10 @@ a.author-pill:hover { background: var(--teal-light); border-color: var(--teal); 
                     if aurl and aurl.startswith('http'):
                         pills.append(f'<a href="{aurl}" target="_blank" class="author-pill">{aname_safe}</a>')
                     else:
-                        _gs_a = aname.replace(" ", "+")[:40]
-                        pills.append(f'<a href="https://scholar.google.com/scholar?q=author:{_gs_a}" target="_blank" class="author-pill" style="opacity:0.7">{aname_safe}</a>')
+                        pills.append(f'<a href="{_catalog_search(aname, authors=True)}" target="_blank" class="author-pill" style="opacity:0.7">{aname_safe}</a>')
                 if pills:
                     authors_html = (
-                        f'<div class="pdi-authors" style="margin-bottom:4px">部分带有谷歌学术主页的作者：</div>'
+                        f'<div class="pdi-authors" style="margin-bottom:4px">作者：</div>'
                         f'<div class="pdi-authors-pills">{"".join(pills)}</div>'
                     )
             meta_parts = []
@@ -2410,7 +2415,7 @@ a.author-pill:hover { background: var(--teal-light); border-color: var(--teal); 
             target_items = "".join(
                 f'<div class="header-target-item">'
                 f'<span class="header-target-num">{str(i+1).zfill(2)}</span>'
-                f'<a href="https://scholar.google.com/scholar?q={t.replace(" ", "+")[:80]}" '
+                f'<a href="{_catalog_search(t)}" '
                 f'target="_blank" rel="noopener" class="header-target-title" '
                 f'style="text-decoration:none;border-bottom:1px dashed rgba(96,165,250,0.4)">{t}</a>'
                 f'</div>'
