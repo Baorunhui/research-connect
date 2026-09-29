@@ -408,10 +408,10 @@
       }
       refs.candsEl.innerHTML =
         (cands.keywords.length
-          ? '<div class="dpr-smart-group"><div class="dpr-smart-group-title">关键词候选（BM25 召回）</div><div class="dpr-smart-grid">' + renderCandidateCards('keywords', cands.keywords) + '</div></div>'
+          ? '<div class="dpr-smart-group"><div class="dpr-smart-group-title">关键词候选</div><div class="dpr-smart-grid">' + renderCandidateCards('keywords', cands.keywords) + '</div></div>'
           : '') +
         (cands.queries.length
-          ? '<div class="dpr-smart-group"><div class="dpr-smart-group-title">意图查询候选（向量语义召回）</div><div class="dpr-smart-grid">' + renderCandidateCards('queries', cands.queries) + '</div></div>'
+          ? '<div class="dpr-smart-group"><div class="dpr-smart-group-title">意图查询候选</div><div class="dpr-smart-grid">' + renderCandidateCards('queries', cands.queries) + '</div></div>'
           : '');
       // 词条标签/描述还空着时，顺手用 LLM 的建议回填
       if (cands.tag && refs.tagEl && !refs.tagEl.value.trim()) refs.tagEl.value = cands.tag;
@@ -484,7 +484,7 @@
       '  <h2 style="margin-top:0;">页面设置</h2>' +
       '  <p style="font-size:13px;color:#555;margin:0 0 14px;">模型和精排保存后马上生效，不用重启。</p>' +
       '  <div class="dpr-settings-field"><label>API 端点（OpenAI 兼容）</label><input type="text" id="dpr-settings-chat-baseurl" placeholder="https://api.sinksilk.com:58443" /></div>' +
-      '  <div class="dpr-settings-field"><label>API Key（留空表示不修改已保存的密钥）</label><input type="password" id="dpr-settings-chat-apikey" placeholder="sk-..." autocomplete="off" /></div>' +
+      '  <div class="dpr-settings-field"><label>API Key（留空表示不修改已保存的密钥）</label><input type="password" id="dpr-settings-chat-apikey" placeholder="" autocomplete="off" /></div>' +
       '  <div class="dpr-settings-field"><label>AI 问答模型</label>' +
       '    <div style="display:flex;gap:6px;align-items:center;">' +
       '      <input type="text" id="dpr-settings-chat-model" placeholder="deepseek-v4-flash" style="flex:1;min-width:0;" />' +
@@ -735,8 +735,8 @@
       if (keyEl) {
         keyEl.value = '';
         keyEl.placeholder = chat.api_key_configured
-          ? '已由统一配置中心配置，留空保持不变'
-          : 'API Key';
+          ? '已保存密钥，留空表示不修改'
+          : '还没有密钥';
       }
       if (enabledEl) enabledEl.checked = Boolean(sched.enabled);
       if (timeEl) timeEl.value = sched.time || '';

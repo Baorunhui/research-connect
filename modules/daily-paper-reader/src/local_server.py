@@ -1583,6 +1583,107 @@ def _normalize_recommend_setting(value) -> dict:
     return out
 
 
+def _chat_key_is_configured(chat: dict | None) -> bool:
+    """页面只需要知道有没有密钥，不能把密钥本身发到浏览器。"""
+    if str((chat or {}).get("api_key") or "").strip():
+        return True
+    for name in ("DEEPSEEK_API_KEY", "SUMMARY_API_KEY"):
+        if str(os.environ.get(name) or "").strip():
+            return True
+    return False
+
+
+def _subscriptions_for_settings(subs: dict | None) -> dict | None:
+    """设置页不需要向量缓存。缓存留在服务器上，保存时按原文补回。"""
+    if not isinstance(subs, dict):
+        return subs
+    import copy
+    out = copy.deepcopy(subs)
+    profiles = out.get("intent_profiles")
+    if not isinstance(profiles, list):
+        return out
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            continue
+        for key in ("keywords", "intent_queries"):
+            entries = profile.get(key)
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if isinstance(entry, dict):
+                    entry.pop("embedding_cache", None)
+    return out
+
+
+def _reattach_embedding_caches(previous: dict | None, incoming: dict | None) -> dict | None:
+    """关键词或查询原文没变时，把磁盘上的向量缓存补回，避免保存设置后重算。"""
+    if not isinstance(incoming, dict):
+        return incoming
+    prev_profiles = previous.get("intent_profiles") if isinstance(previous, dict) else None
+    if not isinstance(prev_profiles, list):
+        return incoming
+    import copy
+    by_tag: dict[str, dict] = {}
+    for profile in prev_profiles:
+        if isinstance(profile, dict):
+            by_tag.setdefault(str(profile.get("tag") or "").strip(), profile)
+    out = copy.deepcopy(incoming)
+    profiles = out.get("intent_profiles")
+    if not isinstance(profiles, list):
+        return out
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            continue
+        prev = by_tag.get(str(profile.get("tag") or "").strip())
+        if not isinstance(prev, dict):
+            continue
+        for key, text_key in (("keywords", "keyword"), ("intent_queries", "query")):
+            prev_entries = prev.get(key)
+            entries = profile.get(key)
+            if not isinstance(prev_entries, list) or not isinstance(entries, list):
+                continue
+            cache_by_text: dict[str, dict] = {}
+            for item in prev_entries:
+                if not isinstance(item, dict):
+                    continue
+                text = str(item.get(text_key) or "").strip()
+                cache = item.get("embedding_cache")
+                if text and isinstance(cache, dict):
+                    cache_by_text[text] = cache
+            for item in entries:
+                if not isinstance(item, dict) or isinstance(item.get("embedding_cache"), dict):
+                    continue
+                text = str(item.get(text_key) or "").strip()
+                cache = cache_by_text.get(text)
+                if cache is not None:
+                    item["embedding_cache"] = copy.deepcopy(cache)
+    return out
+
+
+_BLOCKED_STATIC_EXACT = {
+    "/config.yaml",
+    "/config.yml",
+    "/secret.private",
+}
+_BLOCKED_STATIC_PREFIXES = (
+    "/src",
+    "/scripts",
+    "/sql",
+    "/tests",
+    "/.git",
+    "/.local-runs",
+    "/.github",
+)
+
+
+def _static_path_blocked(path: str) -> bool:
+    """静态目录是整个模块，密钥和运行记录不能当网页文件下载。"""
+    clean = urlparse(path or "").path or ""
+    if clean in _BLOCKED_STATIC_EXACT or clean.startswith("/.env"):
+        return True
+    return any(clean == prefix or clean.startswith(prefix + "/") for prefix in _BLOCKED_STATIC_PREFIXES)
+
+
 def _load_local_chat_full() -> dict:
     """返回 local 段的可编辑字段（chat + schedule）与顶层 subscriptions，供结构化读接口使用。"""
     import yaml as _yaml
@@ -1596,7 +1697,7 @@ def _load_local_chat_full() -> dict:
         "chat": {
             "model": str(chat.get("model") or "").strip(),
             "base_url": str(chat.get("base_url") or "").strip().rstrip("/"),
-            "api_key": str(chat.get("api_key") or "").strip(),
+            "api_key_configured": _chat_key_is_configured(chat),
         },
         "rerank": {
             "profile": str((loc.get("rerank") or {}).get("profile") or "").strip(),
@@ -1613,7 +1714,7 @@ def _load_local_chat_full() -> dict:
             "quick_skim_base": str(recommend.get("quick_skim_base") or ""),
             "deep_dive_unlimited": bool(recommend.get("deep_dive_unlimited", False)),
         },
-        "subscriptions": _load_subscriptions_section(),
+        "subscriptions": _subscriptions_for_settings(_load_subscriptions_section()),
     }
 
 
@@ -2525,12 +2626,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "scheduler_running": _SCHEDULER_RUNNING,
             })
         if parsed.path == "/api/local/secret":
-            return self._json({
-                "ok": True,
-                "exists": SECRET_PATH.exists(),
-                "path": str(SECRET_PATH),
-                "payload": json.loads(SECRET_PATH.read_text(encoding="utf-8")) if SECRET_PATH.exists() else None,
-            })
+            return self._json({"ok": True, "exists": SECRET_PATH.exists()})
         if parsed.path == "/api/local/runs":
             return self._json({"ok": True, "runs": RUN_STORE.list()})
         if parsed.path == "/api/local/runtime/runs":
@@ -2596,6 +2692,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "job": job})
         if parsed.path in {"/", "/index.html"} and _public_base_path():
             return self._index_with_public_base()
+        if _static_path_blocked(parsed.path):
+            return self._json({"ok": False, "error": "not found"}, status=404)
         return super().do_GET()
 
     def _index_with_public_base(self) -> None:
@@ -2845,6 +2943,7 @@ class Handler(SimpleHTTPRequestHandler):
 
             subscriptions = payload.get("subscriptions")
             if isinstance(subscriptions, dict):
+                subscriptions = _reattach_embedding_caches(existing.get("subscriptions"), subscriptions)
                 merged = merge_top_level_section(merged, "subscriptions", subscriptions)
 
             for section in ("source_backends", "supabase"):
