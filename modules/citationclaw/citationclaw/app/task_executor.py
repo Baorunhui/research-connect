@@ -2307,7 +2307,11 @@ class TaskExecutor:
             if profile_html:
                 all_papers = ScholarProfileScraper.parse_html(profile_html)
                 name = scholar_identity_from_html(profile_html, scholar_name)[1]
-                self.log_manager.info(f"  [本地上传] {name or '未知学者'}：解析到 {len(all_papers)} 篇论文，无外部请求")
+                print(
+                    f"[citationclaw] uploaded profile {name or 'unknown'}: {len(all_papers)} papers",
+                    flush=True,
+                )
+                self.log_manager.info(f"已从上传的主页读到 {len(all_papers)} 篇论文。")
             elif profile_url:
                 from citationclaw.core.scholar_profile_cache import openalex_author_id_from_url
                 oa_author = openalex_author_id_from_url(profile_url)
@@ -2336,8 +2340,7 @@ class TaskExecutor:
                 return
             if not all_papers:
                 if profile_html:
-                    message = ("上传的 HTML 里没有解析到论文列表：请在 Google Scholar 学者主页"
-                               "（citations?user=…）上另存为「网页，完整」后重新上传")
+                    message = "这份文件里没有论文列表。请在自己电脑上打开学者主页，另存为网页后再上传。"
                 elif oa_author:
                     message = (f"OpenAlex 没有返回作者 {oa_author} 的论文列表，"
                                "请确认链接是作者主页（https://openalex.org/A…）")

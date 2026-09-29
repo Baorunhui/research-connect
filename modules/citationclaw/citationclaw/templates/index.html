@@ -592,9 +592,16 @@ async function runProfilePipeline() {
 
 async function uploadProfileHTML() {
     const input = document.getElementById('profile-html-input');
-    if (!input.files.length) { alert('请选择主页 HTML 文件'); return; }
+    const file = input.files && input.files[0];
+    if (!file) { alert('请先选择保存下来的学者主页。'); return; }
+    if (!/\.html?$/i.test(file.name || '')) { alert('请上传保存下来的网页文件。'); return; }
+    if (!file.size) { alert('这个文件是空的。请重新保存学者主页后再上传。'); return; }
+    if (file.size > 20 * 1024 * 1024) {
+        alert('这个文件超过 20MB。请另存为仅网页，不要连图片一起保存。');
+        return;
+    }
     const fd = new FormData();
-    fd.append('file', input.files[0]);
+    fd.append('file', file);
     fd.append('output_prefix', 'scholar_profile');
     fd.append('top_n', profileCount('profile-top-n', 30, 1, 500));
     fd.append('min_citations', profileCount('profile-min-cit', 0, 0, 1000000));

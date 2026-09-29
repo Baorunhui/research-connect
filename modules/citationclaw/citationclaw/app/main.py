@@ -724,10 +724,34 @@ async def upload_profile_pipeline(request: Request,
         return JSONResponse(status_code=400,
             content={"status": "error", "message": "已经有一次查询在进行，请等它完成。"})
     content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        return JSONResponse(status_code=400, content={
+            "status": "error",
+            "message": "这个文件超过 20MB。请另存为仅网页，不要连图片一起保存。",
+        })
+    if not content.strip():
+        return JSONResponse(status_code=400, content={
+            "status": "error",
+            "message": "这个文件是空的。请重新保存学者主页后再上传。",
+        })
     try:
         html = content.decode("utf-8")
     except UnicodeDecodeError:
         html = content.decode("gbk", errors="replace")
+    from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper
+    try:
+        papers = await asyncio.to_thread(ScholarProfileScraper.parse_html, html)
+    except Exception as exc:
+        print(f"[citationclaw] profile html parse failed: {exc}", flush=True)
+        return JSONResponse(status_code=400, content={
+            "status": "error",
+            "message": "这份文件读不出来。请重新保存学者主页后再上传。",
+        })
+    if not papers:
+        return JSONResponse(status_code=400, content={
+            "status": "error",
+            "message": "这份文件里没有论文列表。请在自己电脑上打开学者主页，另存为网页后再上传。",
+        })
     config = config_manager.get()
     config = _apply_profile_params(config,
         top_n=top_n,
