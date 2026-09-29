@@ -499,8 +499,12 @@ window.DPRWorkflowRunner = (function () {
       if (['completed', 'interrupted', 'cancelled'].indexOf(String(run.status || '').toLowerCase()) >= 0) {
         stopPolling();
         const doneLabel = formatRunBadgeText(run.status, run.conclusion);
+        const reason = String(run.error || '').trim();
+        const safeReason = reason && reason.length <= 180 && !/[A-Za-z]{3,}|https?:\/\//.test(reason)
+          ? reason
+          : '';
         setStatus(
-          doneLabel === '已完成' ? '已完成。' : `已结束：${doneLabel}`,
+          doneLabel === '已完成' ? '已完成。' : (safeReason || `已结束：${doneLabel}`),
           run.conclusion === 'success' ? '#080' : '#c00',
         );
       } else {
