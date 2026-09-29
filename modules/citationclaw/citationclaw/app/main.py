@@ -1100,15 +1100,32 @@ def _safe_data_path(filepath: str) -> Path:
     return resolved
 
 
+_REPORT_ASSET_URLS = (
+    ("https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js", "/static/vendor/chart.umd.min.js"),
+    (
+        "https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js",
+        "/static/vendor/chartjs-plugin-datalabels.min.js",
+    ),
+    ("https://cdn.jsdelivr.net/npm/marked@9/marked.min.js", "/static/vendor/marked.min.js"),
+    ("https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js", "/static/vendor/marked.min.js"),
+)
+
+
 def _html_for_public_view(raw: str) -> str:
     """Keep report downloads under the public prefix, and hide the in-report assistant.
 
     Root-relative ``/api/results/`` links miss ``/citations`` behind the gateway.
+    Chart and markdown scripts used to come from public CDNs; serve the copies in this app.
     The floating assistant also calls the model, which this server does not expose on the report page.
     """
     base = _public_base_path()
+    raw = re.sub(r'\s*<link rel="preconnect" href="https://fonts\.googleapis\.com">', "", raw)
+    raw = re.sub(r'\s*<link href="https://fonts\.googleapis\.com/css2[^"]*" rel="stylesheet">', "", raw)
+    for remote, local in _REPORT_ASSET_URLS:
+        raw = raw.replace(remote, f"{base}{local}" if base else local)
     if not base:
         return raw
+    raw = raw.replace('src="/static/vendor/', f'src="{base}/static/vendor/')
     raw = raw.replace('href="/api/results/', f'href="{base}/api/results/')
     raw = raw.replace("href='/api/results/", f"href='{base}/api/results/")
     hide = "<style>#cc-fab,#cc-win{display:none!important}</style>"
