@@ -746,7 +746,7 @@ window.SurveyGenerator = (function () {
     root.appendChild(seedSection);
 
     var params = el('div', 'survey-section survey-params');
-    params.appendChild(buildNumberField('survey-max-papers', '候选论文数', '30', '5–200', 5, 200));
+    params.appendChild(buildNumberField('survey-max-papers', '留下多少篇来写', '30', '从先找到的论文里留下这些来写，5 到 200', 5, 200));
     params.appendChild(buildLookbackField());
     params.appendChild(buildCheckbox('survey-use-rerank', '精排筛选', true));
     params.appendChild(buildCheckbox('survey-deep-read', '细读核心论文 PDF', true));
