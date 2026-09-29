@@ -10,6 +10,13 @@ window.SurveyGenerator = (function () {
     return base + path;
   }
 
+  function readableProgress(message) {
+    var text = String(message || '').trim();
+    if (!text) return '';
+    if (/[A-Za-z]{3,}/.test(text)) return '';
+    return text;
+  }
+
   function surveyEndpoint() {
     return apiUrl('/api/survey');
   }
@@ -212,7 +219,8 @@ window.SurveyGenerator = (function () {
     if (latest) {
       var label = STAGE_LABELS[latest.stage] || latest.stage;
       var suffix = (latest.current != null && latest.total != null) ? ('（' + latest.current + '/' + latest.total + '）') : '';
-      card.appendChild(el('div', 'survey-progress-msg', '「' + label + '」' + suffix + (latest.message || '')));
+      var detail = readableProgress(latest.message);
+      card.appendChild(el('div', 'survey-progress-msg', '「' + label + '」' + suffix + (detail ? ' ' + detail : '')));
     } else if (status === 'queued') {
       card.appendChild(el('div', 'survey-progress-msg', '已排队，马上开始。'));
     }
@@ -224,7 +232,8 @@ window.SurveyGenerator = (function () {
       if (!ev || !ev.stage) return;
       var tag = STAGE_LABELS[ev.stage] || ev.stage;
       var suffix2 = (ev.current != null && ev.total != null) ? (' ' + ev.current + '/' + ev.total) : '';
-      lines.push('[' + tag + suffix2 + '] ' + (ev.message || ''));
+      var detail = readableProgress(ev.message);
+      lines.push('[' + tag + suffix2 + ']' + (detail ? ' ' + detail : ''));
     });
     logBody.textContent = lines.slice(-80).join('\n');
     card.appendChild(logBody);

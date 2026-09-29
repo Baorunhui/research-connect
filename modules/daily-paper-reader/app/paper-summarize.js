@@ -257,16 +257,42 @@ window.PaperSummarizer = (function () {
       });
   }
 
+  var SUMMARIZE_STAGE_LABELS = {
+    fetch_arxiv: '读取论文',
+    fetch_pdf: '下载论文',
+    fetch_web: '读取网页',
+    extract_meta: '整理作者和来源',
+    parse_pdf: '读取 PDF',
+    cache_hit: '已有总结',
+    daily_pipeline: '写总结',
+    persist: '保存到列表',
+    glance: '速览',
+    figures: '看图',
+    deep: '精读',
+    error: '出错',
+  };
+
+  function presentSummarizeEvents(events) {
+    return (events || []).map(function (ev) {
+      if (!ev) return ev;
+      var copy = {};
+      Object.keys(ev).forEach(function (key) { copy[key] = ev[key]; });
+      if (copy.stage && SUMMARIZE_STAGE_LABELS[copy.stage]) copy.stage = SUMMARIZE_STAGE_LABELS[copy.stage];
+      return copy;
+    });
+  }
+
   // 把新事件追加到进度区，已见过的按 event_id 去重
   function renderProgress(events, status, seenIds) {
     var box = document.querySelector('#paper-summarize-progress');
     if (!box) return;
+    var shown = presentSummarizeEvents(events);
     if (window.DPRTaskProgress && typeof window.DPRTaskProgress.render === 'function') {
       (events || []).forEach(function (ev) {
         if (ev && ev.event_id) seenIds[ev.event_id] = true;
       });
       window.DPRTaskProgress.render(box, {
-        events: events,
+        events: shown,
         status: status,
         title: '⏳ 正在生成总结，请稍候…',
         doneTitle: '✅ 总结完成',
@@ -274,7 +300,7 @@ window.PaperSummarizer = (function () {
       });
       return;
     }
-    var fresh = (events || []).filter(function (ev) {
+    var fresh = (shown || []).filter(function (ev) {
       return ev && ev.event_id && !seenIds[ev.event_id];
     });
     fresh.forEach(function (ev) { seenIds[ev.event_id] = true; });

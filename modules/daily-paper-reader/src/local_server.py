@@ -921,27 +921,27 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
             raise ValueError("缺少 url")
         arxiv_id = _extract_arxiv_id(url)
         if arxiv_id:
-            emit("fetch_arxiv", f"正在从 arXiv 获取元数据（{arxiv_id}）")
+            emit("fetch_arxiv", f"正在读取这篇论文（{arxiv_id}）")
             meta = _fetch_arxiv_metadata(arxiv_id)
             if meta.get("metadata_source") == "arxiv_abs_fallback":
-                emit("fetch_arxiv", "arXiv Atom API 受限，已从论文摘要页取得完整元数据")
+                emit("fetch_arxiv", "论文信息已读到")
             title, text = meta["title"], "标题：" + meta["title"] + "\n\n摘要：" + meta["abstract"]
             kind = "arxiv"
             paper_meta = meta
-            emit("fetch_pdf", "正在下载 arXiv PDF（用于抽图）", current=1, total=2)
+            emit("fetch_pdf", "正在下载论文，用来抽取图片", current=1, total=2)
             try:
                 pdf_bytes_opt = _download_pdf_bytes_public(f"https://arxiv.org/pdf/{arxiv_id}")
-                emit("fetch_pdf", "PDF 下载完成", current=2, total=2)
-            except Exception as exc:
+                emit("fetch_pdf", "论文已下载", current=2, total=2)
+            except Exception:
                 pdf_bytes_opt = None
-                emit("fetch_pdf", f"PDF 下载失败（不影响总结）：{exc}", current=2, total=2)
+                emit("fetch_pdf", "图片可能抽不到，总结仍会继续", current=2, total=2)
         else:
-            emit("fetch_web", f"正在抓取网页内容")
+            emit("fetch_web", "正在读取网页")
             title, text = _fetch_web_text(url)
             kind = "url"
             pdf_bytes_opt = None
             paper_meta = {"title": title, "link": url}
-            emit("extract_meta", "正在用 LLM 抽取作者/来源元数据")
+            emit("extract_meta", "正在整理作者和来源")
             _merge_extracted_paper_meta(paper_meta, _extract_paper_meta_with_llm(text))
             title = str(paper_meta.get("title") or title)
     else:
@@ -949,7 +949,7 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
         if not data_b64:
             raise ValueError("缺少 PDF 数据")
         filename = str(payload.get("filename") or "").strip() or "paper.pdf"
-        emit("parse_pdf", "正在解析 PDF 全文")
+        emit("parse_pdf", "正在读取 PDF")
         text = _extract_pdf_text(data_b64)
         kind = "pdf"
         paper_meta = {"title": filename}
@@ -961,22 +961,22 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
         # 文件名带 arXiv id 时优先反查官方元数据（零 LLM 成本，字段最全）
         filename_id = _arxiv_id_from_filename(filename)
         if filename_id:
-            emit("fetch_arxiv", f"文件名含 arXiv id（{filename_id}），反查官方元数据")
+            emit("fetch_arxiv", f"正在用论文编号核对信息（{filename_id}）")
             try:
                 meta = _fetch_arxiv_metadata(filename_id)
                 arxiv_id = filename_id
                 title = meta["title"]
                 paper_meta = meta
                 kind = "arxiv"
-            except Exception as exc:  # noqa: BLE001
-                emit("fetch_arxiv", f"arXiv 反查失败，改用 LLM 抽取元数据：{exc}")
+            except Exception:  # noqa: BLE001
+                emit("fetch_arxiv", "编号核对失败，改为从正文整理信息")
         if not arxiv_id:
-            emit("extract_meta", "正在用 LLM 抽取标题/作者/来源")
+            emit("extract_meta", "正在整理标题、作者和来源")
             _merge_extracted_paper_meta(paper_meta, _extract_paper_meta_with_llm(text))
             title = str(paper_meta.get("title") or filename)
 
     if not text or len(text.strip()) < 20:
-        raise ValueError("未能抽取到足够论文文本，请换用 arXiv 链接或上传 PDF")
+        raise ValueError("没读出足够的论文内容，请换一个链接或重新上传 PDF。")
 
     # 缓存命中检查
     cache_key: str | None = None
@@ -987,13 +987,13 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
     if cache_key:
         cached_payload = SUMMARIZE_CACHE.get(cache_key)
         if cached_payload is not None:
-            emit("cache_hit", "命中缓存，直接返回上次结果")
+            emit("cache_hit", "这篇总结过，直接打开上次的结果")
             return cached_payload
 
     # ---- 阶段 2：直接用日报流水线生成纸张页（速览 + 抽图 + 图表解读 + 翻译 + 精读总结） ----
     # 与每日日报同一套纯文本 LLM 链路（generate_external_paper_docs），不再走多模态 VLM。
     # 前端拿到 paper_id 后直接跳转该纸张页（日报展示层渲染），无需额外 JSON 总结。
-    emit("daily_pipeline", "正在用日报流水线生成总结（速览 + 图表 + 精读）")
+    emit("daily_pipeline", "正在写总结")
     persist = _persist_summarize_as_daily_paper(
         paper_meta=paper_meta,
         title=title,
@@ -1006,7 +1006,7 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
     )
     if not persist.get("paper_id"):
         raise ValueError(f"日报流水线生成纸张页失败：{persist.get('error') or '未知错误'}")
-    emit("persist", "纸张页已落盘并注册侧边栏", payload={"paper_id": persist["paper_id"]})
+    emit("persist", "已加到论文列表", payload={"paper_id": persist["paper_id"]})
 
     preview = text if len(text) <= 400 else text[:400] + "…"
     resp_payload = {
@@ -1183,7 +1183,7 @@ class SurveyJobStore:
         payload: dict[str, Any],
         runtime_credentials: dict[str, Any],
     ) -> None:
-        self._emit(job_id, _job_event("job.started", job_id, message="综述流水线启动"))
+        self._emit(job_id, _job_event("job.started", job_id, message="已开始写综述"))
         self._set_status(job_id, "running")
         try:
             result = _run_survey_job(
@@ -1291,11 +1291,11 @@ def _run_survey_job(
         if seed_source == "pdf":
             data_b64 = str(seed_payload.get("data_b64") or "")
             if not data_b64:
-                raise ValueError("种子 PDF 缺少 data_b64 数据")
-            emit("seed", "解析种子 PDF 全文")
+                raise ValueError("没有读到上传的 PDF，请重新选择文件。")
+            emit("seed", "正在读取种子论文")
             seed_text = _extract_pdf_text(data_b64)
             if not seed_text or len(seed_text.strip()) < 50:
-                raise ValueError("种子 PDF 未能抽取到足够文本，请换用 arXiv 链接")
+                raise ValueError("这份 PDF 里没读出足够文字，请换一个文件或改用论文链接。")
             seed_paper = {
                 "text": seed_text,
                 "title": str(seed_payload.get("filename") or "").strip().removesuffix(".pdf") or "（PDF 种子）",
@@ -1348,7 +1348,7 @@ def _run_survey_job(
             ),
             cancel_check=_gate,
         )
-        emit("render", "报告落盘并注册侧栏")
+        emit("render", "正在保存综述")
         try:
             from survey_docs import persist_survey_report
         except ImportError:  # pragma: no cover - 包模式导入路径
@@ -1360,7 +1360,7 @@ def _run_survey_job(
             log_lines.append(f"[survey] sidebar registration failed: {registration_error}")
             emit(
                 "render",
-                "报告已生成；侧栏注册失败，但不影响通过报告地址查看",
+                "报告已写好，但没能放进左侧列表。可以用报告地址打开。",
                 payload={
                     "paper_id": info["paper_id"],
                     "route": info["route"],

@@ -125,7 +125,7 @@
     if (!visibleEvents.length) {
       var waiting = textNode('li', 'paper-summarize-progress-item', '');
       waiting.appendChild(textNode('span', 'paper-summarize-progress-dot', ''));
-      waiting.appendChild(textNode('span', 'paper-summarize-progress-msg', '等待第一条进度事件…'));
+      waiting.appendChild(textNode('span', 'paper-summarize-progress-msg', '正在开始…'));
       list.appendChild(waiting);
     }
     container.appendChild(list);
