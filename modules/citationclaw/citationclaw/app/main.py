@@ -462,6 +462,27 @@ class ScholarProfileRequest(BaseModel):
 async def fetch_scholar_papers(request: ScholarProfileRequest):
     url = _validate_scholar_url(request.profile_url)
     config = config_manager.get()
+    from citationclaw.core.scholar_profile_cache import openalex_author_id_from_url
+    oa_author = openalex_author_id_from_url(url)
+    if oa_author:
+        from citationclaw.core.openalex_citing import OpenAlexCitingFetcher
+        fetcher = OpenAlexCitingFetcher(
+            DATA_DIR / "cache" / "openalex_citing",
+            email=getattr(config, "openalex_email", "") or os.getenv("CITATIONCLAW_OPENALEX_MAILTO", ""),
+            api_key=os.getenv("OPENALEX_API_KEY", ""),
+            rate=float(os.getenv("CITATIONCLAW_OPENALEX_RPS", "8") or 8),
+            log=print,
+        )
+        try:
+            got = await fetcher.fetch_author_works(oa_author, top_n=0, min_citations=0)
+        finally:
+            await fetcher.close()
+        papers = got.get("papers") or []
+        if not papers:
+            return JSONResponse(status_code=422, content={
+                "error": "没有读到论文列表。请确认这是 OpenAlex 的作者主页。",
+            })
+        return {"papers": papers, "total": len(papers), "scholar_name": got.get("name") or ""}
 
     from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper, no_papers_message
     scraper = ScholarProfileScraper(

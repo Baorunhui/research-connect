@@ -88,7 +88,7 @@
 <div class="agent-card" id="scholar-import-card">
   <div class="agent-card-label scholar-import-toggle" onclick="toggleScholarImport()">
     <i class="bi bi-person-badge-fill" style="color:var(--accent)"></i>
-    &nbsp;从 Google Scholar 主页导入论文
+    &nbsp;从作者主页导入论文
     <span style="color:var(--light);font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">（可选）</span>
     <i id="scholar-chevron" class="bi bi-chevron-down" style="float:right;margin-top:2px"></i>
   </div>
@@ -96,7 +96,7 @@
   <div id="scholar-import-body" style="display:none; margin-top:14px;">
     <div style="display:flex; gap:8px; margin-bottom:10px;">
       <input id="scholar-url-input" type="text" class="form-control"
-             placeholder="https://scholar.google.com/citations?user=...  访问不了时，在链接后加 &name=作者英文名，或上传保存的主页"
+             placeholder="https://openalex.org/A… 或 Google Scholar 主页。访问不了谷歌学术时，用 OpenAlex，或上传保存的主页"
              style="flex:1;">
       <button class="btn-agent-primary" id="scholar-fetch-btn"
               onclick="fetchScholarPapers()">获取论文列表</button>
@@ -469,7 +469,12 @@ function toggleScholarImport() {
 
 async function fetchScholarPapers() {
     const url = document.getElementById('scholar-url-input').value.trim();
-    if (!url) { alert('请输入 Google Scholar 主页链接'); return; }
+    if (!url) { alert('请输入 OpenAlex 作者主页或 Google Scholar 主页链接'); return; }
+    const openAlexAuthor = /openalex\.org\/(?:authors\/)?A\d+(?:[/?#]|$)/i.test(url);
+    if (!url.includes('scholar.google') && !openAlexAuthor) {
+        alert('请输入 OpenAlex 作者主页（https://openalex.org/A…）或 Google Scholar 主页链接');
+        return;
+    }
     const btn = document.getElementById('scholar-fetch-btn');
     btn.disabled = true; btn.textContent = '获取中…';
     document.getElementById('scholar-result-area').style.display = 'none';
@@ -497,7 +502,7 @@ function renderScholarPapers(papers) {
             <input type="checkbox" class="scholar-cb" data-idx="${i}">
             <span class="scholar-paper-title">${escHtml(p.title)}</span>
             <span class="scholar-paper-meta">
-              ${p.year || '—'} · ${p.citations.toLocaleString()} 引用
+              ${p.year || '—'} · ${Number(p.citations || 0).toLocaleString()} 引用
             </span>
           </label>
         </div>`).join('');
