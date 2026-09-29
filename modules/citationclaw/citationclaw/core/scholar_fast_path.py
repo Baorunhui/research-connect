@@ -123,10 +123,12 @@ def build_fast_report(
     log(f"查了 {len(target_papers)} 篇，目录里找到 {n_resolved} 篇；"
         f"施引 {n_fetched} 条，去掉重复后 {len(seen_citing)} 篇，跳过本人引用 {len(seen_self)} 篇")
     log(f"对上荣誉名单 {len(honor_citers)} 人；只是同名、单位或邮箱对不上的 {n_name_only} 个没有算进去")
+    honor_stats = dict(honor.stats())
+    honor_stats.pop("path", None)
     return {
         "mode": REPORT_MODE, "disclaimer": DISCLAIMER, "scholar_name": scholar_name,
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"), "coverage": coverage,
-        "honor_list": honor.stats(), "honor_citers": honor_citers, "targets": targets_out,
+        "honor_list": honor_stats, "honor_citers": honor_citers, "targets": targets_out,
         "data_sources": "OpenAlex cites（施引关系 + 作者单位）· Kaggle arXiv 快照（题录核对）· 本地荣誉名单",
         "match_rule": "姓名键一致，且（邮箱完整地址 / 邮箱域名 / 规范化单位）至少一项一致；仅姓名一致不计入",
     }
@@ -159,6 +161,13 @@ def render_html(report: dict) -> str:
         f"<td>{len(t['honor_hits'])}</td></tr>"
         for t in report["targets"]
     )
+    if stats.get("available"):
+        honor_note = (
+            f"名单里有 {stats.get('total', 0)} 人。姓名要对上，并且单位或邮箱至少有一项也对上。"
+            f"只是同名的 {cov['name_only_candidates_not_counted']} 个没有算进去。"
+        )
+    else:
+        honor_note = "这台服务器上还没有荣誉名单，所以这次没有做名单对照。"
     stats_line = "".join(
         f"<li><b>{e(value)}</b><span>{e(label)}</span></li>"
         for label, value in (
@@ -194,7 +203,7 @@ p{{line-height:1.6}}
 <h2>{e(report['scholar_name'] or '学者')} · 查他引</h2>
 <div class="banner">{e(report['disclaimer'])}</div>
 <ul class="stats">{stats_line}</ul>
-<p>名单里有 {e(stats.get('total', 0))} 人。姓名要对上，并且单位或邮箱至少有一项也对上。只是同名的 {cov['name_only_candidates_not_counted']} 个没有算进去。</p>
+<p>{e(honor_note)}</p>
 <h3>对上的学者（{cov['honor_citers']}）</h3>
 <div class="wrap"><table><tr><th>学者</th><th>荣誉</th><th>怎么对上的</th><th>单位</th><th>引用了几篇</th><th>引用的论文</th></tr>{rows}</table></div>
 <h3>查过的论文</h3>
