@@ -125,6 +125,8 @@ def start_job(request: SocialContentRequest) -> dict[str, str]:
                 "stage": existing.get("stage") or "brief",
                 "message": existing.get("message") or _STAGE_TEXT["brief"],
             }
+        if any(job.get("status") == "running" for job in _jobs.values()):
+            raise HTTPException(status_code=409, detail="已经有一份文案在生成，请等它完成后再试。")
         _remember_job(job_id, {
             "status": "running",
             "stage": "brief",
@@ -149,10 +151,11 @@ def create_package(request: SocialContentRequest) -> SocialContentResponse:
     try:
         return _execute(request)
     except Exception as exc:
+        print(f"[xhs] package failed: {exc}", flush=True)
         return SocialContentResponse(
             request_id=request.request_id,
             status="failed",
-            error=str(exc),
+            error=_public_job_error(exc),
         )
 
 
