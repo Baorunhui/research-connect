@@ -1216,13 +1216,14 @@ window.PrivateDiscussionChat = (function () {
           `HTTP ${resp.status} ${resp.statusText || ''}`,
           preview ? `| 响应内容片段: ${preview}` : '',
         );
-        aiAnswerDiv.textContent = `请求失败: HTTP ${resp.status} ${
-          resp.statusText || ''
-        }${preview ? ` - ${preview}` : ''}`;
+        const chatError = resp.status === 401 || resp.status === 403
+          ? '模型没有接受这次请求。请打开页面设置检查密钥。'
+          : resp.status === 429
+            ? '模型暂时忙，请稍后再问。'
+            : '这次没有答上来，请稍后重试。';
+        aiAnswerDiv.textContent = chatError;
         if (statusEl) {
-          statusEl.textContent = `调用 Chat 模型失败: HTTP ${resp.status} ${
-            resp.statusText || ''
-          }${preview ? ` - ${preview}` : ''}`;
+          statusEl.textContent = chatError;
           statusEl.style.color = '#c00';
         }
         return;
@@ -1333,23 +1334,21 @@ window.PrivateDiscussionChat = (function () {
           e.name === 'TimeoutError' ||
           /timed out|timed_out/i.test((e.message || '')));
       if (isTimeout) {
-        aiAnswerDiv.textContent =
-          '请求超时（120 秒），请稍后重试或检查网络后再试。';
+        aiAnswerDiv.textContent = '这次等太久了，请稍后重试。';
         if (statusEl) {
-          statusEl.textContent = '聊天请求超时，请检查网络。';
+          statusEl.textContent = '回答超时，请稍后重试。';
           statusEl.style.color = '#c00';
         }
       } else if (e && e.name === 'TypeError') {
-        aiAnswerDiv.textContent = '网络连接异常（可能为 CORS 或跨域问题）。';
+        aiAnswerDiv.textContent = '没有连上问答服务，请稍后重试。';
         if (statusEl) {
-          statusEl.textContent =
-            '请求失败：网络连接异常，请确认模型端点可访问（含 CORS）及代理设置。';
+          statusEl.textContent = '没有连上问答服务，请稍后重试。';
           statusEl.style.color = '#c00';
         }
       } else {
-        aiAnswerDiv.textContent = '发送失败，请检查网络或模型配置。';
+        aiAnswerDiv.textContent = '这次没有发出去，请稍后重试。';
         if (statusEl) {
-          statusEl.textContent = '发送失败，请检查网络或模型配置。';
+          statusEl.textContent = '这次没有发出去，请稍后重试。';
           statusEl.style.color = '#c00';
         }
       }

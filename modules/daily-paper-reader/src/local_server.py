@@ -762,10 +762,11 @@ class RunStore:
                 returncode=returncode,
             )
         except Exception as exc:
+            print(f"[papers] run {run_id} failed: {exc!r}", flush=True)
             with log_path.open("a", encoding="utf-8") as log:
-                log.write(f"\n[local-debug] exception={exc!r}\n")
-            self._emit(run_id, _run_event("run.failed", run_id, message=f"执行异常：{exc}"))
-            self._update(run_id, status="completed", conclusion="failure", completed_at=utc_now(), error=repr(exc))
+                log.write("\n这次生成中断了。\n")
+            self._emit(run_id, _run_event("run.failed", run_id, message="这次生成中断了。"))
+            self._update(run_id, status="completed", conclusion="failure", completed_at=utc_now(), error="")
         finally:
             with self._lock:
                 self._processes.pop(run_id, None)
