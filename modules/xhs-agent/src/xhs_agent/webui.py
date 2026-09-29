@@ -74,7 +74,9 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&a
 function fileUrl(packageId, absPath) {
   const marker = '/' + packageId + '/';
   const idx = String(absPath).lastIndexOf(marker);
-  const rel = idx >= 0 ? String(absPath).slice(idx + marker.length) : String(absPath);
+  if (idx < 0) return '';
+  const rel = String(absPath).slice(idx + marker.length);
+  if (!rel || rel.split('/').some(part => !part || part === '.' || part === '..')) return '';
   return 'v1/xhs/packages/' + encodeURIComponent(packageId) + '/files/' + rel.split('/').map(encodeURIComponent).join('/');
 }
 
@@ -98,11 +100,13 @@ function render(resp) {
     box.innerHTML = '<div class="error">这份结果不完整，请重新生成。</div>';
     return;
   }
-  const cards = (artifacts.cards || []).map(c => '<a href="' + fileUrl(d.package_id, c) + '" target="_blank"><img src="' + fileUrl(d.package_id, c) + '"></a>').join('');
+  const cards = (artifacts.cards || []).map(c => {
+    const href = fileUrl(d.package_id, c);
+    return href ? '<a href="' + href + '" target="_blank"><img src="' + href + '"></a>' : '';
+  }).join('');
   const human = (quality.needs_human_check || []).map(s => '<li>' + esc(s) + '</li>').join('');
-  const note = artifacts.note_md
-    ? ' · <a href="' + fileUrl(d.package_id, artifacts.note_md) + '" target="_blank">正文文件</a>'
-    : '';
+  const noteHref = artifacts.note_md ? fileUrl(d.package_id, artifacts.note_md) : '';
+  const note = noteHref ? ' · <a href="' + noteHref + '" target="_blank">正文文件</a>' : '';
   box.innerHTML =
     '<h2 style="margin-top:0">' + esc(p.title) + '</h2>' +
     '<div class="tags">' + (p.tags || []).map(t => '<span>#' + esc(t) + '</span>').join('') + '</div>' +
