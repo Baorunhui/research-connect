@@ -151,7 +151,7 @@ class AppConfig(BaseModel):
 
     # 学者主页快速流水线（profile → top-N → 被引 → 知名学者库匹配 → 选择性 PDF）
     profile_mode: str = Field(default="fast",
-        description="学者主页模式: fast=本地 metadata + 荣誉名单快查（不逐篇抓施引）, full=S2 逐篇施引 + LLM + PDF 全流程")
+        description="学者主页模式: fast=OpenAlex 施引（仅题录/作者单位）+ Kaggle 题录核对 + 荣誉名单, full=S2 逐篇施引 + LLM + PDF 全流程")
     profile_top_n: int = Field(default=30, description="学者主页模式：只取引用量最高的 N 篇目标论文（0=不限）")
     profile_min_citations: int = Field(default=0, description="学者主页模式：目标论文最低引用数门槛（0=不限）")
     profile_use_llm_fallback: bool = Field(default=True,

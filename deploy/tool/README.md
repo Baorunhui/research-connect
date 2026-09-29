@@ -50,20 +50,26 @@ ScraperAPI 可选，本机部署默认不需要。Daily Paper 的订阅和模型
 
 ## 查他引快查（默认）
 
-学者主页入口默认是「快查」：只用本地已有数据，不把万引学者的施引逐篇抓全。
+学者主页入口默认是「快查」：施引关系到 OpenAlex 拉全，题录用本地 Kaggle arXiv 快照核对，
+不下载 PDF / 落地页 / 全文，不走 Google Scholar 施引、Semantic Scholar 或 ScraperAPI。
 
 1. 学者缓存（`scholar-profile`）命中 → 直接展示已有结果。
-2. 论文列表：上传的主页 HTML 完全本地解析；输入 URL 时只做一次身份解析——配置了
-   ScraperAPI 用它，否则直接请求一次主页（常被 Google 403），再退到 URL 里的
-   `&name=作者英文名` 走 Semantic Scholar 作者搜索。取引用量最高的 N 篇。
-3. 论文 metadata：Kaggle arXiv 本地索引。
-4. 施引记录：数据卷与 `LEGACY_CITATIONCLAW_DATA` 里历史运行留下的
-   `cache/openalex_phase1/*.json`、`result-*/*_results.json`，单位用 `cache/metadata_cache.json` 补全。
-5. 荣誉匹配：施引作者对 `state/honor-list/honors.sqlite3`，姓名一致且（邮箱完整地址 / 邮箱域名 /
-   规范化单位）至少一项一致才算命中；只有同名的计为候选、不计入。
+2. 论文列表：上传的主页 HTML 完全本地解析；输入 URL 时只做一次身份解析（本机 Google 常 403，
+   建议上传 HTML）。取引用量最高的 N 篇（`top_n`，0 = 全部）。
+3. OpenAlex 施引：每篇目标先按 DOI / arXiv DOI / 精确标题找 work（预印本与正式版同名的一并纳入），
+   再 `filter=cites:W…` + `cursor` 翻页，每页 200，`select=id,display_name,publication_year,doi,ids,authorships`。
+   被引超过 2000 的按 `publication_year` 分区并行翻页。带 `mailto`（`CITATIONCLAW_OPENALEX_MAILTO`），
+   令牌桶限速（`CITATIONCLAW_OPENALEX_RPS`，默认 8 次/秒），429/5xx 按 `Retry-After` 或指数退避重试。
+   线路 `CITATIONCLAW_OPENALEX_ROUTE=auto|direct|proxy`，auto 先直连、不通再走代理。
+   原始施引缓存在数据卷 `/data/cache/openalex_citing/`（按论文、按年份分区的 gzip JSON），同一篇论文不重拉。
+4. 题录核对：目标与施引论文的 arXiv id / DOI / 标题查 Kaggle 本地索引，补 arXiv id、标题、年份；
+   OpenAlex 没给作者时用 Kaggle 作者补。Kaggle 没有引用边，不能替代第 3 步。
+5. 自引跳过；荣誉匹配：施引作者（OpenAlex 机构名 / 原始单位串里的邮箱）对
+   `state/honor-list/honors.sqlite3`，姓名一致且（邮箱完整地址 / 邮箱域名 / 规范化单位）至少一项一致才算命中；
+   只有同名的计为候选、不计入。
 
-报告（`*_fast_report.{html,json,xlsx}`）标明「metadata + 荣誉名单快查，不是全量施引」，列出荣誉、
-匹配依据和覆盖率。需要全量施引时勾选页面上的「全量施引」或 API 传 `mode=full`。
+报告（`*_fast_report.{html,json,xlsx}`）标明「OpenAlex 施引 + Kaggle 题录核对，不是谷歌学术全量爬取」，
+列出荣誉、匹配依据、每篇目标的 OpenAlex 被引数与已拉取条数。需要 LLM/PDF 全流程时勾选「全量施引」或 API 传 `mode=full`。
 
 荣誉名单不进 Git、不进镜像，在宿主机生成（需要 `pypinyin` 生成中文名拼音键，抓取来源走代理）：
 

@@ -109,6 +109,11 @@ services:
       CITATIONCLAW_LIGHT_MODEL: ${CITATIONCLAW_LIGHT_MODEL:-}
       # Local honor list (academicians / Fellows / 长江 / 杰青) for the quick report.
       CITATIONCLAW_HONOR_DB: /honor-list/honors.sqlite3
+      # Quick report citing works: OpenAlex cites: + cursor, metadata only.
+      CITATIONCLAW_OPENALEX_MAILTO: ${OPENALEX_MAILTO:-}
+      OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+      CITATIONCLAW_OPENALEX_ROUTE: ${OPENALEX_ROUTE:-auto}
+      CITATIONCLAW_OPENALEX_RPS: ${OPENALEX_RPS:-8}
     ports:
       - "127.0.0.1:${CITATIONCLAW_PORT:-58890}:58890"
     volumes:

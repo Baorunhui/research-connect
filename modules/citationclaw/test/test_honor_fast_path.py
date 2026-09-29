@@ -5,7 +5,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from citationclaw.core.honor_list import (
     HonorList, _Builder, affiliation_match, email_matches_affiliation, name_key,
 )
-from citationclaw.core.scholar_fast_path import LocalCitingIndex, build_fast_report
+from citationclaw.core.kaggle_arxiv_meta import normalize_title
+from citationclaw.core.scholar_fast_path import build_fast_report, render_html
 
 
 def _honors(tmp_path):
@@ -46,25 +47,26 @@ def test_same_name_different_affiliation_is_not_a_hit(tmp_path):
     assert h.match("Wei Wang", "")["hits"] == []
 
 
-def test_fast_report_uses_only_local_records(tmp_path):
+def test_fast_report_matches_openalex_citing_records(tmp_path):
     h = _honors(tmp_path)
-    phase1 = tmp_path / "data" / "cache" / "openalex_phase1"
-    phase1.mkdir(parents=True)
-    (phase1 / "a.json").write_text(json.dumps({
-        "title": "Target Paper On Graphs",
-        "works": [
-            {"title": "Citing One", "authors": [{"name": "Wei Wang", "affiliation": "UCLA"}]},
-            {"title": "Citing Two", "authors": [{"name": "Wei Wang", "affiliation": "Harbin Engineering University"}]},
-            {"title": "Self Cite", "authors": [{"name": "Jane Doe", "affiliation": "X"}]},
-        ],
-    }), encoding="utf-8")
-    index = LocalCitingIndex([tmp_path / "data"]).load()
+    records = [
+        {"id": "W1", "title": "Citing One", "year": 2021, "doi": "", "arxiv_id": "",
+         "authors": [{"name": "Wei Wang", "affiliation": "UCLA", "email": ""}]},
+        {"id": "W2", "title": "Citing Two", "year": 2022, "doi": "", "arxiv_id": "",
+         "authors": [{"name": "Wei Wang", "affiliation": "Harbin Engineering University", "email": ""}]},
+        {"id": "W3", "title": "Self Cite", "year": 2022, "doi": "", "arxiv_id": "",
+         "authors": [{"name": "Jane Doe", "affiliation": "X", "email": ""}]},
+    ]
+    citing = {normalize_title("Target Paper On Graphs"): {
+        "records": records, "openalex_ids": ["W9"], "openalex_cited_by": 3, "complete": True}}
     report = build_fast_report(
         [{"title": "Target paper on graphs", "citations": 12000}, {"title": "Unknown", "citations": 5}],
-        "Jane Doe", h, index, kaggle=None, log=lambda _m: None)
+        "Jane Doe", h, citing, kaggle=None, log=lambda _m: None)
     cov = report["coverage"]
-    assert report["mode"] == "fast_metadata_honor_match"
-    assert cov["targets_with_local_citing_data"] == 1
-    assert cov["local_citing_papers"] == 2 and cov["self_citations_skipped"] == 1
+    assert report["mode"] == "openalex_citing_honor_match"
+    assert "OpenAlex" in report["disclaimer"]
+    assert cov["targets_resolved_openalex"] == 1
+    assert cov["unique_citing_works"] == 2 and cov["self_citations_skipped"] == 1
     assert [c["name"] for c in report["honor_citers"]] == ["Wei Wang"]
     assert report["honor_citers"][0]["citing_papers"] == ["Citing One"]
+    assert "OpenAlex" in render_html(report)

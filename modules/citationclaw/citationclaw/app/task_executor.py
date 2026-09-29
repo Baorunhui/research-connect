@@ -2267,13 +2267,16 @@ class TaskExecutor:
         profile_html: str = "",
         scholar_name: str = "",
     ):
-        """快查：本地 metadata + 荣誉名单，不逐篇请求 S2 / ScraperAPI / Google Scholar。"""
+        """快查：论文列表 → OpenAlex 施引（仅题录+作者单位）→ Kaggle 题录核对 → 荣誉名单匹配。
+
+        不请求 Google Scholar 施引、Semantic Scholar、ScraperAPI，也不下载 PDF/全文。
+        """
         from urllib.parse import parse_qs, urlparse
         from citationclaw.core.honor_list import get_honor_list
-        from citationclaw.core.kaggle_arxiv_meta import get_kaggle_meta
+        from citationclaw.core.kaggle_arxiv_meta import get_kaggle_meta, normalize_title
+        from citationclaw.core.openalex_citing import OpenAlexCitingFetcher, verify_with_kaggle
         from citationclaw.core.scholar_fast_path import (
-            DISCLAIMER, REPORT_MODE, build_fast_report, default_roots,
-            get_local_index, write_outputs,
+            DISCLAIMER, REPORT_MODE, build_fast_report, write_outputs,
         )
 
         self.should_cancel = False
@@ -2284,7 +2287,7 @@ class TaskExecutor:
             folder_name = f"{_folder_prefix}-result-{timestamp}" if _folder_prefix else f"result-{timestamp}"
             result_dir = DATA_DIR / folder_name
             self.log_manager.info("=" * 50)
-            self.log_manager.info("学者他引快查（本地 metadata + 荣誉名单，非全量施引）")
+            self.log_manager.info("学者他引快查（OpenAlex 施引 + Kaggle 题录核对 + 荣誉名单）")
             self.log_manager.info("=" * 50)
 
             # Step 1: 学者身份与论文列表 —— 上传 HTML 完全本地；URL 只做一次主页解析
@@ -2323,23 +2326,69 @@ class TaskExecutor:
             target_papers = filter_top_papers(all_papers, top_n=top_n, min_citations=min_cit)
             self.log_manager.info(f"Step 2 · 取引用量最高 {len(target_papers)} 篇（共 {len(all_papers)} 篇）")
 
-            # Step 3-4: 本地施引记录 + Kaggle metadata + 荣誉名单匹配
             honor = get_honor_list()
             stats = honor.stats()
             if not stats["available"]:
                 self.log_manager.warning(f"荣誉名单未加载（{stats['path'] or '未配置 CITATIONCLAW_HONOR_DB'}），将不会有荣誉命中")
             else:
-                self.log_manager.info(f"Step 3 · 荣誉名单 {stats['total']} 条: {stats['sources']}")
-            roots = default_roots(DATA_DIR)
-            index = await asyncio.to_thread(get_local_index, roots)
-            self.log_manager.info(
-                f"Step 4 · 本地施引数据: {len(index.by_target)} 篇目标论文有记录（读取 {index.files_read} 个本地文件）"
-            )
+                self.log_manager.info(f"  荣誉名单 {stats['total']} 条: {stats['sources']}")
             kaggle = get_kaggle_meta()
-            report = await asyncio.to_thread(
-                build_fast_report, target_papers, name, honor, index,
-                kaggle if kaggle.available else None, self.log_manager.info,
+            kaggle = kaggle if kaggle.available else None
+            for tp in target_papers:
+                m = kaggle.lookup(title=tp.get("title", "")) if kaggle is not None else None
+                for key in ("arxiv_id", "doi") if m else ():
+                    tp[key] = tp.get(key) or m.get(key, "")
+
+            # Step 3: OpenAlex 找 work，cites: 分页拉全部施引（仅 id/题名/年份/doi/ids/作者单位）
+            fetcher = OpenAlexCitingFetcher(
+                DATA_DIR / "cache" / "openalex_citing",
+                email=getattr(config, "openalex_email", "") or os.getenv("CITATIONCLAW_OPENALEX_MAILTO", ""),
+                api_key=os.getenv("OPENALEX_API_KEY", ""),
+                rate=float(os.getenv("CITATIONCLAW_OPENALEX_RPS", "8") or 8),
+                log=self.log_manager.info,
+                should_cancel=lambda: self.should_cancel,
             )
+            citing: dict = {}
+            try:
+                self.log_manager.info(f"Step 3 · OpenAlex 施引：解析 {len(target_papers)} 篇目标论文的 work id")
+                resolved = await asyncio.gather(*(
+                    fetcher.resolve(tp.get("title", ""), tp.get("doi", ""), tp.get("arxiv_id", ""), tp.get("year"))
+                    for tp in target_papers))
+                expected = sum(r["cited_by_count"] for r in resolved)
+                self.log_manager.info(
+                    f"  找到 {sum(1 for r in resolved if r['works'])}/{len(target_papers)} 篇，"
+                    f"OpenAlex 被引合计 {expected} 条，开始 cursor 翻页（每页 200）")
+
+                async def _pull(i, tp, res):
+                    ids = [w["id"] for w in res["works"]]
+                    got = await fetcher.fetch_citing(ids, res["cited_by_count"], label=f"#{i + 1}")
+                    citing[normalize_title(tp.get("title", ""))] = {
+                        **got, "openalex_ids": ids, "openalex_cited_by": res["cited_by_count"],
+                        "resolved_by": res.get("resolved_by", ""),
+                    }
+
+                await asyncio.gather(*(_pull(i, tp, r) for i, (tp, r) in enumerate(zip(target_papers, resolved))))
+            finally:
+                await fetcher.close()
+            took = time.monotonic() - started
+            self.log_manager.info(
+                f"  OpenAlex 完成：{fetcher.fetched_records} 条新拉取（其余来自缓存），{fetcher.requests} 次请求，"
+                f"重试 {fetcher.retries} 次，线路 {fetcher.route if fetcher.requests else '未联网（全部命中缓存）'}，累计 {took:.1f}s")
+            if self.should_cancel:
+                await self._broadcast_task_finished("cancelled", "已取消")
+                return
+
+            # Step 4: Kaggle 题录核对 + 荣誉名单匹配（本地，无外部请求）
+            n_verified = 0
+            if kaggle is not None:
+                n_verified = await asyncio.to_thread(
+                    lambda: sum(verify_with_kaggle(c["records"], kaggle) for c in citing.values()))
+            self.log_manager.info(f"Step 4 · Kaggle 题录核对命中 {n_verified} 条；荣誉名单匹配中")
+            report = await asyncio.to_thread(
+                build_fast_report, target_papers, name, honor, citing, kaggle, self.log_manager.info,
+            )
+            report["openalex"] = {"requests": fetcher.requests, "retries": fetcher.retries,
+                                  "route": fetcher.route, "new_records": fetcher.fetched_records}
             report["profile_url"] = profile_url
             report["elapsed_seconds"] = round(time.monotonic() - started, 2)
             files = write_outputs(report, result_dir, output_prefix or "scholar_profile")
