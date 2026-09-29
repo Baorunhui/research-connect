@@ -124,6 +124,7 @@ def utc_now() -> str:
 
 
 _JOB_SILENCE_S = 20 * 60
+_RUN_SILENCE_S = 20 * 60
 
 
 def _job_is_silent(job: dict[str, Any], *, now: datetime | None = None) -> bool:
@@ -631,6 +632,7 @@ class RunStore:
             "external_job_id": str(external_job_id or "").strip(),
             "cancel_requested": False,
         }
+        self.expire_silent()
         with self._lock:
             if reuse_active:
                 active = [
@@ -651,11 +653,47 @@ class RunStore:
 
     def _public_run(self, run: dict[str, Any]) -> dict[str, Any]:
         public = dict(run)
-        for key in ("secret_env", "command", "log_path", "config_path", "returncode"):
+        for key in ("secret_env", "command", "log_path", "config_path", "returncode", "last_output_at"):
             public.pop(key, None)
         return public
 
+    def expire_silent(self) -> None:
+        """停掉二十分钟没有任何输出的日报进程，避免一直占着下一次生成。"""
+        now = time.time()
+        stale: list[str] = []
+        with self._lock:
+            for run_id, run in self._runs.items():
+                if str(run.get("status") or "").lower() not in self.ACTIVE_STATUSES:
+                    continue
+                last = run.get("last_output_at")
+                if last is None:
+                    run["last_output_at"] = now
+                    continue
+                if now - float(last) >= _RUN_SILENCE_S:
+                    stale.append(run_id)
+        for run_id in stale:
+            self._fail_silent(run_id)
+
+    def _fail_silent(self, run_id: str) -> None:
+        message = "这次等太久没有新进度，已停掉。可以重新开始。"
+        with self._lock:
+            run = self._runs.get(run_id)
+            proc = self._processes.get(run_id)
+            if not run or str(run.get("status") or "").lower() not in self.ACTIVE_STATUSES:
+                return
+            run["status"] = "completed"
+            run["conclusion"] = "failure"
+            run["error"] = message
+            run["completed_at"] = utc_now()
+            run["updated_at"] = utc_now()
+            self._persist_locked(run)
+        print(f"[papers] run {run_id} silent for {_RUN_SILENCE_S}s", flush=True)
+        if proc is not None and proc.poll() is None:
+            _terminate_process_tree(proc)
+        self._emit(run_id, _run_event("run.failed", run_id, message=message))
+
     def list(self) -> list[dict[str, Any]]:
+        self.expire_silent()
         with self._lock:
             runs = sorted(
                 (self._public_run(item) for item in self._runs.values()),
@@ -667,6 +705,7 @@ class RunStore:
         return runs
 
     def get(self, run_id: str) -> dict[str, Any] | None:
+        self.expire_silent()
         with self._lock:
             run = self._runs.get(run_id)
             return self._public_run(run) if run else None
@@ -801,13 +840,27 @@ class RunStore:
                 )
                 with self._lock:
                     self._processes[run_id] = proc
+                    current = self._runs.get(run_id)
+                    if current is not None:
+                        current["last_output_at"] = time.time()
                 assert proc.stdout is not None
                 for line in proc.stdout:
+                    with self._lock:
+                        current = self._runs.get(run_id)
+                        if current is not None:
+                            current["last_output_at"] = time.time()
                     log.write(line)
                     log.flush()
                     for event in tracker.observe(line):
                         self._emit(run_id, event)
                 returncode = proc.wait()
+                with self._lock:
+                    current = self._runs.get(run_id)
+                    still_active = bool(
+                        current and str(current.get("status") or "").lower() in self.ACTIVE_STATUSES
+                    )
+                if not still_active:
+                    return
                 for event in tracker.finalize(returncode == 0):
                     self._emit(run_id, event)
                 latest = self.get(run_id) or {}
