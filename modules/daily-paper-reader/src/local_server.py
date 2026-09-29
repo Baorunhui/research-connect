@@ -56,6 +56,13 @@ SECRET_PATH = ROOT_DIR / "secret.private"
 ENV_PATH = ROOT_DIR / ".env"
 
 
+def _write_runtime_text(path: Path, text: str) -> None:
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError:
+        print(f"[papers] docs intro skipped: {path.name}", flush=True)
+
+
 def ensure_runtime_docs_shell() -> None:
     """Create ignored runtime entry files from tracked clean templates."""
     docs_dir = ROOT_DIR / "docs"
@@ -65,10 +72,16 @@ def ensure_runtime_docs_shell() -> None:
         target = docs_dir / name
         template = template_dir / name
         if not target.exists() and template.is_file():
-            target.write_bytes(template.read_bytes())
+            try:
+                target.write_bytes(template.read_bytes())
+            except OSError:
+                print(f"[papers] docs intro skipped: {name}", flush=True)
     readme = docs_dir / "README.md"
     if readme.is_file():
-        text = readme.read_text(encoding="utf-8")
+        try:
+            text = readme.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            text = ""
         updated = text.replace(
             '<h3 class="dpr-home-notice-title">Daily Paper Reader</h3>',
             '<h3 class="dpr-home-notice-title">论文日报</h3>',
@@ -77,7 +90,7 @@ def ensure_runtime_docs_shell() -> None:
             "还没有论文日报。点右下角的火箭生成一次，或在页面设置里点「保存并生成日报」。",
         )
         if updated != text:
-            readme.write_text(updated, encoding="utf-8")
+            _write_runtime_text(readme, updated)
     replacements = {
         "本功能由本地后端（`python src/local_server.py`）驱动；纯静态部署下不可用。开启核心论文 PDF 深读时，整份报告通常需要几分钟到十几分钟。":
         "写一篇综述通常要几分钟。如果勾选了细读全文，会更久一些。",
@@ -103,20 +116,28 @@ def ensure_runtime_docs_shell() -> None:
             continue
         try:
             page = path.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeError):
             continue
         rewritten = page
         for old, new in replacements.items():
             rewritten = rewritten.replace(old, new)
         if rewritten != page:
-            path.write_text(rewritten, encoding="utf-8")
+            _write_runtime_text(path, rewritten)
     guide = docs_dir / "tutorial" / "README.md"
     fresh = ROOT_DIR / "docs_init" / "tutorial" / "README.md"
-    if guide.is_file() and fresh.is_file() and "推荐链路说明" in guide.read_text(encoding="utf-8"):
-        guide.write_text(fresh.read_text(encoding="utf-8"), encoding="utf-8")
+    try:
+        guide_text = guide.read_text(encoding="utf-8") if guide.is_file() else ""
+        fresh_text = fresh.read_text(encoding="utf-8") if fresh.is_file() else ""
+    except (OSError, UnicodeError):
+        return
+    if guide_text and fresh_text and "推荐链路说明" in guide_text:
+        _write_runtime_text(guide, fresh_text)
 
 
-ensure_runtime_docs_shell()
+try:
+    ensure_runtime_docs_shell()
+except (OSError, UnicodeError) as exc:
+    print(f"[papers] docs intro skipped: {type(exc).__name__}", flush=True)
 
 
 def utc_now() -> str:
