@@ -12,6 +12,27 @@ _BROWSER_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
+NO_PAPERS_HINT = (
+    "请改用以下任一方式：① 在自己电脑的浏览器里打开该学者的 Google Scholar 主页，"
+    "Ctrl+S 另存为 HTML，再用「上传主页 HTML」；② 在链接末尾加 &name=作者英文名"
+    "（如 …citations?user=XXXX&name=Kaiming+He），按姓名从 Semantic Scholar 取论文列表。"
+)
+
+
+def no_papers_message(profile_url: str, scholar_blocked: bool,
+                      s2_rate_limited: bool = False) -> str:
+    """User-facing reason why a profile URL yielded no paper list."""
+    name = (parse_qs(urlparse(profile_url or "").query).get("name") or [""])[0].strip()
+    if name and s2_rate_limited:
+        return ("未获取到学者论文列表：Semantic Scholar 免 key 公共接口当前被限流（HTTP 429），"
+                "不是姓名问题。请过几分钟重试、在设置里填 S2 API Key，或上传保存的 Google Scholar 主页 HTML。")
+    if name:
+        return (f"未获取到学者论文列表：Semantic Scholar 按姓名「{name}」没有找到论文，"
+                "请检查英文名拼写，或上传保存的 Google Scholar 主页 HTML。")
+    reason = ("Google Scholar 拒绝了本服务器的访问（出口 IP 被识别为自动流量），"
+              if scholar_blocked else "Google Scholar 主页没有返回论文列表，")
+    return f"未获取到学者论文列表：{reason}且链接里没有 &name=。{NO_PAPERS_HINT}"
+
 
 class ScholarProfileScraper:
     def __init__(self, api_keys: list, log_callback: Callable,
@@ -24,6 +45,8 @@ class ScholarProfileScraper:
         self._key_idx = 0
         self._s2_api_key = s2_api_key
         self.scholar_name = ""
+        self.scholar_blocked = False
+        self.s2_rate_limited = False
 
     @staticmethod
     def _parse_intervals(intervals_str: str) -> list:
@@ -165,7 +188,15 @@ class ScholarProfileScraper:
                 requests.get, url, headers=_BROWSER_HEADERS, timeout=30
             )
         except Exception as e:
-            self.log_callback(f"[ScholarProfile] 直接请求失败: {e}")
+            self.scholar_blocked = True
+            self.log_callback(f"[ScholarProfile] 直接请求失败（本机到 Google Scholar 不通）: {e}")
+            return None
+        if r.status_code in (403, 429) or 'unusual traffic' in r.text or '/sorry/' in r.url:
+            self.scholar_blocked = True
+            self.log_callback(
+                f"[ScholarProfile] Google Scholar 拒绝本服务器出口 IP（HTTP {r.status_code}），"
+                "换地区域名无效；请上传主页 HTML 或在链接后加 &name=作者英文名"
+            )
             return None
         if r.status_code != 200 or 'gsc_a_tr' not in r.text:
             self.log_callback(
@@ -243,12 +274,15 @@ class ScholarProfileScraper:
             s2 = S2Client(api_key=self._s2_api_key or None)
             try:
                 papers = await s2.get_author_papers_by_name(name, max_papers=2000)
+                self.s2_rate_limited = s2.rate_limited
             finally:
                 await s2.close()
         except Exception as e:
             self.log_callback(f"[ScholarProfile] S2 兜底失败: {e}")
             return []
 
-        if not papers:
+        if not papers and self.s2_rate_limited:
+            self.log_callback("[ScholarProfile] S2 免 key 接口被限流（HTTP 429），稍后再试或配置 S2 API Key")
+        elif not papers:
             self.log_callback(f"[ScholarProfile] S2 未找到作者 '{name}' 的论文")
         return papers

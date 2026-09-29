@@ -14,7 +14,7 @@ from citationclaw.core.metadata_cache import MetadataCache
 from citationclaw.core.self_citation import SelfCitationDetector
 from citationclaw.core.scholar_prefilter import ScholarPreFilter
 from citationclaw.core.scholar_search_agent import ScholarSearchAgent
-from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper
+from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper, no_papers_message
 from citationclaw.core.scholar_profile_cache import (
     ScholarProfileCache,
     scholar_cache_keys,
@@ -2308,7 +2308,12 @@ class TaskExecutor:
                 await self._broadcast_task_finished("error", "未提供学者主页 URL 或 HTML")
                 return
             if not all_papers:
-                message = "未获取到学者论文列表：可上传保存的 Google Scholar 主页 HTML，或在链接后加 &name=作者英文名"
+                if profile_html:
+                    message = ("上传的 HTML 里没有解析到论文列表：请在 Google Scholar 学者主页"
+                               "（citations?user=…）上另存为「网页，完整」后重新上传")
+                else:
+                    message = no_papers_message(profile_url, scraper.scholar_blocked,
+                                                scraper.s2_rate_limited)
                 self.log_manager.warning(message)
                 await self._broadcast_task_finished("no_results", message)
                 return

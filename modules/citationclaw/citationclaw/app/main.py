@@ -437,7 +437,7 @@ async def fetch_scholar_papers(request: ScholarProfileRequest):
     url = _validate_scholar_url(request.profile_url)
     config = config_manager.get()
 
-    from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper
+    from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper, no_papers_message
     scraper = ScholarProfileScraper(
         api_keys=config.scraper_api_keys,
         log_callback=print,
@@ -447,6 +447,10 @@ async def fetch_scholar_papers(request: ScholarProfileRequest):
     )
     try:
         papers = await scraper.fetch_all_papers(url)
+        if not papers:
+            return JSONResponse(status_code=422, content={
+                "error": no_papers_message(url, scraper.scholar_blocked,
+                                           scraper.s2_rate_limited)})
         from citationclaw.core.kaggle_arxiv_meta import enrich_papers_local
         local_hits = enrich_papers_local(papers)
         return {"papers": papers, "total": len(papers), "local_metadata_hits": local_hits}

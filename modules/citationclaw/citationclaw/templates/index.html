@@ -76,12 +76,13 @@
   <div style="margin-top:14px">
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <input id="profile-url-fast" type="text" class="form-control"
-             placeholder="https://scholar.google.com/citations?user=…  （粘贴学者主页链接，自动取 top-N 高被引论文）"
+             placeholder="https://scholar.google.com/citations?user=…&name=作者英文名  （本服务器访问不了 Google Scholar：请带 &name=，或在下方上传主页 HTML）"
              style="flex:1">
       <button class="btn-agent-primary" id="profile-run-btn" onclick="runProfilePipeline()">快速分析</button>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <span style="font-size:12.5px;color:var(--muted)">或上传主页 HTML：</span>
+      <span style="font-size:12.5px;color:var(--muted)"
+            title="在自己电脑浏览器打开学者 Google Scholar 主页，Ctrl+S 另存为 HTML 后上传">或上传主页 HTML（自己浏览器里另存）：</span>
       <input type="file" id="profile-html-input" accept=".html,.htm" style="font-size:12.5px;color:var(--muted)">
       <button class="btn-agent-sm" id="profile-upload-btn" onclick="uploadProfileHTML()">上传并分析</button>
     </div>

@@ -16,7 +16,7 @@ from citationclaw.core.scholar_profile_pipeline import (
 )
 from citationclaw.core.pipeline_adapter import PipelineAdapter
 from citationclaw.core.self_citation import SelfCitationDetector
-from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper
+from citationclaw.core.scholar_profile_scraper import ScholarProfileScraper, no_papers_message
 
 
 def test_profile_without_scraper_key_uses_public_s2_fallback():
@@ -54,6 +54,27 @@ def test_profile_without_scraper_key_parses_direct_page():
     assert [p["title"] for p in papers] == ["Paper 2", "Paper 1", "Paper 0"]
     assert scraper.scholar_name == "Jane Doe"
     scraper._s2_fallback.assert_not_awaited()
+
+
+def test_direct_fetch_flags_google_sorry_page():
+    resp = MagicMock(status_code=403, url="https://scholar.google.com/citations?user=abc",
+                     text="<title>Sorry...</title> unusual traffic from your computer network")
+    scraper = ScholarProfileScraper(api_keys=[], log_callback=lambda _m: None)
+    with patch("citationclaw.core.scholar_profile_scraper.requests.get", return_value=resp):
+        html = asyncio.get_event_loop().run_until_complete(
+            scraper._direct_fetch("https://scholar.google.com/citations?user=abc"))
+    assert html is None
+    assert scraper.scholar_blocked
+
+
+def test_no_papers_message_guides_to_html_or_name():
+    blocked = no_papers_message("https://scholar.google.com/citations?user=abc", True)
+    assert "拒绝了本服务器" in blocked and "&name=" in blocked and "HTML" in blocked
+    named = no_papers_message("https://scholar.google.com/citations?user=abc&name=Jane+Doe", True)
+    assert "Jane Doe" in named and "拼写" in named
+    limited = no_papers_message(
+        "https://scholar.google.com/citations?user=abc&name=Jane+Doe", True, s2_rate_limited=True)
+    assert "429" in limited and "拼写" not in limited
 
 
 # ── filter_top_papers ──────────────────────────────────────────────────

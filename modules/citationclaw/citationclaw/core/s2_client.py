@@ -16,6 +16,7 @@ class S2Client:
     def __init__(self, api_key: Optional[str] = None):
         self._client = make_async_client(timeout=30.0)
         self._has_key = bool(api_key)
+        self.rate_limited = False
         if api_key:
             self._client.headers["x-api-key"] = api_key
             # New keys start at roughly 1 request/second unless Semantic
@@ -160,6 +161,7 @@ class S2Client:
             if not results:
                 return None
             return [self._parse_author(a) for a in results]
+        self.rate_limited = True
         return None
 
     async def get_author(self, author_id: str) -> Optional[dict]:
