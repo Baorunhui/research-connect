@@ -1,8 +1,47 @@
 import asyncio
+import re
 from datetime import datetime
 from typing import List, Optional, Set
 from collections import deque
 from fastapi import WebSocket
+
+
+_LEAK = re.compile(
+    r"https?://|Traceback|\.py\b|/(?:home|app|data|tmp|var|Users)/|[A-Za-z]:\\|\b[A-Za-z]+Error\b|workers|h-index|api[_ ]?key",
+    re.I,
+)
+_CHATTER = re.compile(
+    r"文件前缀|保存位置|调试文件|剩余额度|并行查询|并行搜索|查询异常|^\s*[\[│→⚠💾📄]"
+)
+_PHASES = (
+    (re.compile(r"Phase\s*1.*完成"), "引用列表查完了"),
+    (re.compile(r"Phase\s*1"), "正在查这些论文被谁引用"),
+    (re.compile(r"Phase\s*2.*完成"), "作者单位对过了"),
+    (re.compile(r"Phase\s*2"), "正在核对作者单位"),
+    (re.compile(r"Step\s*5"), "正在和学者名单对照"),
+    (re.compile(r"Phase\s*3.*完成|导出\s*完成"), "结果整理好了"),
+    (re.compile(r"Phase\s*3"), "正在整理结果"),
+    (re.compile(r"Phase\s*4"), "正在读引用原文"),
+    (re.compile(r"Phase\s*5"), "正在写报告"),
+)
+
+
+def page_log_message(message: str) -> Optional[str]:
+    """页面上只留读得懂的一句。内部步骤、路径和报错原文仍打印在服务器上。"""
+    text = " ".join(str(message).split())
+    if not text:
+        return None
+    if "未提供学者主页" in text:
+        return "请先填写学者主页链接，或上传保存的主页。"
+    for pattern, replacement in _PHASES:
+        if pattern.search(text):
+            return replacement
+    if _LEAK.search(text) or _CHATTER.search(text):
+        return None
+    chinese = len(re.findall(r"[\u4e00-\u9fff]", text))
+    if chinese < 6:
+        return None
+    return text
 
 
 class LogManager:
@@ -18,6 +57,7 @@ class LogManager:
         self.current_progress = {"current": 0, "total": 100, "percentage": 0}
         self.suppress_task_logs = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._last_page_message: Optional[str] = None
 
     def set_task_log_suppressed(self, suppressed: bool):
         """Suppress normal log printing/broadcasting after user-visible cancellation."""
@@ -82,17 +122,17 @@ class LogManager:
         message = str(message)
         if self.suppress_task_logs:
             return
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{level}] {message.lstrip()}", flush=True)
+        shown = page_log_message(message)
+        if shown is None or shown == self._last_page_message:
+            return
+        self._last_page_message = shown
         log_entry = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "level": level,
-            "message": message
+            "message": shown
         }
         self.logs.append(log_entry)
-
-        # 打印到控制台
-        print(f"[{log_entry['timestamp']}] [{level}] {message.lstrip()}")
-
-        # 异步广播(不阻塞)
         self._schedule_broadcast({
             "type": "log",
             "data": log_entry
@@ -157,3 +197,4 @@ class LogManager:
     def clear_logs(self):
         """清空日志"""
         self.logs.clear()
+        self._last_page_message = None
