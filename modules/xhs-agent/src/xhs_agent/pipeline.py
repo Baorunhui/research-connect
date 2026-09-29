@@ -31,6 +31,10 @@ class PipelineConfig:
         return {**DEFAULT_MODELS, **(self.models or {})}[step]
 
 
+class JobStopped(Exception):
+    """这份文案已经超时，后面的步骤不再调用模型。"""
+
+
 class XHSPipeline:
     def __init__(self, client: ChatModel | None = None, config: PipelineConfig | None = None, runtime: StandaloneJobRuntime | None = None) -> None:
         self.client = client or USTCChatClient()
@@ -61,11 +65,19 @@ class XHSPipeline:
         qa_report = enrich_local_qa(request, note, card_plan, qa_report)
         return PipelineResult(request=request, brief=brief, note=note, card_plan=card_plan, qa_report=qa_report)
 
+    def _stopped(self) -> bool:
+        check = getattr(self.runtime, "stopped", None)
+        return bool(callable(check) and check())
+
     def _call_step(self, step: str, schema: type[Any], system: str, user: str, fallback):
+        if self._stopped():
+            raise JobStopped()
         if self.runtime:
             self.runtime.progress(f"小红书生成：{step}", stage=step)
         last_error: Exception | None = None
         for _ in range(self.config.max_retries + 1):
+            if self._stopped():
+                raise JobStopped()
             try:
                 raw = self.client.complete_json(
                     model=self.config.model_for(step),
@@ -76,6 +88,8 @@ class XHSPipeline:
                 return schema.model_validate(extract_json_object(raw))
             except (ValidationError, ValueError, RuntimeError) as exc:
                 last_error = exc
+        if self._stopped():
+            raise JobStopped()
         value = fallback()
         if last_error:
             print(f"[xhs] step {step} fell back: {last_error}", flush=True)

@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 from .package import write_package
-from .pipeline import DEFAULT_MODELS, PipelineConfig, XHSPipeline
+from .pipeline import DEFAULT_MODELS, JobStopped, PipelineConfig, XHSPipeline
 from .schemas import SocialContentRequest, SocialContentResponse
 from .webui import INDEX_HTML
 
@@ -42,6 +42,11 @@ class _JobProgress:
             if job and job["status"] == "running":
                 job["stage"] = stage
                 job["message"] = text
+
+    def stopped(self) -> bool:
+        with _jobs_lock:
+            job = _jobs.get(self.job_id)
+            return job is None or job.get("status") != "running"
 
 
 def _expire_locked(now: float | None = None) -> None:
@@ -131,6 +136,9 @@ def _run_job(job_id: str, request: SocialContentRequest) -> None:
     try:
         try:
             response = _execute(request, runtime=_JobProgress(job_id))
+        except JobStopped:
+            print(f"[xhs] job {job_id} stopped after the time limit", flush=True)
+            return
         except Exception as exc:
             print(f"[xhs] job {job_id} failed: {exc}", flush=True)
             response = SocialContentResponse(
