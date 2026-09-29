@@ -137,6 +137,7 @@ var SpaRouter = (function () {
     let _configLoaded = false;
 
     function switchTo(name) {
+        if (name === 'config') name = 'home';
         // Hide all panels (both class and inline style for cache-safety)
         document.querySelectorAll('.spa-panel').forEach(p => {
             p.classList.remove('spa-panel-active');
@@ -274,29 +275,7 @@ function publicApiHref(url) {
 }
 
 // ==================== API Key Check (moved from index.html) ====================
-window.checkApiKeysAndAlert = function(needScraper, needLLM) {
-    const scraperKeys = (document.getElementById('idx-scraper-keys')?.value || '')
-        .split(',').map(k => k.trim()).filter(Boolean);
-    const openaiKey = (document.getElementById('idx-openai-key')?.value || '').trim();
-    const blocking = [];
-    var scraperWarn = false;
-    const configured = window._ccConfiguredSecrets || {};
-    if (needLLM && !openaiKey && !configured.openai_api_key) blocking.push('Search LLM API Key（用于联网搜索作者信息）');
-    if (needScraper && scraperKeys.length === 0 && !configured.scraper_api_keys) scraperWarn = true;
-    if (blocking.length === 0 && !scraperWarn) return true;
-    if (blocking.length > 0) {
-        var modalMissing = document.getElementById('api-key-modal-missing');
-        if (modalMissing) {
-            modalMissing.innerHTML = blocking.map(m => '<li>' + escapeHtml(m) + '</li>').join('');
-        }
-        var modalEl = document.getElementById('api-key-modal');
-        if (modalEl) new bootstrap.Modal(modalEl).show();
-        return false;
-    }
-    if (scraperWarn) {
-        var ok = confirm('未配置 ScraperAPI Key，将无法从 Google Scholar 抓取施引文献（Phase 1）。\n\n你可以：\n• 导入已有的 JSONL 文件继续 Phase 2/3\n• 或稍后在配置页填入 ScraperAPI Key\n\n是否继续？');
-        if (!ok) return false;
-    }
+window.checkApiKeysAndAlert = function() {
     return true;
 };
 
@@ -1072,8 +1051,6 @@ function initIndexPage() {
             addPaper(paperInput.value.trim());
             paperInput.value = '';
         }
-        // API Key 检查
-        if (window.checkApiKeysAndAlert && !window.checkApiKeysAndAlert(true, true)) return;
         const groups = getPaperGroups();
         if (groups.length === 0) {
             alert('请输入至少一篇论文题目');

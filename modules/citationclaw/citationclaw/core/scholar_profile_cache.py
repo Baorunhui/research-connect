@@ -4,7 +4,8 @@ When a scholar already has a finished result folder, the pipeline serves that
 result instead of querying Google Scholar / Semantic Scholar / the LLM again.
 
 Cache key: ``gs:<Google Scholar user id>`` (from the profile URL or the saved
-profile HTML), plus ``name:<lowercased scholar name>`` for uploaded HTML.
+profile HTML), ``oa:<OpenAlex author id>`` for an OpenAlex author URL, plus
+``name:<lowercased scholar name>`` for uploaded HTML.
 Cache value: artifact paths relative to DATA_DIR, e.g.
 ``{"result_dir": "result-20260601_152415", "excel": ..., "json": ...,
 "dashboard": ..., "scholar_name": ..., "profile_url": ..., "updated_at": ...}``.
@@ -33,12 +34,37 @@ _NAME_RE = re.compile(r"id=[\"']gsc_prf_in[\"'][^>]*>([^<]+)<", re.I)
 _FILENAME_SUFFIX_RE = re.compile(r"\s*-\s*_?(google\s*(学术搜索|scholar)).*$", re.I)
 
 
+_OA_HOSTS = {"openalex.org", "www.openalex.org", "api.openalex.org"}
+_OA_AUTHOR_RE = re.compile(r"^A\d+$")
+
+
 def scholar_user_id_from_url(url: str) -> str:
     try:
         values = parse_qs(urlparse(str(url or "").strip()).query).get("user") or []
     except ValueError:
         return ""
     return values[0].strip() if values and values[0].strip() else ""
+
+
+def openalex_author_id_from_url(url: str) -> str:
+    """Return the OpenAlex author id (``A`` + digits) from an author profile URL."""
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlparse(raw)
+    except ValueError:
+        return ""
+    if (parsed.hostname or "").lower() not in _OA_HOSTS:
+        return ""
+    tail = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+    return tail if _OA_AUTHOR_RE.fullmatch(tail) else ""
+
+
+def is_author_profile_url(url: str) -> bool:
+    """Google Scholar profile or OpenAlex author profile."""
+    text = str(url or "")
+    return "scholar.google" in text or bool(openalex_author_id_from_url(text))
 
 
 def scholar_identity_from_html(profile_html: str, filename: str = "") -> tuple[str, str]:
@@ -79,6 +105,9 @@ def scholar_cache_keys(
     keys = []
     if user_id:
         keys.append(f"gs:{user_id}")
+    oa_id = openalex_author_id_from_url(profile_url)
+    if oa_id:
+        keys.append(f"oa:{oa_id}")
     if name:
         keys.append("name:" + " ".join(name.lower().split()))
     return keys

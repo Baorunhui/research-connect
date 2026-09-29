@@ -2259,6 +2259,26 @@ class TaskExecutor:
             "cached": True,
         }
 
+    async def _papers_from_openalex_author(self, config: AppConfig, author_id: str) -> dict:
+        """Author works from OpenAlex, most-cited first. ``{name, papers}``."""
+        from citationclaw.core.openalex_citing import OpenAlexCitingFetcher
+        fetcher = OpenAlexCitingFetcher(
+            DATA_DIR / "cache" / "openalex_citing",
+            email=getattr(config, "openalex_email", "") or os.getenv("CITATIONCLAW_OPENALEX_MAILTO", ""),
+            api_key=os.getenv("OPENALEX_API_KEY", ""),
+            rate=float(os.getenv("CITATIONCLAW_OPENALEX_RPS", "8") or 8),
+            log=self.log_manager.info,
+            should_cancel=lambda: self.should_cancel,
+        )
+        try:
+            return await fetcher.fetch_author_works(
+                author_id,
+                top_n=int(getattr(config, "profile_top_n", 30) or 0),
+                min_citations=int(getattr(config, "profile_min_citations", 0) or 0),
+            )
+        finally:
+            await fetcher.close()
+
     async def _execute_scholar_profile_fast(
         self,
         config: AppConfig,
@@ -2290,23 +2310,36 @@ class TaskExecutor:
             self.log_manager.info("学者他引快查（OpenAlex 施引 + Kaggle 题录核对 + 荣誉名单）")
             self.log_manager.info("=" * 50)
 
-            # Step 1: 学者身份与论文列表 —— 上传 HTML 完全本地；URL 只做一次主页解析
+            # Step 1: 学者身份与论文列表 —— 上传 HTML 完全本地；OpenAlex 作者页走 works；
+            # Google Scholar URL 只做一次主页解析
             self.log_manager.info("Step 1 · 学者身份与论文列表")
+            scraper = None
+            oa_author = ""
             if profile_html:
                 all_papers = ScholarProfileScraper.parse_html(profile_html)
                 name = scholar_identity_from_html(profile_html, scholar_name)[1]
                 self.log_manager.info(f"  [本地上传] {name or '未知学者'}：解析到 {len(all_papers)} 篇论文，无外部请求")
             elif profile_url:
-                scraper = ScholarProfileScraper(
-                    api_keys=config.scraper_api_keys,
-                    log_callback=self.log_manager.info,
-                    retry_max_attempts=config.retry_max_attempts,
-                    retry_intervals=config.retry_intervals,
-                    s2_api_key=getattr(config, "s2_api_key", ""),
-                )
-                all_papers = await scraper.fetch_all_papers(profile_url, max_pages=1)
-                name = scraper.scholar_name or scholar_name or \
-                    ((parse_qs(urlparse(profile_url).query).get("name") or [""])[0])
+                from citationclaw.core.scholar_profile_cache import openalex_author_id_from_url
+                oa_author = openalex_author_id_from_url(profile_url)
+                if oa_author:
+                    got = await self._papers_from_openalex_author(config, oa_author)
+                    all_papers = got["papers"]
+                    name = got["name"] or scholar_name
+                    self.log_manager.info(
+                        f"  [OpenAlex] {name or oa_author}：论文列表 {len(all_papers)} 篇"
+                    )
+                else:
+                    scraper = ScholarProfileScraper(
+                        api_keys=config.scraper_api_keys,
+                        log_callback=self.log_manager.info,
+                        retry_max_attempts=config.retry_max_attempts,
+                        retry_intervals=config.retry_intervals,
+                        s2_api_key=getattr(config, "s2_api_key", ""),
+                    )
+                    all_papers = await scraper.fetch_all_papers(profile_url, max_pages=1)
+                    name = scraper.scholar_name or scholar_name or \
+                        ((parse_qs(urlparse(profile_url).query).get("name") or [""])[0])
             else:
                 await self._broadcast_task_finished("error", "未提供学者主页 URL 或 HTML")
                 return
@@ -2314,6 +2347,9 @@ class TaskExecutor:
                 if profile_html:
                     message = ("上传的 HTML 里没有解析到论文列表：请在 Google Scholar 学者主页"
                                "（citations?user=…）上另存为「网页，完整」后重新上传")
+                elif oa_author:
+                    message = (f"OpenAlex 没有返回作者 {oa_author} 的论文列表，"
+                               "请确认链接是作者主页（https://openalex.org/A…）")
                 else:
                     message = no_papers_message(profile_url, scraper.scholar_blocked,
                                                 scraper.s2_rate_limited)
@@ -2487,14 +2523,25 @@ class TaskExecutor:
                 all_papers = ScholarProfileScraper.parse_html(profile_html)
                 self.log_manager.info(f"  [本地上传] 解析到 {len(all_papers)} 篇论文")
             elif profile_url:
-                scraper = ScholarProfileScraper(
-                    api_keys=config.scraper_api_keys,
-                    log_callback=self.log_manager.info,
-                    retry_max_attempts=config.retry_max_attempts,
-                    retry_intervals=config.retry_intervals,
-                    s2_api_key=getattr(config, 's2_api_key', ''),
-                )
-                all_papers = await scraper.fetch_all_papers(profile_url)
+                from citationclaw.core.scholar_profile_cache import openalex_author_id_from_url
+                oa_author = openalex_author_id_from_url(profile_url)
+                if oa_author:
+                    got = await self._papers_from_openalex_author(config, oa_author)
+                    all_papers = got["papers"]
+                    if got["name"]:
+                        scholar_name = got["name"]
+                    self.log_manager.info(
+                        f"  [OpenAlex] {scholar_name or oa_author}：论文列表 {len(all_papers)} 篇"
+                    )
+                else:
+                    scraper = ScholarProfileScraper(
+                        api_keys=config.scraper_api_keys,
+                        log_callback=self.log_manager.info,
+                        retry_max_attempts=config.retry_max_attempts,
+                        retry_intervals=config.retry_intervals,
+                        s2_api_key=getattr(config, 's2_api_key', ''),
+                    )
+                    all_papers = await scraper.fetch_all_papers(profile_url)
             else:
                 self.log_manager.error("未提供学者主页 URL 或 HTML")
                 await self._broadcast_task_finished("error", "未提供学者主页 URL 或 HTML")

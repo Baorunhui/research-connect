@@ -45,7 +45,7 @@ docker compose ps
 | `CITATIONCLAW_LIGHT_BASE_URL` / `_API_KEY` / `_MODEL` | CitationClaw 轻量模型档（二次筛选/自引/格式化、画像报告、引文语境、PDF 作者抽取），覆盖页面里保存的轻量档；联网搜索和作者校验仍用 `LLM_*`。宿主机本地服务写 `http://host.docker.internal:<端口>/v1` |
 | `HONOR_LIST_DIR` | 荣誉名单目录（默认 `./state/honor-list`，只读挂载到 `/honor-list`） |
 
-Semantic Scholar、OpenAlex、MinerU 等引用数据源 Key 在 `/citations/` 页面的配置区填写；
+查引用的模型与数据源 Key 由服务器环境变量和已有配置维护，`/citations/` 页面不展示、也不能改。
 ScraperAPI 可选，本机部署默认不需要。Daily Paper 的订阅和模型在 `/papers/` 的设置面板中修改。
 
 ## 查他引快查（默认）
@@ -54,8 +54,9 @@ ScraperAPI 可选，本机部署默认不需要。Daily Paper 的订阅和模型
 不下载 PDF / 落地页 / 全文，不走 Google Scholar 施引、Semantic Scholar 或 ScraperAPI。
 
 1. 学者缓存（`scholar-profile`）命中 → 直接展示已有结果。
-2. 论文列表：上传的主页 HTML 完全本地解析；输入 URL 时只做一次身份解析（本机 Google 常 403，
-   建议上传 HTML）。取引用量最高的 N 篇（`top_n`，0 = 全部）。
+2. 论文列表：OpenAlex 作者主页（`https://openalex.org/A…` 或 `/authors/A…`）按被引数拉取该作者的 works；
+   上传的 Google Scholar 主页 HTML 完全本地解析；Google Scholar URL 只做一次身份解析（本机常 403，
+   访问不了时改用 OpenAlex 链接或上传 HTML）。取引用量最高的 N 篇（`top_n`，0 = 全部）。
 3. OpenAlex 施引：每篇目标先按 DOI / arXiv DOI / 精确标题找 work（预印本与正式版同名的一并纳入），
    再 `filter=cites:W…` + `cursor` 翻页，每页 200，`select=id,display_name,publication_year,doi,ids,authorships`。
    被引超过 2000 的按 `publication_year` 分区并行翻页。带 `mailto`（`CITATIONCLAW_OPENALEX_MAILTO`），

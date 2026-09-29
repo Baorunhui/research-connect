@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import secrets
 import shutil
 import re
 from contextlib import asynccontextmanager
@@ -27,7 +28,9 @@ def _make_openai_client(api_key: str, base_url: str, timeout: float = 60.0):
         http_client=httpx.Client(trust_env=False, timeout=timeout),
     )
 
-from citationclaw.app.config_manager import ConfigManager, AppConfig, DATA_DIR
+from citationclaw.app.config_manager import (
+    ConfigManager, AppConfig, DATA_DIR, redact_api_config, strip_api_config,
+)
 from citationclaw.app.task_executor import TaskExecutor
 from citationclaw.app.log_manager import LogManager
 
@@ -140,9 +143,18 @@ async def index(request: Request):
 
 
 # ==================== API路由 ====================
+def _api_config_write_allowed(request: Request) -> bool:
+    """Server-side callers that know CITATIONCLAW_CONFIG_TOKEN may update credentials."""
+    token = os.getenv("CITATIONCLAW_CONFIG_TOKEN", "").strip()
+    if not token:
+        return False
+    provided = request.headers.get("x-citationclaw-config-token", "")
+    return secrets.compare_digest(provided, token)
+
+
 @app.get("/api/config")
 async def get_config():
-    return config_manager.get().model_dump()
+    return redact_api_config(config_manager.get().model_dump())
 
 
 class ConfigUpdate(BaseModel):
@@ -221,12 +233,15 @@ async def get_providers():
 
 
 @app.post("/api/config")
-async def save_config(config: ConfigUpdate):
+async def save_config(config: ConfigUpdate, request: Request):
     try:
         # 合并保存：UI 未提交的字段（profile_* 等）保留当前值，
-        # 而不是被重置为默认值
+        # 而不是被重置为默认值。接口密钥只接受带服务器令牌的请求。
         data = config_manager.get().model_dump()
-        data.update(config.model_dump())
+        incoming = config.model_dump()
+        if not _api_config_write_allowed(request):
+            incoming = strip_api_config(incoming)
+        data.update(incoming)
         new_config = AppConfig(**data)
         config_manager.save(new_config)
         return {"status": "success", "message": "配置已保存"}
@@ -578,10 +593,13 @@ async def run_profile_pipeline(request: ProfileRunRequest):
     if task_executor.is_running:
         return JSONResponse(status_code=400,
             content={"status": "error", "message": "任务运行中，请等待"})
+    from citationclaw.core.scholar_profile_cache import is_author_profile_url
     url = _validate_scholar_url(request.profile_url)
-    if "scholar.google" not in url:
-        return JSONResponse(status_code=400,
-            content={"status": "error", "message": "请输入 Google Scholar 主页 URL"})
+    if not is_author_profile_url(url):
+        return JSONResponse(status_code=400, content={
+            "status": "error",
+            "message": "请输入 OpenAlex 作者主页（https://openalex.org/A…）或 Google Scholar 主页 URL",
+        })
     config = config_manager.get()
     config = _apply_profile_params(config,
         top_n=request.top_n,

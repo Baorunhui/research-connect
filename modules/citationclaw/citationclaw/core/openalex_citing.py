@@ -35,6 +35,7 @@ from citationclaw.core.openalex_client import BASE_URL, OpenAlexClient
 WORKS_URL = f"{BASE_URL}/works"
 CITING_SELECT = "id,display_name,publication_year,doi,ids,authorships"
 TARGET_SELECT = "id,display_name,publication_year,doi,ids,cited_by_count"
+AUTHOR_WORK_SELECT = "id,display_name,publication_year,doi,ids,cited_by_count,authorships"
 PER_PAGE = 200
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _FORBIDDEN = ("pdf", "location", "abstract", "fulltext", "content_url")
@@ -236,6 +237,55 @@ class OpenAlexCitingFetcher:
         if works:
             self._write(cfile, out)
         return {**out, "cached": False}
+
+    async def fetch_author_works(self, author_id: str, top_n: int = 0,
+                                 min_citations: int = 0) -> dict:
+        """One author's works, most-cited first.
+
+        Returns ``{name, papers:[{title,year,citations,doi,arxiv_id,openalex_id}]}``.
+        ``top_n`` / ``min_citations`` stop the cursor early (0 = no limit). Sorted
+        results below ``min_citations`` are not requested on later pages.
+        """
+        aid = short_id(author_id)
+        if not re.fullmatch(r"A\d+", aid):
+            return {"name": "", "papers": []}
+        papers: List[dict] = []
+        name = ""
+        cursor = "*"
+        while cursor and not self.should_cancel():
+            data = await self._get(WORKS_URL, {
+                "filter": f"authorships.author.id:{aid}",
+                "sort": "cited_by_count:desc",
+                "select": AUTHOR_WORK_SELECT,
+                "per-page": PER_PAGE,
+                "cursor": cursor,
+            })
+            if not data:
+                break
+            batch = data.get("results") or []
+            for work in batch:
+                if not name:
+                    for au in work.get("authorships") or []:
+                        author = au.get("author") or {}
+                        if short_id(author.get("id")) == aid:
+                            name = author.get("display_name") or ""
+                            break
+                compact = compact_work(work)
+                papers.append({
+                    "title": compact["title"],
+                    "year": compact["year"],
+                    "citations": int(work.get("cited_by_count") or 0),
+                    "doi": compact["doi"],
+                    "arxiv_id": compact["arxiv_id"],
+                    "openalex_id": compact["id"],
+                })
+            floor = min_citations if min_citations and min_citations > 0 else 0
+            enough = top_n and sum(1 for p in papers if p["citations"] >= floor) >= top_n
+            below = floor and batch and int(batch[-1].get("cited_by_count") or 0) < floor
+            cursor = (data.get("meta") or {}).get("next_cursor") if batch else None
+            if enough or below or not batch:
+                break
+        return {"name": name, "papers": papers}
 
     # ── citing works ─────────────────────────────────────────────────────
     async def _chain(self, filt: str, label: str, expected: int, progress: dict) -> Optional[List[dict]]:

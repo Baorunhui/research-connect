@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -33,7 +34,7 @@ class CitationClawAdapter:
         return bool(self.endpoint)
 
     def apply_configuration(self, config: Mapping[str, Any]) -> None:
-        """Persist configuration collected by CitationClaw's public original UI."""
+        """Push server-side provider config. Credential fields require the shared token."""
         self._request("POST", "/api/config", config)
 
     def run(
@@ -135,11 +136,15 @@ class CitationClawAdapter:
         self, method: str, path: str, payload: Mapping[str, Any] | None
     ) -> Mapping[str, Any]:
         body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        token = os.getenv("CITATIONCLAW_CONFIG_TOKEN", "").strip()
+        if token:
+            headers["X-CitationClaw-Config-Token"] = token
         request = urllib.request.Request(
             self.endpoint + path,
             data=body,
             method=method,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=30) as response:

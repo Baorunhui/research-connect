@@ -19,6 +19,61 @@ def _resolve_data_dir() -> Path:
 
 DATA_DIR = _resolve_data_dir()
 
+# Provider credentials and endpoints. The public page neither shows nor changes
+# these; server config and environment variables remain the source of truth.
+# HTTP updates are accepted only with a matching CITATIONCLAW_CONFIG_TOKEN.
+API_CONFIG_FIELDS = frozenset({
+    "scraper_api_keys",
+    "openai_api_key",
+    "openai_base_url",
+    "openai_model",
+    "light_api_key",
+    "light_base_url",
+    "dashboard_model",
+    "renowned_scholar_model",
+    "author_verify_model",
+    "s2_api_key",
+    "wos_api_key",
+    "mineru_api_token",
+    "cdp_debug_port",
+    "api_access_token",
+    "api_user_id",
+    "profile_fallback_api_keys",
+    "profile_fallback_base_url",
+    "profile_fallback_model",
+    "search_backend",
+    "scraper_premium",
+    "scraper_ultra_premium",
+    "scraper_session",
+    "scholar_no_filter",
+    "scraper_geo_rotate",
+})
+_API_CONFIG_LISTS = frozenset({"scraper_api_keys", "profile_fallback_api_keys"})
+
+
+def redact_api_config(data: dict) -> dict:
+    """Copy of a config dict with provider credentials removed."""
+    out = dict(data)
+    for key in API_CONFIG_FIELDS:
+        if key not in out:
+            continue
+        value = out[key]
+        if key in _API_CONFIG_LISTS or isinstance(value, list):
+            out[key] = []
+        elif isinstance(value, bool):
+            out[key] = False
+        elif isinstance(value, int) and not isinstance(value, bool):
+            out[key] = 0
+        else:
+            out[key] = ""
+    out["_api_config_locked"] = True
+    return out
+
+
+def strip_api_config(data: dict) -> dict:
+    """Drop provider-credential fields so a public save cannot change them."""
+    return {key: value for key, value in data.items() if key not in API_CONFIG_FIELDS}
+
 
 class AppConfig(BaseModel):
     """应用配置模型"""
