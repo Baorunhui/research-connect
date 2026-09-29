@@ -488,12 +488,12 @@ async function fetchScholarPapers() {
         });
         const data = await res.json();
         if (!res.ok) { alert(data.error || '没有读到论文列表，请稍后重试。'); return; }
-        renderScholarPapers(data.papers, data.truncated);
+        renderScholarPapers(data.papers, data.truncated, data.total);
     } catch(e) { alert('没有连上服务器，请稍后重试。'); }
     finally { btn.disabled = false; btn.textContent = '获取论文列表'; }
 }
 
-function renderScholarPapers(papers, truncated) {
+function renderScholarPapers(papers, truncated, total) {
     window._scholarPapers = papers;
     const list = document.getElementById('scholar-paper-list');
     list.innerHTML = papers.map((p, i) => `
@@ -506,9 +506,13 @@ function renderScholarPapers(papers, truncated) {
             </span>
           </label>
         </div>`).join('');
-    document.getElementById('scholar-paper-count').textContent = truncated
-        ? `先列出引用最多的 ${papers.length} 篇`
-        : `共 ${papers.length} 篇`;
+    const catalog = Number(total);
+    const shortened = truncated && catalog > papers.length;
+    document.getElementById('scholar-paper-count').textContent = shortened
+        ? `先列出引用最多的 ${papers.length} 篇，大约共 ${catalog.toLocaleString()} 篇`
+        : truncated
+            ? `先列出引用最多的 ${papers.length} 篇`
+            : `共 ${papers.length} 篇`;
     document.getElementById('scholar-result-area').style.display = 'block';
 }
 

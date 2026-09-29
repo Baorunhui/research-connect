@@ -256,6 +256,7 @@ class OpenAlexCitingFetcher:
         name = ""
         cursor = "*"
         truncated = False
+        catalog_total = None
         while cursor and not self.should_cancel():
             data = await self._get(WORKS_URL, {
                 "filter": f"authorships.author.id:{aid}",
@@ -288,12 +289,14 @@ class OpenAlexCitingFetcher:
             below = floor and batch and int(batch[-1].get("cited_by_count") or 0) < floor
             meta = data.get("meta") or {}
             cursor = meta.get("next_cursor") if batch else None
-            total = meta.get("count")
-            more = bool(cursor) or (isinstance(total, int) and total > len(papers))
+            count = meta.get("count")
+            if isinstance(count, int):
+                catalog_total = count
+            more = bool(cursor) or (isinstance(catalog_total, int) and catalog_total > len(papers))
             if enough or below or not batch:
                 truncated = bool(enough and more)
                 break
-        return {"name": name, "papers": papers, "truncated": truncated}
+        return {"name": name, "papers": papers, "truncated": truncated, "total": catalog_total}
 
     # ── citing works ─────────────────────────────────────────────────────
     async def _chain(self, filt: str, label: str, expected: int, progress: dict) -> Optional[List[dict]]:

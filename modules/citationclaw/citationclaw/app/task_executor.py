@@ -2302,6 +2302,7 @@ class TaskExecutor:
             self.log_manager.info("正在读取论文列表")
             scraper = None
             oa_author = ""
+            catalog_total = None
             if profile_html:
                 all_papers = ScholarProfileScraper.parse_html(profile_html)
                 name = scholar_identity_from_html(profile_html, scholar_name)[1]
@@ -2313,6 +2314,7 @@ class TaskExecutor:
                     got = await self._papers_from_openalex_author(config, oa_author)
                     all_papers = got["papers"]
                     name = got["name"] or scholar_name
+                    catalog_total = got.get("total")
                     self.log_manager.info(
                         f"  [OpenAlex] {name or oa_author}：论文列表 {len(all_papers)} 篇"
                     )
@@ -2347,7 +2349,14 @@ class TaskExecutor:
             top_n = getattr(config, "profile_top_n", 30) or 0
             min_cit = getattr(config, "profile_min_citations", 0) or 0
             target_papers = filter_top_papers(all_papers, top_n=top_n, min_citations=min_cit)
-            self.log_manager.info(f"按引用从高到低，这次查 {len(target_papers)} 篇（一共 {len(all_papers)} 篇）")
+            checked = len(target_papers)
+            fetched = len(all_papers)
+            if isinstance(catalog_total, int) and catalog_total > fetched:
+                self.log_manager.info(
+                    f"按引用从高到低，这次查 {checked} 篇。这位作者大约有 {catalog_total} 篇，其余这次不查。"
+                )
+            else:
+                self.log_manager.info(f"按引用从高到低，这次查 {checked} 篇（一共 {fetched} 篇）")
 
             honor = get_honor_list()
             stats = honor.stats()
