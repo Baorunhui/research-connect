@@ -120,9 +120,9 @@ def build_fast_report(
         "name_only_candidates_not_counted": n_name_only,
         "profile_citations_total": sum(int(t.get("citations") or 0) for t in target_papers),
     }
-    log(f"[快查] 查了 {len(target_papers)} 篇，目录里找到 {n_resolved} 篇；"
+    log(f"查了 {len(target_papers)} 篇，目录里找到 {n_resolved} 篇；"
         f"施引 {n_fetched} 条，去掉重复后 {len(seen_citing)} 篇，跳过本人引用 {len(seen_self)} 篇")
-    log(f"[快查] 对上荣誉名单 {len(honor_citers)} 人；只是同名、单位或邮箱对不上的 {n_name_only} 个没有算进去")
+    log(f"对上荣誉名单 {len(honor_citers)} 人；只是同名、单位或邮箱对不上的 {n_name_only} 个没有算进去")
     return {
         "mode": REPORT_MODE, "disclaimer": DISCLAIMER, "scholar_name": scholar_name,
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"), "coverage": coverage,
@@ -136,39 +136,71 @@ def render_html(report: dict) -> str:
     e = lambda v: _html.escape(str(v if v is not None else ""))  # noqa: E731
     cov = report["coverage"]
     stats = report.get("honor_list") or {}
+
+    def _paper_cell(titles: list) -> str:
+        shown = [title for title in titles if title][:3]
+        extra = len(titles) - len(shown)
+        text = "；".join(shown)
+        if extra > 0:
+            text = f"{text}；还有 {extra} 篇" if text else f"还有 {extra} 篇"
+        return e(text)
+
     rows = "".join(
         f"<tr><td>{e(c['name'])}{(' / ' + e(c['name_zh'])) if c.get('name_zh') else ''}</td>"
-        f"<td>{e('、'.join(c['honors']))}</td><td>{e(c['basis'])}: {e(c['matched_value'])}</td>"
+        f"<td>{e('、'.join(c['honors']))}</td><td>{e(c['basis'])}：{e(c['matched_value'])}</td>"
         f"<td>{e(c['listed_affiliation'])}</td><td>{len(c['citing_papers'])}</td>"
-        f"<td>{e('; '.join(c['citing_papers'][:3]))}</td></tr>"
+        f"<td>{_paper_cell(c.get('citing_papers') or [])}</td></tr>"
         for c in report["honor_citers"]
     ) or "<tr><td colspan='6'>这次没有对上荣誉名单里的学者。只是同名、单位或邮箱对不上的不算。</td></tr>"
     trows = "".join(
         f"<tr><td>{e(t['title'])}</td><td>{e(t['year'])}</td><td>{e(t['citations'])}</td>"
-        f"<td>{e(t['arxiv_id'] or '-')}</td><td>{e(t['openalex_cited_by'])}</td>"
+        f"<td>{e(t['arxiv_id'] or '—')}</td><td>{e(t['openalex_cited_by'])}</td>"
         f"<td>{e(t['citing_fetched'])}{'' if t['citing_complete'] or not t['openalex_ids'] else '（未取完）'}</td>"
         f"<td>{len(t['honor_hits'])}</td></tr>"
         for t in report["targets"]
     )
+    stats_line = "".join(
+        f"<li><b>{e(value)}</b><span>{e(label)}</span></li>"
+        for label, value in (
+            ("查过的论文", cov["target_papers"]),
+            ("目录里找到", cov["targets_resolved_openalex"]),
+            ("目录记载的引用", cov["openalex_cited_by_total"]),
+            ("拉到的施引", cov["citing_records_fetched"]),
+            ("去掉重复后", cov["unique_citing_works"]),
+            ("题录核对上", cov["citing_verified_kaggle"]),
+            ("跳过本人引用", cov["self_citations_skipped"]),
+            ("主页上的总引用", cov["profile_citations_total"]),
+            ("还没查完", cov["targets_incomplete"]),
+        )
+    )
     return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{e(report['scholar_name'])} · 查他引</title>
-<style>body{{font-family:system-ui,sans-serif;margin:24px;color:#222}}
-.banner{{background:#fff4e5;border:1px solid #f0b35a;padding:12px 16px;border-radius:8px}}
-table{{border-collapse:collapse;width:100%;margin:12px 0}}td,th{{border:1px solid #ddd;padding:6px;font-size:13px;vertical-align:top}}
-th{{background:#f5f5f5}}.kv span{{display:inline-block;margin-right:18px}}</style></head><body>
+<style>
+body{{font-family:system-ui,sans-serif;margin:0;color:#1d2433;background:#f6f7fb}}
+main{{max-width:1100px;margin:0 auto;padding:24px 16px 48px}}
+h2,h3{{margin:0 0 12px}}
+.banner{{background:#fff4e5;border:1px solid #f0b35a;padding:12px 16px;border-radius:8px;line-height:1.5}}
+.stats{{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin:16px 0;padding:0;list-style:none}}
+.stats li{{background:#fff;border:1px solid #e3e7ef;border-radius:8px;padding:10px 12px}}
+.stats b{{display:block;font-size:18px}}
+.stats span{{color:#5b6475;font-size:12px}}
+.wrap{{overflow-x:auto;background:#fff;border:1px solid #e3e7ef;border-radius:8px}}
+table{{border-collapse:collapse;width:100%;min-width:720px}}
+td,th{{border-bottom:1px solid #eef0f5;padding:8px 10px;font-size:13px;vertical-align:top;text-align:left}}
+th{{background:#f8fafc;position:sticky;top:0}}
+p{{line-height:1.6}}
+</style></head><body><main>
 <h2>{e(report['scholar_name'] or '学者')} · 查他引</h2>
 <div class="banner">{e(report['disclaimer'])}</div>
-<p class="kv"><span>查了 {cov['target_papers']} 篇</span><span>目录里找到 {cov['targets_resolved_openalex']} 篇</span>
-<span>目录记载的引用 {cov['openalex_cited_by_total']}</span><span>拉到的施引 {cov['citing_records_fetched']}</span>
-<span>去掉重复后 {cov['unique_citing_works']} 篇</span><span>题录核对上了 {cov['citing_verified_kaggle']} 篇</span>
-<span>跳过本人引用 {cov['self_citations_skipped']} 篇</span><span>主页上的总引用 {cov['profile_citations_total']}</span>
-<span>还没查完 {cov['targets_incomplete']} 篇</span></p>
+<ul class="stats">{stats_line}</ul>
 <p>名单里有 {e(stats.get('total', 0))} 人。姓名要对上，并且单位或邮箱至少有一项也对上。只是同名的 {cov['name_only_candidates_not_counted']} 个没有算进去。</p>
 <h3>对上的学者（{cov['honor_citers']}）</h3>
-<table><tr><th>学者</th><th>荣誉</th><th>怎么对上的</th><th>单位</th><th>引用了几篇</th><th>引用的论文</th></tr>{rows}</table>
+<div class="wrap"><table><tr><th>学者</th><th>荣誉</th><th>怎么对上的</th><th>单位</th><th>引用了几篇</th><th>引用的论文</th></tr>{rows}</table></div>
 <h3>查过的论文</h3>
-<table><tr><th>论文</th><th>年份</th><th>主页上的引用数</th><th>论文编号</th><th>目录里的引用数</th><th>已查到的施引</th><th>对上几位</th></tr>{trows}</table>
-<p style="color:#888">生成于 {e(report['generated_at'])}</p></body></html>"""
+<div class="wrap"><table><tr><th>论文</th><th>年份</th><th>主页上的引用数</th><th>论文编号</th><th>目录里的引用数</th><th>已查到的施引</th><th>对上几位</th></tr>{trows}</table></div>
+<p style="color:#888">生成于 {e(report['generated_at'])}</p>
+</main></body></html>"""
 
 
 def write_outputs(report: dict, result_dir: Path, prefix: str) -> dict:
