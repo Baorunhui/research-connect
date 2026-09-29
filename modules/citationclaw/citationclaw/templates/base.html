@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}CitationClaw v2{% endblock %}</title>
+    <title>{% block title %}查他引{% endblock %}</title>
     <link rel="icon" href="/static/head_logo.png">
     <link href="/static/vendor/bootstrap.min.css?v=2.1" rel="stylesheet">
     <link href="/static/vendor/bootstrap-icons.css?v=2.1" rel="stylesheet">
@@ -15,11 +15,11 @@
         <div class="agent-navbar-inner">
             <a href="/" class="agent-brand">
                 <div class="agent-brand-icon">
-                    <img src="/static/head_logo.png" width="28" height="28" alt="CitationClaw" style="display:block">
+                    <img src="/static/head_logo.png" width="28" height="28" alt="查他引" style="display:block">
                 </div>
                 <div>
-                    <div class="agent-brand-name">CitationClaw <span style="font-size:12px;font-weight:500;color:var(--accent);background:var(--accent-light);padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle">v2</span></div>
-                    <div class="agent-brand-sub">Turning Every Citation into Explainable Impact</div>
+                    <div class="agent-brand-name">查他引</div>
+                    <div class="agent-brand-sub">看一篇论文被谁引用过</div>
                 </div>
             </a>
             <button class="agent-navbar-toggler" type="button" aria-label="Toggle navigation" onclick="this.parentElement.querySelector('.agent-nav-links').classList.toggle('show')">
@@ -44,14 +44,6 @@
         <small>CitationClaw v2 &nbsp;·&nbsp; 上海交通大学 VisionXLab@RethinkLab</small>
     </footer>
 
-    <script>
-    window.onerror = function(msg, url, line, col, err) {
-        var d = document.createElement('div');
-        d.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;padding:12px 20px;font:14px/1.5 monospace;white-space:pre-wrap';
-        d.textContent = 'JS Error: ' + msg + '\n' + (url||'') + ':' + line + ':' + col + '\n' + (err && err.stack ? err.stack : '');
-        document.body.appendChild(d);
-    };
-    </script>
     <script src="/static/vendor/bootstrap.bundle.min.js?v=2.1"></script>
     {% block scripts %}{% endblock %}
 </body>
