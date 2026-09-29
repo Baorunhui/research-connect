@@ -447,12 +447,57 @@ async def fetch_scholar_papers(request: ScholarProfileRequest):
     )
     try:
         papers = await scraper.fetch_all_papers(url)
-        return {"papers": papers, "total": len(papers)}
+        from citationclaw.core.kaggle_arxiv_meta import enrich_papers_local
+        local_hits = enrich_papers_local(papers)
+        return {"papers": papers, "total": len(papers), "local_metadata_hits": local_hits}
     except ValueError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500,
             content={"error": f"爬取失败: {str(e)}"})
+
+
+@app.get("/api/paper/meta")
+async def paper_metadata(arxiv_id: str = "", title: str = "", doi: str = ""):
+    """Single-paper metadata: local Kaggle arXiv index first, external APIs only on a miss."""
+    if not (arxiv_id or title or doi):
+        return JSONResponse(status_code=400, content={"error": "需要 arxiv_id、title 或 doi"})
+    from citationclaw.core.kaggle_arxiv_meta import get_kaggle_meta
+    local_index = get_kaggle_meta()
+    rec = local_index.lookup(title=title, arxiv_id=arxiv_id, doi=doi)
+    if rec:
+        print(f"[Kaggle] /api/paper/meta 本地命中 {rec['arxiv_id']}", flush=True)
+        return {"source": "kaggle_arxiv", "paper": rec}
+
+    config = config_manager.get()
+    s2_key = getattr(config, "s2_api_key", "") or None
+    print(f"[Kaggle] /api/paper/meta 本地未命中 (arxiv_id={arxiv_id!r} doi={doi!r} "
+          f"title={title[:40]!r})，走外部后备", flush=True)
+    paper = None
+    error = ""
+    try:
+        if arxiv_id:
+            from citationclaw.core.s2_client import S2Client
+            s2 = S2Client(api_key=s2_key)
+            try:
+                paper = await s2.get_paper_by_arxiv_id(arxiv_id)
+            finally:
+                await s2.close()
+        else:
+            from citationclaw.core.metadata_collector import MetadataCollector
+            collector = MetadataCollector(s2_api_key=s2_key)
+            try:
+                paper = await collector.collect(title or doi)
+            finally:
+                await collector.close()
+    except Exception as e:
+        error = str(e)[:200]
+    return {
+        "source": "external_fallback",
+        "local_index_available": local_index.available,
+        "paper": paper,
+        "error": error,
+    }
 
 
 class ProfileRunRequest(BaseModel):

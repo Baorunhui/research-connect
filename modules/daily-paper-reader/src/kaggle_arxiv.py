@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import time
 import zipfile
 from datetime import datetime, timezone
@@ -52,8 +53,8 @@ def _default_log(message: str) -> None:
 
 
 def resolve_default_db_path() -> Path:
-    """索引库路径：DPR_SURVEY_KAGGLE_INDEX 可指到任意位置，默认 archive/kaggle_arxiv/。"""
-    env_path = str(os.getenv("DPR_SURVEY_KAGGLE_INDEX") or "").strip()
+    """索引库路径：DPR_SURVEY_KAGGLE_INDEX / KAGGLE_ARXIV_INDEX 可指到任意位置，默认 archive/kaggle_arxiv/。"""
+    env_path = str(os.getenv("DPR_SURVEY_KAGGLE_INDEX") or os.getenv("KAGGLE_ARXIV_INDEX") or "").strip()
     return Path(env_path) if env_path else DEFAULT_DATA_DIR / "index.sqlite3"
 
 
@@ -151,8 +152,42 @@ def _parse_published(versions: List[Any]) -> str:
         return ""
 
 
+def normalize_title(title: str) -> str:
+    """精确标题键：小写、标点→空格、压缩空白（与 CitationClaw arxiv_db 同规则）。"""
+    t = str(title or "").lower()
+    t = re.sub(r"[^\w\u4e00-\u9fff\s]", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def normalize_arxiv_id(arxiv_id: str) -> str:
+    """'arXiv:2401.00001v2' / abs URL → '2401.00001'。"""
+    aid = str(arxiv_id or "").strip()
+    aid = re.sub(r"^(?:https?://)?(?:www\.)?arxiv\.org/(?:abs|pdf)/", "", aid, flags=re.IGNORECASE)
+    aid = re.sub(r"^arxiv:", "", aid, flags=re.IGNORECASE)
+    aid = re.sub(r"\.pdf$", "", aid, flags=re.IGNORECASE)
+    return re.sub(r"v\d+$", "", aid).strip()
+
+
+def _parsed_author_names(item: Dict[str, Any]) -> List[str]:
+    names: List[str] = []
+    for parts in item.get("authors_parsed") or []:
+        if not isinstance(parts, list) or not parts:
+            continue
+        last = str(parts[0] or "").strip()
+        first = str(parts[1] or "").strip() if len(parts) > 1 else ""
+        suffix = str(parts[2] or "").strip() if len(parts) > 2 else ""
+        name = " ".join(p for p in (first, last, suffix) if p)
+        if name:
+            names.append(name)
+    return names
+
+
 def iter_snapshot_rows(json_path: Path):
-    """流式逐行产出规范化 paper 行（250 万行不吃内存）。"""
+    """流式逐行产出规范化 paper 行（250 万行不吃内存）。
+
+    前 7 列为综述粗筛用的原始列；其后追加单篇 metadata 查询用的
+    doi / journal_ref / authors_json / title_norm。
+    """
     with open(json_path, "r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -175,6 +210,10 @@ def iter_snapshot_rows(json_path: Path):
                 str(item.get("categories") or "").strip(),
                 _parse_published(item.get("versions") or []),
                 str(item.get("update_date") or "").strip(),
+                str(item.get("doi") or "").strip().lower(),
+                str(item.get("journal-ref") or "").strip(),
+                json.dumps(_parsed_author_names(item), ensure_ascii=False),
+                normalize_title(title),
             )
 
 
@@ -183,8 +222,12 @@ def build_index(
     db_path: Optional[Path] = None,
     *,
     log: Callable[[str], None] = _default_log,
+    vacuum: bool = True,
 ) -> Dict[str, Any]:
-    """把快照 JSON 建成 SQLite + FTS5 索引（原子替换：先建 .tmp 再 rename）。"""
+    """把快照 JSON 建成 SQLite + FTS5 索引（原子替换：先建 .tmp 再 rename）。
+
+    vacuum=False 省掉 VACUUM 的整库临时副本（磁盘吃紧时用；新建库碎片很少）。
+    """
     db_path = Path(db_path) if db_path else resolve_default_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = db_path.with_suffix(db_path.suffix + ".tmp")
@@ -204,7 +247,11 @@ def build_index(
                 authors TEXT,
                 categories TEXT,
                 published TEXT,
-                update_date TEXT
+                update_date TEXT,
+                doi TEXT,
+                journal_ref TEXT,
+                authors_json TEXT,
+                title_norm TEXT
             )
             """
         )
@@ -212,28 +259,31 @@ def build_index(
             "CREATE VIRTUAL TABLE papers_fts USING fts5("
             "title, abstract, content='papers', content_rowid='rowid')"
         )
-        batch: List[Tuple[str, str, str, str, str, str, str]] = []
+        batch: List[Tuple[str, ...]] = []
         rows = 0
         for row in iter_snapshot_rows(json_path):
             batch.append(row)
             if len(batch) >= _BATCH_ROWS:
                 conn.executemany(
-                    "INSERT OR IGNORE INTO papers VALUES (?,?,?,?,?,?,?)", batch
+                    "INSERT OR IGNORE INTO papers VALUES (?,?,?,?,?,?,?,?,?,?,?)", batch
                 )
                 rows += len(batch)
                 batch.clear()
                 if rows % 500_000 < _BATCH_ROWS:
                     log(f"已入库 {rows} 行（{time.time() - started:.0f}s）")
         if batch:
-            conn.executemany("INSERT OR IGNORE INTO papers VALUES (?,?,?,?,?,?,?)", batch)
+            conn.executemany("INSERT OR IGNORE INTO papers VALUES (?,?,?,?,?,?,?,?,?,?,?)", batch)
             rows += len(batch)
-        log(f"入库完成 {rows} 行，构建 FTS 索引（数分钟）")
+        log(f"入库完成 {rows} 行，构建 title/doi 查询索引")
+        conn.execute("CREATE INDEX idx_papers_title_norm ON papers(title_norm)")
+        conn.execute("CREATE INDEX idx_papers_doi ON papers(doi) WHERE doi <> ''")
+        log("构建 FTS 索引（数分钟）")
         conn.execute("INSERT INTO papers_fts(papers_fts) VALUES('rebuild')")
         conn.execute(
             "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)"
         )
         for key, value in {
-            "schema_version": "1",
+            "schema_version": "2",
             "built_at_utc": datetime.now(timezone.utc).isoformat(),
             "row_count": str(rows),
             "snapshot_json": str(json_path),
@@ -241,7 +291,8 @@ def build_index(
         }.items():
             conn.execute("INSERT INTO meta VALUES (?,?)", (key, value))
         conn.commit()
-        conn.execute("VACUUM")
+        if vacuum:
+            conn.execute("VACUUM")
     finally:
         conn.close()
     os.replace(tmp_path, db_path)
@@ -406,3 +457,89 @@ def is_kaggle_ready() -> Tuple[bool, str]:
             "构建方式：python scripts/build_kaggle_arxiv_index.py --download（首次需下载 ~4GB）"
         )
     return True, ""
+
+
+# --------------------------------------------------------------------------- #
+# 单篇 metadata 精确查询（列表/详情/对话前的论文元信息优先走本地快照）
+# --------------------------------------------------------------------------- #
+
+_LOOKUP_COLS = (
+    "arxiv_id, title, abstract, authors, categories, published, update_date, "
+    "doi, journal_ref, authors_json"
+)
+_lookup_lock = threading.Lock()
+_lookup_conn: Optional[sqlite3.Connection] = None
+_lookup_path: Optional[Path] = None
+_lookup_ok: Optional[bool] = None
+
+
+def _lookup_connection() -> Optional[sqlite3.Connection]:
+    """懒打开只读连接；索引缺失或是旧 schema（无 title_norm/doi）时返回 None。"""
+    global _lookup_conn, _lookup_path, _lookup_ok
+    db_path = resolve_default_db_path()
+    if _lookup_path != db_path:
+        _lookup_conn, _lookup_path, _lookup_ok = None, db_path, None
+    if _lookup_ok is None:
+        _lookup_ok = False
+        if db_path.is_file():
+            try:
+                uri = f"file:{quote(db_path.as_posix())}?mode=ro&immutable=1"
+                conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(papers)")}
+                if {"title_norm", "doi", "journal_ref", "authors_json"} <= cols:
+                    _lookup_conn, _lookup_ok = conn, True
+                else:
+                    conn.close()
+                    _default_log(f"索引缺少 title_norm/doi 列，单篇查询停用（需重建）：{db_path}")
+            except sqlite3.Error as exc:
+                _default_log(f"打开索引失败 {db_path}: {exc}")
+    return _lookup_conn if _lookup_ok else None
+
+
+def _lookup_row_to_meta(row: Tuple[Any, ...]) -> Dict[str, Any]:
+    (aid, title, abstract, authors_raw, categories, published, update_date,
+     doi, journal_ref, authors_json) = row
+    try:
+        authors = json.loads(authors_json or "[]")
+    except json.JSONDecodeError:
+        authors = []
+    if not authors and authors_raw:
+        authors = [a.strip() for a in re.split(r",\s*|\s+and\s+", authors_raw) if a.strip()]
+    return {
+        "paper_id": aid,
+        "arxiv_id": aid,
+        "title": " ".join(str(title or "").split()),
+        "abstract": " ".join(str(abstract or "").split()),
+        "authors": authors,
+        "published": published or update_date or "",
+        "categories": categories or "",
+        "doi": doi or "",
+        "venue": journal_ref or "",
+        "link": f"https://arxiv.org/abs/{aid}",
+        "pdf_url": f"https://arxiv.org/pdf/{aid}",
+        "metadata_source": "kaggle_arxiv",
+    }
+
+
+def lookup_paper_meta(arxiv_id: str = "", *, title: str = "", doi: str = "") -> Optional[Dict[str, Any]]:
+    """本地快照精确查询：arxiv_id → doi → 规范化标题。未命中/索引不可用返回 None。"""
+    with _lookup_lock:
+        conn = _lookup_connection()
+        if conn is None:
+            return None
+        row = None
+        aid = normalize_arxiv_id(arxiv_id)
+        if aid:
+            row = conn.execute(f"SELECT {_LOOKUP_COLS} FROM papers WHERE arxiv_id = ?", (aid,)).fetchone()
+        d = str(doi or "").strip().lower()
+        if row is None and d:
+            row = conn.execute(
+                f"SELECT {_LOOKUP_COLS} FROM papers WHERE doi = ? AND doi <> '' LIMIT 1", (d,)
+            ).fetchone()
+        norm = normalize_title(title)
+        if row is None and len(norm) >= 8:
+            row = conn.execute(
+                f"SELECT {_LOOKUP_COLS} FROM papers WHERE title_norm = ? ORDER BY published DESC LIMIT 1",
+                (norm,),
+            ).fetchone()
+    return _lookup_row_to_meta(row) if row else None

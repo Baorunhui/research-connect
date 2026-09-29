@@ -99,6 +99,20 @@ def enrich_venue(paper: Dict[str, Any], config: Optional[Dict[str, Any]] = None)
     if _norm(paper.get("venue")):
         return paper
 
+    try:
+        from kaggle_arxiv import lookup_paper_meta
+    except ImportError:
+        from src.kaggle_arxiv import lookup_paper_meta
+    local = lookup_paper_meta(arxiv_id)
+    if local:
+        # 本地快照命中即不再为这篇论文请求 Semantic Scholar。
+        if local.get("venue"):
+            paper["venue"] = local["venue"]
+        if local.get("doi") and not _norm(paper.get("authoritative_url")):
+            paper["authoritative_url"] = f"https://doi.org/{local['doi']}"
+        log(f"[venue] {arxiv_id} -> {local.get('venue') or '/'} (kaggle_arxiv 本地)")
+        return paper
+
     data = _lookup_semantic_scholar(arxiv_id)
     if not data:
         return paper

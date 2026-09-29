@@ -43,6 +43,7 @@ def main() -> int:
     parser.add_argument("--json-path", default="", help="快照 JSON 路径（默认 archive/kaggle_arxiv/%s）" % SNAPSHOT_JSON_NAME)
     parser.add_argument("--db-path", default="", help="索引库输出路径（默认 DPR_SURVEY_KAGGLE_INDEX 或 archive/kaggle_arxiv/index.sqlite3）")
     parser.add_argument("--keep-json", action="store_true", help="保留下载的 zip/JSON（默认建完自动清理 zip）")
+    parser.add_argument("--no-vacuum", action="store_true", help="跳过 VACUUM（省一份整库大小的临时磁盘）")
     args = parser.parse_args()
     load_local_env()
 
@@ -56,7 +57,7 @@ def main() -> int:
         print(f"[error] 快照不存在：{json_path}（先跑 --download）", file=sys.stderr)
         return 1
 
-    stats = build_index(json_path, db_path)
+    stats = build_index(json_path, db_path, vacuum=not args.no_vacuum)
     print(
         f"完成：{stats['row_count']} 行 → {stats['db_path']}"
         f"（建库 {stats['build_seconds']}s，总耗时 {time.time() - started:.0f}s）"

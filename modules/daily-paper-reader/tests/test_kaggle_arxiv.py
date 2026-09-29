@@ -194,6 +194,21 @@ class BuildAndSearchTest(unittest.TestCase):
             hits = index.search("robot navigation language vision", top_k=1)
         self.assertEqual(len(hits), 1)
 
+    def test_lookup_paper_meta_by_id_and_title(self):
+        with patch.dict(self.mod.os.environ, {"DPR_SURVEY_KAGGLE_INDEX": str(self.db_path)}):
+            by_id = self.mod.lookup_paper_meta("arXiv:2101.00001v3")
+            by_title = self.mod.lookup_paper_meta(title="Furniture Assembly  Planning!")
+            missing = self.mod.lookup_paper_meta("9999.99999")
+        self.assertEqual(by_id["arxiv_id"], "2101.00001")
+        self.assertEqual(by_id["metadata_source"], "kaggle_arxiv")
+        self.assertEqual(by_id["published"], "2021-01-02")
+        self.assertEqual(by_title["arxiv_id"], "2101.00001")
+        self.assertIsNone(missing)
+
+    def test_lookup_paper_meta_without_index(self):
+        with patch.dict(self.mod.os.environ, {"DPR_SURVEY_KAGGLE_INDEX": str(pathlib.Path(self.tmp.name) / "none.sqlite3")}):
+            self.assertIsNone(self.mod.lookup_paper_meta("2101.00001"))
+
     def test_is_ready(self):
         with patch.dict(self.mod.os.environ, {"DPR_SURVEY_KAGGLE_INDEX": str(pathlib.Path(self.tmp.name) / "none.sqlite3")}):
             ready, reason = self.mod.is_kaggle_ready()

@@ -1841,9 +1841,19 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict[str, Any]:
     ``export.arxiv.org`` can rate-limit a shared campus/server IP while the
     corresponding ``arxiv.org/abs`` page remains available. The abstract page
     exposes standard citation meta tags, so this fallback needs no LLM call.
+    The local Kaggle arXiv snapshot index is consulted first; a hit makes no
+    network request at all.
     """
     import urllib.parse
     import xml.etree.ElementTree as ET
+
+    from kaggle_arxiv import lookup_paper_meta
+
+    local = lookup_paper_meta(arxiv_id)
+    if local:
+        print(f"[kaggle-arxiv] 本地命中 {local['arxiv_id']}，跳过外部元数据请求", flush=True)
+        return local
+    print(f"[kaggle-arxiv] 本地未命中 {arxiv_id}，走 arXiv 外部后备", flush=True)
 
     url = "https://export.arxiv.org/api/query?" + urllib.parse.urlencode({"id_list": arxiv_id})
     try:

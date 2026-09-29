@@ -38,6 +38,8 @@ from pathlib import Path
 from typing import Optional
 from research_connect_core import DataPaths
 
+from citationclaw.core.kaggle_arxiv_meta import get_kaggle_meta
+
 DB_PATH = DataPaths.for_module("citationclaw").state / "arxiv.db"
 
 _CREATE_SQL = """
@@ -126,6 +128,10 @@ class ArxivDB:
         if row is not None:
             return self._row_to_dict(row)
 
+        kaggle = _kaggle_record(get_kaggle_meta().lookup_by_title(title))
+        if kaggle is not None:
+            return kaggle
+
         # fuzzy pass
         words = [w for w in norm.split() if len(w) >= 5]
         if not words:
@@ -144,7 +150,7 @@ class ArxivDB:
             d = self._row_to_dict(best)
             d["_fuzzy"] = round(best_ratio, 3)
             return d
-        return None
+        return _kaggle_record(get_kaggle_meta().lookup_by_title(title))
 
     def lookup_by_id(self, arxiv_id: str) -> Optional[dict]:
         aid = normalize_arxiv_id(arxiv_id)
@@ -153,7 +159,9 @@ class ArxivDB:
         row = self.conn.execute(
             "SELECT * FROM arxiv_papers WHERE arxiv_id = ? LIMIT 1", (aid,)
         ).fetchone()
-        return self._row_to_dict(row) if row is not None else None
+        if row is not None:
+            return self._row_to_dict(row)
+        return _kaggle_record(get_kaggle_meta().lookup_by_id(aid))
 
     def upsert(self, record: dict) -> bool:
         """Insert or update one paper. record: {arxiv_id, title, authors, year}."""
@@ -210,6 +218,21 @@ class ArxivDB:
             "year": row["year"],
             "updated_at": row["updated_at"],
         }
+
+
+def _kaggle_record(rec: Optional[dict]) -> Optional[dict]:
+    """Kaggle snapshot hit → ArxivDB record shape (not copied into arxiv.db)."""
+    if not rec:
+        return None
+    return {
+        "arxiv_id": rec["arxiv_id"],
+        "title": rec["title"],
+        "title_norm": normalize_title(rec["title"]),
+        "authors": rec.get("authors", []),
+        "year": rec.get("year"),
+        "updated_at": "",
+        "source": "kaggle_arxiv",
+    }
 
 
 # ── fetch + cache (uses ArxivClient) ────────────────────────────────────

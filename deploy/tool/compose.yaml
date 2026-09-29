@@ -74,6 +74,8 @@ services:
       SUMMARY_BASE_URL: ${LLM_BASE_URL:-}
       SUMMARY_MODEL: ${LLM_MODEL:-}
       LLM_PRIMARY_BASE_URL: ${LLM_BASE_URL:-}
+      KAGGLE_ARXIV_INDEX: /kaggle-arxiv/index.sqlite3
+      DPR_SURVEY_KAGGLE_INDEX: /kaggle-arxiv/index.sqlite3
     ports:
       - "127.0.0.1:${DAILY_PAPER_PORT:-58889}:8567"
     volumes:
@@ -82,6 +84,7 @@ services:
       - daily-paper-docs:/app/modules/daily-paper-reader/docs
       - daily-paper-runs:/app/modules/daily-paper-reader/.local-runs
       - daily-paper-archive:/app/modules/daily-paper-reader/archive
+      - ${KAGGLE_ARXIV_INDEX_DIR:-./state/kaggle-arxiv}:/kaggle-arxiv:ro
 
   citationclaw:
     <<: *app
@@ -97,11 +100,14 @@ services:
       # Optional read-only standalone CitationClaw data root; its one-file JSON
       # caches are imported once into the indexed cache under /data.
       CITATIONCLAW_DATA_DIR: /legacy-citationclaw
+      # Local Kaggle arXiv metadata index; paper lookups hit it before S2/OpenAlex/arXiv.
+      KAGGLE_ARXIV_INDEX: /kaggle-arxiv/index.sqlite3
     ports:
       - "127.0.0.1:${CITATIONCLAW_PORT:-58890}:58890"
     volumes:
       - tool-data:/data
       - ${LEGACY_CITATIONCLAW_DATA:-./state/empty}:/legacy-citationclaw:ro
+      - ${KAGGLE_ARXIV_INDEX_DIR:-./state/kaggle-arxiv}:/kaggle-arxiv:ro
 
   xhs:
     <<: *app

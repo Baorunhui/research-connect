@@ -13,6 +13,7 @@ from typing import Optional, List
 from citationclaw.core.openalex_client import OpenAlexClient
 from citationclaw.core.s2_client import S2Client
 from citationclaw.core.arxiv_client import ArxivClient
+from citationclaw.core.kaggle_arxiv_meta import get_kaggle_meta, to_collector_metadata
 
 
 class MetadataCollector:
@@ -23,14 +24,22 @@ class MetadataCollector:
         self._has_s2_key = bool(s2_api_key)
 
     async def collect(self, title: str, paper_url: str = "") -> Optional[dict]:
-        """S2-first metadata collection.
+        """Local-Kaggle-first, then S2-first metadata collection.
 
         Strategy:
-        1. Query S2 by title (primary)
+        0. Local Kaggle arXiv index (arXiv id / DOI from URL, exact title).
+           A hit is returned as-is: no S2 / OpenAlex / arXiv request is made.
+        1. Query S2 by title (primary external source)
         2. If S2 title miss + have URL → try S2 by URL (paper_link from GS)
         3. If S2 found → supplement with OpenAlex
         4. If S2 missed → fallback to OpenAlex + arXiv parallel query
         """
+        local = get_kaggle_meta().lookup(title=title, url=paper_url)
+        if local:
+            print(f"[Kaggle] 本地命中 {local['arxiv_id']}: {title[:60]}", flush=True)
+            return to_collector_metadata(local)
+        print(f"[Kaggle] 本地未命中，走外部后备 (S2/OpenAlex/arXiv): {title[:60]}", flush=True)
+
         # Step 1: S2 search by title
         s2_result = None
         try:

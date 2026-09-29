@@ -41,6 +41,7 @@ docker compose ps
 | `OUTBOUND_PROXY` | 容器访问 Semantic Scholar / OpenAlex / arXiv 的 HTTP 代理（可选） |
 | `BUILD_HTTP_PROXY` | 构建镜像时的代理（可选，构建使用宿主机网络） |
 | `LEGACY_CITATIONCLAW_DATA` | 旧版独立 CitationClaw 的数据目录（可选，只读挂载，缓存一次性导入） |
+| `KAGGLE_ARXIV_INDEX_DIR` | Kaggle arXiv 元数据索引目录（默认 `./state/kaggle-arxiv`，只读挂载到 `/kaggle-arxiv`） |
 
 Semantic Scholar、OpenAlex、ScraperAPI、MinerU 等引用数据源 Key 在 `/citations/`
 页面的配置区填写；Daily Paper 的订阅和模型在 `/papers/` 的设置面板中修改。
@@ -56,6 +57,27 @@ CitationClaw 的学者主页流水线（输入 Google Scholar 主页 URL 或上�
 再次查询同一学者时，只要缓存指向的结果文件仍在，就直接返回并在页面展示，不访问
 Google Scholar、Semantic Scholar 或 LLM；API 请求中传 `force_refresh=true` 才会重新查询。
 已缓存的学者列表：`GET /citations/api/profile/cache`。
+
+## 本地论文元数据（Kaggle arXiv 快照）
+
+`/citations/` 与 `/papers/` 查单篇论文的标题、作者、年份、venue（journal-ref）、
+摘要、DOI 时，先查本地 Kaggle `Cornell-University/arxiv` 快照索引（约 318 万篇），
+命中即返回，不再为这篇论文请求 Semantic Scholar / OpenAlex / arXiv；未命中才走外部接口。
+学者缓存（`scholar-profile`）照旧优先，本地索引只加速论文级 metadata。
+引用关系（谁引用了谁）和被引数不在快照里，仍来自 Semantic Scholar。
+
+索引由快照 JSON 生成（约 5 分钟，含 FTS），放在 `state/kaggle-arxiv/index.sqlite3`：
+
+```bash
+cd research-connect
+python3 modules/daily-paper-reader/scripts/build_kaggle_arxiv_index.py --no-download --no-vacuum \
+  --json-path /home/cs/paper_agent/data/arxiv/arxiv-metadata-oai-snapshot.json \
+  --db-path deploy/tool/state/kaggle-arxiv/index.sqlite3
+docker compose -f deploy/tool/compose.yaml restart daily-paper citationclaw
+```
+
+快照刷新后重跑同一命令即可（先写 `.tmp` 再原子替换）。验证：
+`GET /citations/api/paper/meta?arxiv_id=1706.03762` 返回 `"source": "kaggle_arxiv"`。
 
 ## 宿主机 Nginx
 

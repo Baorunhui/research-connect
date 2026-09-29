@@ -338,6 +338,23 @@ def fetch_arxiv_paper_meta(arxiv_id: str) -> Dict[str, Any]:
     pid = normalize_arxiv_id(arxiv_id)
     if not pid:
         raise ValueError("paper id 不能为空")
+    from kaggle_arxiv import lookup_paper_meta
+
+    local = lookup_paper_meta(pid)
+    if local:
+        log(f"[INFO] 本地 Kaggle arXiv 快照命中：{pid}")
+        return {
+            "id": local["arxiv_id"],
+            "title": local["title"],
+            "abstract": local["abstract"],
+            "published": str(local.get("published") or "").replace("-", ""),
+            "authors": local["authors"],
+            "link": local["pdf_url"],
+            "pdf_url": local["pdf_url"],
+            "venue": local.get("venue") or "",
+            "metadata_source": "kaggle_arxiv",
+            "llm_tags": ["query:transformer", "query:attention"],
+        }
     url = f"https://export.arxiv.org/api/query?id_list={quote_plus(pid)}"
     log(f"[INFO] 拉取 arXiv 元数据：{url}")
     resp = requests.get(url, timeout=30)
