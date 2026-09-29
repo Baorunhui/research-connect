@@ -78,21 +78,37 @@ function fileUrl(packageId, absPath) {
   return 'v1/xhs/packages/' + encodeURIComponent(packageId) + '/files/' + rel.split('/').map(encodeURIComponent).join('/');
 }
 
+function readableError(resp) {
+  const detail = resp && typeof resp.error === 'string' ? resp.error : '';
+  if (detail && detail.length <= 180 && !/https?:\\/\\/|Traceback|\\.py\\b/.test(detail)) return detail;
+  return '这份结果打不开，请重新生成。';
+}
+
 function render(resp) {
   const box = $('result');
   if (!resp || resp.status !== 'completed' || !resp.data) {
-    box.innerHTML = '<div class="error">生成失败：' + esc(resp && resp.error || '未知错误') + '</div>';
+    box.innerHTML = '<div class="error">' + esc(readableError(resp)) + '</div>';
     return;
   }
-  const d = resp.data, p = d.xhs_payload;
-  const cards = (d.artifacts.cards || []).map(c => '<a href="' + fileUrl(d.package_id, c) + '" target="_blank"><img src="' + fileUrl(d.package_id, c) + '"></a>').join('');
-  const human = (d.quality.needs_human_check || []).map(s => '<li>' + esc(s) + '</li>').join('');
+  const d = resp.data || {};
+  const p = d.xhs_payload || {};
+  const artifacts = d.artifacts || {};
+  const quality = d.quality || {};
+  if (!p.title && !p.content) {
+    box.innerHTML = '<div class="error">这份结果不完整，请重新生成。</div>';
+    return;
+  }
+  const cards = (artifacts.cards || []).map(c => '<a href="' + fileUrl(d.package_id, c) + '" target="_blank"><img src="' + fileUrl(d.package_id, c) + '"></a>').join('');
+  const human = (quality.needs_human_check || []).map(s => '<li>' + esc(s) + '</li>').join('');
+  const note = artifacts.note_md
+    ? ' · <a href="' + fileUrl(d.package_id, artifacts.note_md) + '" target="_blank">正文文件</a>'
+    : '';
   box.innerHTML =
     '<h2 style="margin-top:0">' + esc(p.title) + '</h2>' +
     '<div class="tags">' + (p.tags || []).map(t => '<span>#' + esc(t) + '</span>').join('') + '</div>' +
     '<pre>' + esc(p.content) + '</pre>' +
-    '<div class="muted">事实是否稳妥：' + esc(riskText(d.quality.fact_risk)) + ' · 语气是否合适：' + esc(riskText(d.quality.style_risk)) +
-    ' · <a href="' + fileUrl(d.package_id, d.artifacts.note_md) + '" target="_blank">正文文件</a></div>' +
+    '<div class="muted">事实是否稳妥：' + esc(riskText(quality.fact_risk)) + ' · 语气是否合适：' + esc(riskText(quality.style_risk)) +
+    note + '</div>' +
     (human ? '<div class="muted" style="margin-top:8px">发布前请人工核对：<ul>' + human + '</ul></div>' : '') +
     '<div class="cards">' + cards + '</div>';
 }
@@ -113,8 +129,17 @@ async function loadHistory() {
     $('history').innerHTML = '<div class="muted" style="margin-top:14px">以前生成的：</div>' +
       items.map(it => '<a data-id="' + esc(it.package_id) + '">' + esc(it.title || it.package_id) + '</a>').join('');
     $('history').querySelectorAll('a').forEach(a => a.addEventListener('click', async () => {
-      const r = await fetch('v1/xhs/packages/' + encodeURIComponent(a.dataset.id));
-      render(await r.json());
+      try {
+        const r = await fetch('v1/xhs/packages/' + encodeURIComponent(a.dataset.id));
+        const data = await r.json();
+        if (!r.ok) {
+          $('result').innerHTML = '<div class="error">这份结果打不开，请重新生成。</div>';
+          return;
+        }
+        render(data);
+      } catch (e) {
+        $('result').innerHTML = '<div class="error">这份结果打不开，请重新生成。</div>';
+      }
     }));
   } catch (e) { /* history is optional */ }
 }
