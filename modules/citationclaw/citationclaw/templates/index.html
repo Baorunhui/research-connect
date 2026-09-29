@@ -44,7 +44,7 @@
   <div id="scholar-import-body" style="display:none; margin-top:14px;">
     <div style="display:flex; gap:8px; margin-bottom:10px;">
       <input id="scholar-url-input" type="text" class="form-control"
-             placeholder="https://scholar.google.com/citations?user=...  (ScraperAPI 额度用尽时,在链接后加 &name=作者英文名 走 S2 兜底)"
+             placeholder="https://scholar.google.com/citations?user=...  (无需 ScraperAPI；主页被拦截时在链接后加 &name=作者英文名 走 S2，或上传保存的主页 HTML)"
              style="flex:1;">
       <button class="btn-agent-primary" id="scholar-fetch-btn"
               onclick="fetchScholarPapers()">获取论文列表</button>
@@ -99,6 +99,11 @@
       <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer">
         <input class="form-check-input" type="checkbox" id="profile-llm-fallback" checked>
         LLM 兜底（高被引无命中时联网搜索）
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer"
+             title="默认是快查：只用本地 metadata 与荣誉名单匹配，不逐篇抓施引">
+        <input class="form-check-input" type="checkbox" id="profile-full-mode">
+        全量施引（慢，逐篇查 Semantic Scholar）
       </label>
     </div>
   </div>
@@ -1207,6 +1212,7 @@ async function runProfilePipeline() {
         top_n: parseInt(document.getElementById('profile-top-n')?.value || '30') || 30,
         min_citations: parseInt(document.getElementById('profile-min-cit')?.value || '0') || 0,
         use_llm_fallback: document.getElementById('profile-llm-fallback')?.checked !== false,
+        mode: document.getElementById('profile-full-mode')?.checked ? 'full' : 'fast',
     });
 }
 
@@ -1219,7 +1225,8 @@ async function uploadProfileHTML() {
     fd.append('top_n', parseInt(document.getElementById('profile-top-n')?.value || '30') || 30);
     fd.append('min_citations', parseInt(document.getElementById('profile-min-cit')?.value || '0') || 0);
     fd.append('use_llm_fallback', document.getElementById('profile-llm-fallback')?.checked !== false);
-    await _launchProfilePipeline('/api/profile/upload', fd, true);
+    const mode = document.getElementById('profile-full-mode')?.checked ? 'full' : 'fast';
+    await _launchProfilePipeline('/api/profile/upload?mode=' + mode, fd, true);
 }
 
 async function _launchProfilePipeline(endpoint, body, isForm) {

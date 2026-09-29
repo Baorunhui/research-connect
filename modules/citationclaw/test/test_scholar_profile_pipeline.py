@@ -24,6 +24,7 @@ def test_profile_without_scraper_key_uses_public_s2_fallback():
     scraper = ScholarProfileScraper(api_keys=[], log_callback=logs.append, s2_api_key="")
     expected = [{"title": "Paper A", "citations": 10}]
     scraper._s2_fallback = AsyncMock(return_value=expected)
+    scraper._direct_fetch = AsyncMock(return_value=None)
 
     papers = asyncio.get_event_loop().run_until_complete(
         scraper.fetch_all_papers(
@@ -32,8 +33,27 @@ def test_profile_without_scraper_key_uses_public_s2_fallback():
     )
 
     assert papers == expected
+    scraper._direct_fetch.assert_awaited_once()
     scraper._s2_fallback.assert_awaited_once()
-    assert any("直接使用 Semantic Scholar" in message for message in logs)
+    assert any("未配置 ScraperAPI" in message for message in logs)
+
+
+def test_profile_without_scraper_key_parses_direct_page():
+    row = ('<tr class="gsc_a_tr"><td><a class="gsc_a_at">Paper {i}</a></td>'
+           '<td><a class="gsc_a_ac">{c}</a></td><td><span class="gsc_a_h">2020</span></td></tr>')
+    html = '<div id="gsc_prf_in">Jane Doe</div><table>' + "".join(
+        row.format(i=i, c=10 * i) for i in range(3)) + "</table>"
+    scraper = ScholarProfileScraper(api_keys=[], log_callback=lambda _m: None)
+    scraper._direct_fetch = AsyncMock(return_value=html)
+    scraper._s2_fallback = AsyncMock(return_value=[])
+
+    papers = asyncio.get_event_loop().run_until_complete(
+        scraper.fetch_all_papers("https://scholar.google.com/citations?user=abc", max_pages=1)
+    )
+
+    assert [p["title"] for p in papers] == ["Paper 2", "Paper 1", "Paper 0"]
+    assert scraper.scholar_name == "Jane Doe"
+    scraper._s2_fallback.assert_not_awaited()
 
 
 # ── filter_top_papers ──────────────────────────────────────────────────

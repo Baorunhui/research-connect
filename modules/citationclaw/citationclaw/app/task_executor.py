@@ -2,6 +2,7 @@ import asyncio
 import json as _json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional, List, Tuple
 from datetime import datetime
@@ -2258,6 +2259,111 @@ class TaskExecutor:
             "cached": True,
         }
 
+    async def _execute_scholar_profile_fast(
+        self,
+        config: AppConfig,
+        output_prefix: str,
+        profile_url: str = "",
+        profile_html: str = "",
+        scholar_name: str = "",
+    ):
+        """快查：本地 metadata + 荣誉名单，不逐篇请求 S2 / ScraperAPI / Google Scholar。"""
+        from urllib.parse import parse_qs, urlparse
+        from citationclaw.core.honor_list import get_honor_list
+        from citationclaw.core.kaggle_arxiv_meta import get_kaggle_meta
+        from citationclaw.core.scholar_fast_path import (
+            DISCLAIMER, REPORT_MODE, build_fast_report, default_roots,
+            get_local_index, write_outputs,
+        )
+
+        self.should_cancel = False
+        started = time.monotonic()
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            _folder_prefix = getattr(config, "result_folder_prefix", "") or ""
+            folder_name = f"{_folder_prefix}-result-{timestamp}" if _folder_prefix else f"result-{timestamp}"
+            result_dir = DATA_DIR / folder_name
+            self.log_manager.info("=" * 50)
+            self.log_manager.info("学者他引快查（本地 metadata + 荣誉名单，非全量施引）")
+            self.log_manager.info("=" * 50)
+
+            # Step 1: 学者身份与论文列表 —— 上传 HTML 完全本地；URL 只做一次主页解析
+            self.log_manager.info("Step 1 · 学者身份与论文列表")
+            if profile_html:
+                all_papers = ScholarProfileScraper.parse_html(profile_html)
+                name = scholar_identity_from_html(profile_html, scholar_name)[1]
+                self.log_manager.info(f"  [本地上传] {name or '未知学者'}：解析到 {len(all_papers)} 篇论文，无外部请求")
+            elif profile_url:
+                scraper = ScholarProfileScraper(
+                    api_keys=config.scraper_api_keys,
+                    log_callback=self.log_manager.info,
+                    retry_max_attempts=config.retry_max_attempts,
+                    retry_intervals=config.retry_intervals,
+                    s2_api_key=getattr(config, "s2_api_key", ""),
+                )
+                all_papers = await scraper.fetch_all_papers(profile_url, max_pages=1)
+                name = scraper.scholar_name or scholar_name or \
+                    ((parse_qs(urlparse(profile_url).query).get("name") or [""])[0])
+            else:
+                await self._broadcast_task_finished("error", "未提供学者主页 URL 或 HTML")
+                return
+            if not all_papers:
+                message = "未获取到学者论文列表：可上传保存的 Google Scholar 主页 HTML，或在链接后加 &name=作者英文名"
+                self.log_manager.warning(message)
+                await self._broadcast_task_finished("no_results", message)
+                return
+
+            top_n = getattr(config, "profile_top_n", 30) or 0
+            min_cit = getattr(config, "profile_min_citations", 0) or 0
+            target_papers = filter_top_papers(all_papers, top_n=top_n, min_citations=min_cit)
+            self.log_manager.info(f"Step 2 · 取引用量最高 {len(target_papers)} 篇（共 {len(all_papers)} 篇）")
+
+            # Step 3-4: 本地施引记录 + Kaggle metadata + 荣誉名单匹配
+            honor = get_honor_list()
+            stats = honor.stats()
+            if not stats["available"]:
+                self.log_manager.warning(f"荣誉名单未加载（{stats['path'] or '未配置 CITATIONCLAW_HONOR_DB'}），将不会有荣誉命中")
+            else:
+                self.log_manager.info(f"Step 3 · 荣誉名单 {stats['total']} 条: {stats['sources']}")
+            roots = default_roots(DATA_DIR)
+            index = await asyncio.to_thread(get_local_index, roots)
+            self.log_manager.info(
+                f"Step 4 · 本地施引数据: {len(index.by_target)} 篇目标论文有记录（读取 {index.files_read} 个本地文件）"
+            )
+            kaggle = get_kaggle_meta()
+            report = await asyncio.to_thread(
+                build_fast_report, target_papers, name, honor, index,
+                kaggle if kaggle.available else None, self.log_manager.info,
+            )
+            report["profile_url"] = profile_url
+            report["elapsed_seconds"] = round(time.monotonic() - started, 2)
+            files = write_outputs(report, result_dir, output_prefix or "scholar_profile")
+
+            self.log_manager.success(f"快查完成，用时 {report['elapsed_seconds']}s。{DISCLAIMER}")
+            self.log_manager.info(f"结果目录: {result_dir}")
+            await self.log_manager._broadcast({"type": "all_done", "data": {
+                "excel": self._data_result_path(files["excel"]),
+                "json": self._data_result_path(files["json"]),
+                "dashboard": self._data_result_path(files["dashboard"]),
+                "cost_summary": {},
+                "mode": REPORT_MODE,
+                "disclaimer": DISCLAIMER,
+                "coverage": report["coverage"],
+            }})
+            return {
+                "excel": str(files["excel"] or ""),
+                "json": str(files["json"]),
+                "dashboard": str(files["dashboard"]),
+                "cost_summary": {},
+                "mode": REPORT_MODE,
+            }
+        except Exception as e:
+            self.log_manager.error(f"任务错误: {e}")
+            import traceback; self.log_manager.error(traceback.format_exc())
+            raise
+        finally:
+            self.is_running = False
+
     async def execute_scholar_profile(
         self,
         config: AppConfig,
@@ -2287,6 +2393,11 @@ class TaskExecutor:
             cached = profile_cache.lookup(cache_keys)
             if cached is not None:
                 return await self._serve_cached_scholar_profile(cached)
+
+        if (getattr(config, "profile_mode", "fast") or "fast") != "full":
+            return await self._execute_scholar_profile_fast(
+                config, output_prefix, profile_url, profile_html, scholar_name
+            )
 
         self.should_cancel = False
         cost_tracker = CostTracker()

@@ -947,6 +947,13 @@ function initIndexPage() {
     ws.on('all_done', data => {
         if (_stuckTimer) clearTimeout(_stuckTimer);
         stopRunTimer();
+        if (data && data.mode === 'fast_metadata_honor_match') {
+            appendIndexLog({
+                timestamp: new Date().toISOString(),
+                level: 'WARNING',
+                message: data.disclaimer || '快查报告：metadata + 荣誉名单，不是全量施引'
+            });
+        }
         showIndexResults(data);
         // Mark all pipeline phases as done
         document.querySelectorAll('.pipeline-phase').forEach(el => {

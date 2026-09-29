@@ -42,9 +42,40 @@ docker compose ps
 | `BUILD_HTTP_PROXY` | 构建镜像时的代理（可选，构建使用宿主机网络） |
 | `LEGACY_CITATIONCLAW_DATA` | 旧版独立 CitationClaw 的数据目录（可选，只读挂载，缓存一次性导入） |
 | `KAGGLE_ARXIV_INDEX_DIR` | Kaggle arXiv 元数据索引目录（默认 `./state/kaggle-arxiv`，只读挂载到 `/kaggle-arxiv`） |
+| `CITATIONCLAW_LIGHT_BASE_URL` / `_API_KEY` / `_MODEL` | CitationClaw 轻量模型档（二次筛选/自引/格式化、画像报告、引文语境、PDF 作者抽取），覆盖页面里保存的轻量档；联网搜索和作者校验仍用 `LLM_*`。宿主机本地服务写 `http://host.docker.internal:<端口>/v1` |
+| `HONOR_LIST_DIR` | 荣誉名单目录（默认 `./state/honor-list`，只读挂载到 `/honor-list`） |
 
-Semantic Scholar、OpenAlex、ScraperAPI、MinerU 等引用数据源 Key 在 `/citations/`
-页面的配置区填写；Daily Paper 的订阅和模型在 `/papers/` 的设置面板中修改。
+Semantic Scholar、OpenAlex、MinerU 等引用数据源 Key 在 `/citations/` 页面的配置区填写；
+ScraperAPI 可选，本机部署默认不需要。Daily Paper 的订阅和模型在 `/papers/` 的设置面板中修改。
+
+## 查他引快查（默认）
+
+学者主页入口默认是「快查」：只用本地已有数据，不把万引学者的施引逐篇抓全。
+
+1. 学者缓存（`scholar-profile`）命中 → 直接展示已有结果。
+2. 论文列表：上传的主页 HTML 完全本地解析；输入 URL 时只做一次身份解析——配置了
+   ScraperAPI 用它，否则直接请求一次主页（常被 Google 403），再退到 URL 里的
+   `&name=作者英文名` 走 Semantic Scholar 作者搜索。取引用量最高的 N 篇。
+3. 论文 metadata：Kaggle arXiv 本地索引。
+4. 施引记录：数据卷与 `LEGACY_CITATIONCLAW_DATA` 里历史运行留下的
+   `cache/openalex_phase1/*.json`、`result-*/*_results.json`，单位用 `cache/metadata_cache.json` 补全。
+5. 荣誉匹配：施引作者对 `state/honor-list/honors.sqlite3`，姓名一致且（邮箱完整地址 / 邮箱域名 /
+   规范化单位）至少一项一致才算命中；只有同名的计为候选、不计入。
+
+报告（`*_fast_report.{html,json,xlsx}`）标明「metadata + 荣誉名单快查，不是全量施引」，列出荣誉、
+匹配依据和覆盖率。需要全量施引时勾选页面上的「全量施引」或 API 传 `mode=full`。
+
+荣誉名单不进 Git、不进镜像，在宿主机生成（需要 `pypinyin` 生成中文名拼音键，抓取来源走代理）：
+
+```bash
+cd research-connect
+PYTHONPATH=packages/research-connect-core/src:modules/citationclaw \
+python3 -m citationclaw.core.honor_list build --db deploy/tool/state/honor-list/honors.sqlite3 \
+  --wikidata-csv /home/cs/CitationClaw/他引/data/scholars.csv --sources aaai changjiang ieee_cs
+docker compose -f deploy/tool/compose.yaml restart citationclaw
+```
+
+`--sources` 另可加 `jieqing`（LetPub，约 1 小时）。当前统计：`GET /citations/api/honor-list/stats`。
 
 ## 查引用缓存
 

@@ -150,6 +150,8 @@ class AppConfig(BaseModel):
                                  description="画像报告 LLM 分析使用的模型")
 
     # 学者主页快速流水线（profile → top-N → 被引 → 知名学者库匹配 → 选择性 PDF）
+    profile_mode: str = Field(default="fast",
+        description="学者主页模式: fast=本地 metadata + 荣誉名单快查（不逐篇抓施引）, full=S2 逐篇施引 + LLM + PDF 全流程")
     profile_top_n: int = Field(default=30, description="学者主页模式：只取引用量最高的 N 篇目标论文（0=不限）")
     profile_min_citations: int = Field(default=0, description="学者主页模式：目标论文最低引用数门槛（0=不限）")
     profile_use_llm_fallback: bool = Field(default=True,
@@ -235,6 +237,17 @@ class ConfigManager:
             data["openai_model"] = model
         if model and (not saved or not str(data.get("dashboard_model") or "").strip()):
             data["dashboard_model"] = model
+        # Deployment-pinned lightweight tier (non-search calls: 二次筛选/自引/格式化,
+        # 画像报告, 引文语境, PDF 作者抽取). Overrides values saved from the page.
+        light_key = str(os.getenv("CITATIONCLAW_LIGHT_API_KEY") or "").strip()
+        light_url = str(os.getenv("CITATIONCLAW_LIGHT_BASE_URL") or "").strip()
+        light_model = str(os.getenv("CITATIONCLAW_LIGHT_MODEL") or "").strip()
+        if light_key and light_url:
+            data["light_api_key"] = light_key
+            data["light_base_url"] = light_url
+        if light_model:
+            data["dashboard_model"] = light_model
+            data["renowned_scholar_model"] = light_model
         return AppConfig(**data)
 
     def update(self, **kwargs):

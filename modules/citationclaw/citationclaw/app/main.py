@@ -507,6 +507,7 @@ class ProfileRunRequest(BaseModel):
     min_citations: int = 0
     use_llm_fallback: bool = True
     force_refresh: bool = False
+    mode: str = ""  # fast | full; empty = config.profile_mode
 
 
 async def _serve_cached_profile(profile_url: str = "", profile_html: str = "",
@@ -546,8 +547,18 @@ async def list_profile_cache():
     return {"entries": entries}
 
 
-def _apply_profile_params(config, top_n=None, min_citations=None, use_llm_fallback=None):
+@app.get("/api/honor-list/stats")
+async def honor_list_stats():
+    """Local honor list used by the quick report (sources, counts, fields present)."""
+    from citationclaw.core.honor_list import get_honor_list
+    return get_honor_list().stats()
+
+
+def _apply_profile_params(config, top_n=None, min_citations=None, use_llm_fallback=None,
+                          mode=None):
     """Override config.profile_* fields from request params (None = keep config default)."""
+    if mode in ("fast", "full"):
+        config.profile_mode = mode
     if top_n is not None:
         config.profile_top_n = top_n
     if min_citations is not None:
@@ -572,6 +583,7 @@ async def run_profile_pipeline(request: ProfileRunRequest):
         top_n=request.top_n,
         min_citations=request.min_citations,
         use_llm_fallback=request.use_llm_fallback,
+        mode=request.mode,
     )
     if not request.force_refresh:
         cached = await _serve_cached_profile(profile_url=url)
@@ -594,7 +606,8 @@ async def upload_profile_pipeline(file: UploadFile = File(...),
                                   top_n: int = 30,
                                   min_citations: int = 0,
                                   use_llm_fallback: bool = True,
-                                  force_refresh: bool = False):
+                                  force_refresh: bool = False,
+                                  mode: str = ""):
     """Launch the scholar-profile fast pipeline from an uploaded HTML file."""
     if task_executor.is_running:
         return JSONResponse(status_code=400,
@@ -609,6 +622,7 @@ async def upload_profile_pipeline(file: UploadFile = File(...),
         top_n=top_n,
         min_citations=min_citations,
         use_llm_fallback=use_llm_fallback,
+        mode=mode,
     )
     if not force_refresh:
         cached = await _serve_cached_profile(profile_html=html, scholar_name=file.filename or "")

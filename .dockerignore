@@ -27,6 +27,7 @@ config.local.*
 modules/daily-paper-reader/config.yaml
 modules/citationclaw/config.json
 docker/config
+deploy/tool/state
 
 # Runtime state, generated reports, caches, and local test output.
 **/.local-runs

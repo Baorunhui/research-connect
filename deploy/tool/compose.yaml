@@ -41,8 +41,8 @@ x-app-env: &app-env
   HTTPS_PROXY: ${OUTBOUND_PROXY:-}
   http_proxy: ${OUTBOUND_PROXY:-}
   https_proxy: ${OUTBOUND_PROXY:-}
-  NO_PROXY: localhost,127.0.0.1,daily-paper,citationclaw,xhs,gateway,.sinksilk.com
-  no_proxy: localhost,127.0.0.1,daily-paper,citationclaw,xhs,gateway,.sinksilk.com
+  NO_PROXY: localhost,127.0.0.1,host.docker.internal,daily-paper,citationclaw,xhs,gateway,.sinksilk.com
+  no_proxy: localhost,127.0.0.1,host.docker.internal,daily-paper,citationclaw,xhs,gateway,.sinksilk.com
 
 services:
   gateway:
@@ -102,12 +102,20 @@ services:
       CITATIONCLAW_DATA_DIR: /legacy-citationclaw
       # Local Kaggle arXiv metadata index; paper lookups hit it before S2/OpenAlex/arXiv.
       KAGGLE_ARXIV_INDEX: /kaggle-arxiv/index.sqlite3
+      # Lightweight model tier (二次筛选/自引/格式化、画像报告、引文语境); search/verify
+      # calls keep LLM_*. A host-local endpoint is reached as host.docker.internal.
+      CITATIONCLAW_LIGHT_API_KEY: ${CITATIONCLAW_LIGHT_API_KEY:-}
+      CITATIONCLAW_LIGHT_BASE_URL: ${CITATIONCLAW_LIGHT_BASE_URL:-}
+      CITATIONCLAW_LIGHT_MODEL: ${CITATIONCLAW_LIGHT_MODEL:-}
+      # Local honor list (academicians / Fellows / 长江 / 杰青) for the quick report.
+      CITATIONCLAW_HONOR_DB: /honor-list/honors.sqlite3
     ports:
       - "127.0.0.1:${CITATIONCLAW_PORT:-58890}:58890"
     volumes:
       - tool-data:/data
       - ${LEGACY_CITATIONCLAW_DATA:-./state/empty}:/legacy-citationclaw:ro
       - ${KAGGLE_ARXIV_INDEX_DIR:-./state/kaggle-arxiv}:/kaggle-arxiv:ro
+      - ${HONOR_LIST_DIR:-./state/honor-list}:/honor-list:ro
 
   xhs:
     <<: *app

@@ -5,6 +5,13 @@ from urllib.parse import urlparse, parse_qs
 from typing import Optional, List, Callable
 from bs4 import BeautifulSoup
 
+_BROWSER_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 
 class ScholarProfileScraper:
     def __init__(self, api_keys: list, log_callback: Callable,
@@ -16,6 +23,7 @@ class ScholarProfileScraper:
         self.retry_intervals = self._parse_intervals(retry_intervals)
         self._key_idx = 0
         self._s2_api_key = s2_api_key
+        self.scholar_name = ""
 
     @staticmethod
     def _parse_intervals(intervals_str: str) -> list:
@@ -133,6 +141,11 @@ class ScholarProfileScraper:
         return papers
 
     @staticmethod
+    def parse_scholar_name(html: str) -> str:
+        el = BeautifulSoup(html, 'html.parser').select_one('#gsc_prf_in')
+        return el.get_text(strip=True) if el else ''
+
+    @staticmethod
     def parse_html(html: str) -> List[dict]:
         """Parse a locally-saved Google Scholar profile HTML page.
 
@@ -145,34 +158,61 @@ class ScholarProfileScraper:
         papers.sort(key=lambda p: p['citations'], reverse=True)
         return papers
 
-    async def fetch_all_papers(self, profile_url: str) -> List[dict]:
+    async def _direct_fetch(self, url: str) -> Optional[str]:
+        """Plain GET of a public profile page (no ScraperAPI). None when blocked."""
+        try:
+            r = await asyncio.to_thread(
+                requests.get, url, headers=_BROWSER_HEADERS, timeout=30
+            )
+        except Exception as e:
+            self.log_callback(f"[ScholarProfile] 直接请求失败: {e}")
+            return None
+        if r.status_code != 200 or 'gsc_a_tr' not in r.text:
+            self.log_callback(
+                f"[ScholarProfile] 直接请求未拿到论文列表（HTTP {r.status_code}，可能被人机验证拦截）"
+            )
+            return None
+        return r.text
+
+    async def fetch_all_papers(self, profile_url: str, max_pages: Optional[int] = None) -> List[dict]:
+        """Profile paper list, most cited first.
+
+        Order: ScraperAPI (only when keys are configured) → one direct request
+        per page → Semantic Scholar by ``&name=``. ``max_pages`` caps pagination
+        (100 papers per page, sorted by citations).
+        """
         user_id = self.extract_user_id(profile_url)
         base = "https://scholar.google.com/citations"
         all_papers = []
         cstart = 0
+        fetch = self._scraper_fetch if self.api_keys else self._direct_fetch
+        via = "ScraperAPI" if self.api_keys else "直接请求（未配置 ScraperAPI）"
 
-        if self.api_keys:
-            self.log_callback(f"[ScholarProfile] 开始爬取 user={user_id} 的论文列表")
-            while True:
-                url = f"{base}?user={user_id}&sortby=citations&cstart={cstart}&pagesize=100"
-                self.log_callback(f"[ScholarProfile] 获取第 {cstart//100 + 1} 页 (cstart={cstart})")
-                html = await self._scraper_fetch(url)
-                if not html:
-                    self.log_callback(f"[ScholarProfile] 获取页面失败，停止分页")
-                    break
-                batch = self.parse_paper_rows(html)
-                self.log_callback(f"[ScholarProfile] 本页解析到 {len(batch)} 篇论文")
-                all_papers.extend(batch)
-                if len(batch) < 100:
-                    break
-                cstart += 100
-        else:
-            self.log_callback("[ScholarProfile] 未配置 ScraperAPI，直接使用 Semantic Scholar")
+        self.log_callback(f"[ScholarProfile] 获取 user={user_id} 的论文列表，方式: {via}")
+        page = 0
+        while max_pages is None or page < max_pages:
+            url = f"{base}?user={user_id}&hl=en&sortby=citations&cstart={cstart}&pagesize=100"
+            self.log_callback(f"[ScholarProfile] 获取第 {page + 1} 页 (cstart={cstart})")
+            html = await fetch(url)
+            if not html:
+                self.log_callback(f"[ScholarProfile] 获取页面失败，停止分页")
+                break
+            if page == 0:
+                self.scholar_name = self.parse_scholar_name(html)
+            batch = self.parse_paper_rows(html)
+            self.log_callback(f"[ScholarProfile] 本页解析到 {len(batch)} 篇论文")
+            all_papers.extend(batch)
+            page += 1
+            if len(batch) < 100:
+                break
+            cstart += 100
+            if not self.api_keys:
+                await asyncio.sleep(2)
 
         all_papers.sort(key=lambda p: p['citations'], reverse=True)
         self.log_callback(f"[ScholarProfile] 共爬取到 {len(all_papers)} 篇论文")
 
-        # ScraperAPI 不存在或失败时走 Semantic Scholar。S2 的公开 API 无需
+        # ScraperAPI 与直接请求都失败时走 Semantic Scholar。S2 的公开 API 无需
         # Key 也可使用（1 req/s）；Key 仅用于提高限额。
         if not all_papers:
             all_papers = await self._s2_fallback(profile_url)

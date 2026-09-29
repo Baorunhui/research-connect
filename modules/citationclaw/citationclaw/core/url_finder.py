@@ -139,6 +139,10 @@ class PaperURLFinder:
             self.log(f"[URL查找] 缓存命中，跳过 Scholar: {cache[key]}")
             return cache[key]
 
+        if not self.api_keys:
+            self.log(f"[URL查找] 未配置 ScraperAPI，直接用 Semantic Scholar: {paper_title}")
+            return await self._s2_fallback(paper_title)
+
         search_url = (
             f"{self.SCHOLAR_BASE}/scholar"
             f"?q={urllib.parse.quote(paper_title)}&hl=en"
@@ -213,12 +217,10 @@ class PaperURLFinder:
         ``s2:{paperId}`` so downstream Phase 1 can detect it and use the S2
         citations endpoint instead of scraping Google Scholar.
         """
-        if not self._s2_api_key:
-            return None
         try:
             from citationclaw.core.s2_client import S2Client
-            self.log(f"[URL查找] ScraperAPI 失败，尝试 S2 兜底: {paper_title}")
-            s2 = S2Client(api_key=self._s2_api_key)
+            self.log(f"[URL查找] 尝试 S2 兜底: {paper_title}")
+            s2 = S2Client(api_key=self._s2_api_key or None)
             try:
                 paper = await s2.search_paper(paper_title)
             finally:
