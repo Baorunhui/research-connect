@@ -446,7 +446,7 @@
 
 {% block scripts %}
 <script src="/static/js/websocket.js?v=2.2"></script>
-<script src="/static/js/main.js?v=2.7"></script>
+<script src="/static/js/main.js?v=2.8"></script>
 <script>
 // ── API Key 检查 ────────────────────────────────────────────────
 function checkApiKeysAndAlert() {
@@ -484,7 +484,7 @@ async function fetchScholarPapers() {
         const data = await res.json();
         if (!res.ok) { alert(data.error || '获取失败'); return; }
         renderScholarPapers(data.papers);
-    } catch(e) { alert('网络错误: ' + e.message); }
+    } catch(e) { alert('没有连上服务器，请稍后重试。'); }
     finally { btn.disabled = false; btn.textContent = '获取论文列表'; }
 }
 
@@ -591,7 +591,7 @@ async function _launchProfilePipeline(endpoint, body, isForm) {
         } else {
             alert(data.message || data.error || '启动失败');
         }
-    } catch(e) { alert('网络错误: ' + e.message); }
+    } catch(e) { alert('没有连上服务器，请稍后重试。'); }
     finally {
         if (!started) {
             if (runBtn) { runBtn.disabled = false; runBtn.textContent = '快速分析'; }

@@ -70,6 +70,15 @@ _connect_task_state: dict = {
 }
 
 
+def _public_failure(exc: BaseException) -> str:
+    """Keep a short reason we wrote. Hide tracebacks, URLs, and library errors."""
+    text = " ".join(str(exc).split())
+    noisy = bool(re.search(r"https?://|Traceback|\.py\b|\b[A-Za-z]+Error\b", text))
+    if text and len(text) <= 180 and not noisy:
+        return text
+    return "这次没有完成，请稍后重试。"
+
+
 # ── Helper: task done callback ──────────────────────────────────────────
 def _make_task_done_callback(executor: TaskExecutor, lm: LogManager):
     """Create a done_callback that surfaces task exceptions to the UI."""
@@ -77,9 +86,10 @@ def _make_task_done_callback(executor: TaskExecutor, lm: LogManager):
         try:
             exc = task.exception()
             if exc:
-                _connect_task_state.update(status="failed", error=str(exc), result=None)
-                lm.error(f"任务异常终止: {exc}")
-                message = str(exc)
+                import traceback
+                print(traceback.format_exc(), flush=True)
+                message = _public_failure(exc)
+                _connect_task_state.update(status="failed", error=message, result=None)
                 lm.broadcast_event("task_error", {"message": message, "error": message})
             else:
                 result = task.result()

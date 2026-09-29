@@ -263,8 +263,17 @@ async function safeFetch(url, opts = {}) {
     const target = base && String(url).startsWith('/') ? base + url : url;
     const resp = await fetch(target, opts);
     if (!resp.ok) {
-        const text = await resp.text().catch(() => resp.statusText);
-        throw new Error(`HTTP ${resp.status}: ${text}`);
+        const text = await resp.text().catch(() => '');
+        let detail = '';
+        try {
+            const data = JSON.parse(text);
+            detail = String((data && (data.message || data.error)) || '');
+        } catch (err) { /* 返回的不是 JSON */ }
+        const noisy = /https?:\/\/|Traceback|\.py\b/.test(detail);
+        const shown = detail && detail.length <= 180 && !noisy
+            ? detail
+            : ('请求没有完成（' + resp.status + '）');
+        throw new Error(shown);
     }
     return resp;
 }
