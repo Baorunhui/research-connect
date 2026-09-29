@@ -1163,7 +1163,7 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
 
     source = str(payload.get("source") or "").strip()
     if source not in ("url", "pdf"):
-        raise ValueError("source 必须是 url 或 pdf")
+        raise ValueError("请用论文链接，或上传 PDF。")
 
     arxiv_id: str | None = None
     pdf_bytes_opt: bytes | None = None
@@ -1173,7 +1173,7 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
     if source == "url":
         url = (payload.get("url") or "").strip()
         if not url:
-            raise ValueError("缺少 url")
+            raise ValueError("请先填写论文链接。")
         arxiv_id = _extract_arxiv_id(url)
         if arxiv_id:
             emit("fetch_arxiv", f"正在读取这篇论文（{arxiv_id}）")
@@ -1202,7 +1202,7 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
     else:
         data_b64 = payload.get("data_b64") or ""
         if not data_b64:
-            raise ValueError("缺少 PDF 数据")
+            raise ValueError("没有读到上传的 PDF，请重新选择文件。")
         filename = str(payload.get("filename") or "").strip() or "paper.pdf"
         emit("parse_pdf", "正在读取 PDF")
         text = _extract_pdf_text(data_b64)
@@ -2582,7 +2582,8 @@ def _fetch_web_text(url: str) -> tuple[str, str]:
     title = parser.h1 or parser.title or url
     body = "\n\n".join(parser.parts).strip()
     if len(body) < 20:
-        raise ValueError(f"无法从该网页提取到论文正文（{url}）。建议改为 arXiv 链接或直接上传 PDF。")
+        print(f"[papers] web page had no article text: {url}", flush=True)
+        raise ValueError("这个网页读不出正文。请改用 arXiv 链接，或上传 PDF。")
     return title, body
 
 
