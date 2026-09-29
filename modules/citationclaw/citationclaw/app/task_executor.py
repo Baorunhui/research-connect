@@ -19,6 +19,7 @@ from citationclaw.core.scholar_profile_cache import (
     ScholarProfileCache,
     scholar_cache_keys,
     scholar_identity_from_html,
+    profile_request_params,
 )
 from citationclaw.core.scholar_db import ScholarDB
 from citationclaw.core.scholar_profile_pipeline import (
@@ -2242,7 +2243,7 @@ class TaskExecutor:
             "跳过外部查询，直接展示已有结果"
         )
         self.log_manager.info(f"结果目录: {DATA_DIR / str(cached.get('result_dir') or '')}")
-        self.log_manager.info("如需重新查询，请在请求中设置 force_refresh=true")
+        self.log_manager.info("设置没变，所以打开的是上次的结果。勾选「重新查」会再查一次。")
         self.log_manager.info("=" * 50)
         await self.log_manager._broadcast({"type": "all_done", "data": {
             "excel": self._data_result_path(cached.get("excel")),
@@ -2428,6 +2429,22 @@ class TaskExecutor:
             report["profile_url"] = profile_url
             report["elapsed_seconds"] = round(time.monotonic() - started, 2)
             files = write_outputs(report, result_dir, output_prefix or "scholar_profile")
+            ScholarProfileCache().store(
+                scholar_cache_keys(profile_url, profile_html, name or scholar_name),
+                result={
+                    "excel": str(files["excel"] or ""),
+                    "json": str(files["json"]),
+                    "dashboard": str(files["dashboard"]),
+                },
+                scholar_name=name or scholar_name,
+                profile_url=profile_url,
+                params=profile_request_params(
+                    int(getattr(config, "profile_top_n", 30) or 0),
+                    int(getattr(config, "profile_min_citations", 0) or 0),
+                    "fast",
+                    bool(getattr(config, "profile_use_llm_fallback", True)),
+                ),
+            )
 
             self.log_manager.success(f"快查完成，用时 {report['elapsed_seconds']}s。{DISCLAIMER}")
             self.log_manager.info(f"结果目录: {result_dir}")
@@ -2479,8 +2496,14 @@ class TaskExecutor:
 
         profile_cache = ScholarProfileCache()
         cache_keys = scholar_cache_keys(profile_url, profile_html, scholar_name)
+        requested = profile_request_params(
+            int(getattr(config, "profile_top_n", 30) or 0),
+            int(getattr(config, "profile_min_citations", 0) or 0),
+            str(getattr(config, "profile_mode", "fast") or "fast"),
+            bool(getattr(config, "profile_use_llm_fallback", True)),
+        )
         if not force_refresh:
-            cached = profile_cache.lookup(cache_keys)
+            cached = profile_cache.lookup(cache_keys, params=requested)
             if cached is not None:
                 return await self._serve_cached_scholar_profile(cached)
 
@@ -2950,8 +2973,10 @@ class TaskExecutor:
                 if profile_html else scholar_name,
                 profile_url=profile_url,
                 params={
-                    "top_n": top_n,
-                    "min_citations": min_cit,
+                    "top_n": int(top_n or 0),
+                    "min_citations": int(min_cit or 0),
+                    "mode": "full",
+                    "use_llm_fallback": bool(getattr(config, "profile_use_llm_fallback", True)),
                     "target_papers": len(target_papers),
                     "records": len(records),
                 },

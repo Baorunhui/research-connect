@@ -93,6 +93,41 @@ def scholar_identity_from_html(profile_html: str, filename: str = "") -> tuple[s
     return user_id, name
 
 
+def profile_request_params(top_n: int, min_citations: int, mode: str, use_llm_fallback: bool) -> dict:
+    """The options that must match before a saved scholar report can be reused."""
+    return {
+        "top_n": int(top_n or 0),
+        "min_citations": int(min_citations or 0),
+        "mode": "full" if str(mode or "fast") == "full" else "fast",
+        "use_llm_fallback": bool(use_llm_fallback),
+    }
+
+
+def cache_params_match(entry: dict, requested: dict) -> bool:
+    """Reuse a saved report only when the visible options are the same.
+
+    Older entries did not record options. Those still match the default fast
+    lookup (30 papers, no citation floor, model fallback on) and nothing else.
+    """
+    stored = entry.get("params") if isinstance(entry.get("params"), dict) else {}
+    if "top_n" not in stored and "mode" not in stored:
+        stored_params = profile_request_params(30, 0, "fast", True)
+    else:
+        stored_params = profile_request_params(
+            int(stored.get("top_n") or 0),
+            int(stored.get("min_citations") or 0),
+            str(stored.get("mode") or "fast"),
+            bool(stored.get("use_llm_fallback", True)),
+        )
+    wanted = profile_request_params(
+        int(requested.get("top_n") or 0),
+        int(requested.get("min_citations") or 0),
+        str(requested.get("mode") or "fast"),
+        bool(requested.get("use_llm_fallback", True)),
+    )
+    return stored_params == wanted
+
+
 def scholar_cache_keys(
     profile_url: str = "", profile_html: str = "", scholar_name: str = ""
 ) -> list[str]:
@@ -123,15 +158,22 @@ class ScholarProfileCache:
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
         self._store = IndexedJsonMap("scholar-profile", cache_file)
 
-    def lookup(self, keys: list[str]) -> Optional[dict]:
-        """Return the cached entry with absolute artifact paths, or None."""
+    def lookup(self, keys: list[str], *, params: Optional[dict] = None) -> Optional[dict]:
+        """Return the cached entry with absolute artifact paths, or None.
+
+        When ``params`` is set, a saved report is returned only if it was built
+        with the same paper count, citation floor, and fast/full choice.
+        """
         for key in keys:
             entry = self._store.index.get_json(self._store.namespace, key)
             if not isinstance(entry, dict):
                 continue
             resolved = self._resolve(entry)
-            if resolved is not None:
-                return resolved
+            if resolved is None:
+                continue
+            if params is not None and not cache_params_match(resolved, params):
+                continue
+            return resolved
         return None
 
     def store(self, keys: list[str], *, result: dict, scholar_name: str = "",

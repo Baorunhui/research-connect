@@ -1247,8 +1247,8 @@ function initIndexPage() {
         resetStuckTimer();
         var logContainer = document.getElementById('idx-log-container');
         if (logContainer) logContainer.innerHTML =
-            '<div class="reasoning-empty"><div class="reasoning-empty-icon">🚀</div><div class="reasoning-empty-text">学者主页快速流水线启动中...</div></div>';
-        GlobalProgress.show('学者主页快速分析', 0);
+            '<div class="reasoning-empty"><div class="reasoning-empty-icon">🚀</div><div class="reasoning-empty-text">正在开始查询…</div></div>';
+        GlobalProgress.show('正在查询', 0);
     };
 
     window._onProfileCached = function(data) {
@@ -1257,7 +1257,7 @@ function initIndexPage() {
         appendIndexLog({
             timestamp: new Date().toISOString(),
             level: 'SUCCESS',
-            message: data.message || '命中本地缓存，直接展示已有结果'
+            message: data.message || '设置没变，打开上次的结果'
         });
         showIndexResults(data.result || {});
     };

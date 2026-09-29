@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 from typing import List, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -530,11 +530,16 @@ class ProfileRunRequest(BaseModel):
 
 
 async def _serve_cached_profile(profile_url: str = "", profile_html: str = "",
-                                scholar_name: str = "") -> Optional[dict]:
+                                scholar_name: str = "", *,
+                                top_n: int = 30, min_citations: int = 0,
+                                mode: str = "fast", use_llm_fallback: bool = True) -> Optional[dict]:
     """Answer a scholar-profile request from the local cache without starting a task."""
-    from citationclaw.core.scholar_profile_cache import ScholarProfileCache, scholar_cache_keys
+    from citationclaw.core.scholar_profile_cache import (
+        ScholarProfileCache, scholar_cache_keys, profile_request_params,
+    )
     cached = ScholarProfileCache().lookup(
-        scholar_cache_keys(profile_url, profile_html, scholar_name)
+        scholar_cache_keys(profile_url, profile_html, scholar_name),
+        params=profile_request_params(top_n, min_citations, mode, use_llm_fallback),
     )
     if cached is None:
         return None
@@ -543,10 +548,11 @@ async def _serve_cached_profile(profile_url: str = "", profile_html: str = "",
         schema_version="connect.job.v1", external_job_id="",
         status="completed", result=result, error="",
     )
+    when = str(cached.get("updated_at") or "").replace("T", " ").replace("+00:00", " UTC")
     return {
         "status": "success",
         "cached": True,
-        "message": f"该学者已有本地缓存结果（{cached.get('updated_at', '')}），直接展示，不再重新查询",
+        "message": f"设置没变，打开上次的结果（{when}）。要重查请勾选「重新查」。",
         "result": {
             name: task_executor._data_result_path(result.get(name))
             for name in ("excel", "json", "dashboard")
@@ -608,7 +614,13 @@ async def run_profile_pipeline(request: ProfileRunRequest):
         mode=request.mode,
     )
     if not request.force_refresh:
-        cached = await _serve_cached_profile(profile_url=url)
+        cached = await _serve_cached_profile(
+            profile_url=url,
+            top_n=request.top_n,
+            min_citations=request.min_citations,
+            mode=request.mode or "fast",
+            use_llm_fallback=request.use_llm_fallback,
+        )
         if cached is not None:
             return cached
     _launch_task(
@@ -624,12 +636,12 @@ async def run_profile_pipeline(request: ProfileRunRequest):
 
 @app.post("/api/profile/upload")
 async def upload_profile_pipeline(file: UploadFile = File(...),
-                                  output_prefix: str = "scholar_profile",
-                                  top_n: int = 30,
-                                  min_citations: int = 0,
-                                  use_llm_fallback: bool = True,
-                                  force_refresh: bool = False,
-                                  mode: str = ""):
+                                  output_prefix: str = Form("scholar_profile"),
+                                  top_n: int = Form(30),
+                                  min_citations: int = Form(0),
+                                  use_llm_fallback: bool = Form(True),
+                                  force_refresh: bool = Form(False),
+                                  mode: str = Form("")):
     """Launch the scholar-profile fast pipeline from an uploaded HTML file."""
     if task_executor.is_running:
         return JSONResponse(status_code=400,
@@ -647,7 +659,14 @@ async def upload_profile_pipeline(file: UploadFile = File(...),
         mode=mode,
     )
     if not force_refresh:
-        cached = await _serve_cached_profile(profile_html=html, scholar_name=file.filename or "")
+        cached = await _serve_cached_profile(
+            profile_html=html,
+            scholar_name=file.filename or "",
+            top_n=top_n,
+            min_citations=min_citations,
+            mode=mode or "fast",
+            use_llm_fallback=use_llm_fallback,
+        )
         if cached is not None:
             return cached
     _launch_task(

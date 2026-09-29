@@ -70,6 +70,10 @@
         <input class="form-check-input" type="checkbox" id="profile-full-mode">
         查得更全（更慢）
       </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer">
+        <input class="form-check-input" type="checkbox" id="profile-force-refresh">
+        重新查
+      </label>
     </div>
   </div>
 </div>
@@ -547,6 +551,7 @@ async function runProfilePipeline() {
         top_n: parseInt(document.getElementById('profile-top-n')?.value || '30') || 30,
         min_citations: parseInt(document.getElementById('profile-min-cit')?.value || '0') || 0,
         use_llm_fallback: document.getElementById('profile-llm-fallback')?.checked !== false,
+        force_refresh: document.getElementById('profile-force-refresh')?.checked === true,
         mode: document.getElementById('profile-full-mode')?.checked ? 'full' : 'fast',
     });
 }
@@ -560,6 +565,7 @@ async function uploadProfileHTML() {
     fd.append('top_n', parseInt(document.getElementById('profile-top-n')?.value || '30') || 30);
     fd.append('min_citations', parseInt(document.getElementById('profile-min-cit')?.value || '0') || 0);
     fd.append('use_llm_fallback', document.getElementById('profile-llm-fallback')?.checked !== false);
+    fd.append('force_refresh', document.getElementById('profile-force-refresh')?.checked === true);
     const mode = document.getElementById('profile-full-mode')?.checked ? 'full' : 'fast';
     await _launchProfilePipeline('/api/profile/upload?mode=' + mode, fd, true);
 }
