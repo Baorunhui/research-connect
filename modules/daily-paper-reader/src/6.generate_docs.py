@@ -2162,11 +2162,11 @@ def generate_external_paper_docs(
     paper_llm_client = create_llm_client()
 
     # 复用日报的「解读论文」：速览五段 + 精读深度总结 + 图表解读（仅精读区）。
-    _progress("glance", "正在生成速览五段总结")
+    _progress("glance", "正在写速览")
     glance = generate_glance_overview(title, abstract_en, client=paper_llm_client) or build_glance_fallback(paper)
     if glance:
         paper["_glance_overview"] = glance
-    _progress("glance", "速览五段完成")
+    _progress("glance", "速览写好了")
 
     _progress("figures", "正在抽出文中的图和表")
     figures, tables = maybe_generate_paper_media(
@@ -2214,11 +2214,11 @@ def generate_external_paper_docs(
 
     # 精读区：生成详细总结（复用 generate_deep_summary）
     if section == "deep":
-        _progress("deep_summary", "正在生成精读详细总结")
+        _progress("deep_summary", "正在写详细总结")
         summary = generate_deep_summary(md_path, txt_path, client=paper_llm_client)
         if summary:
             upsert_auto_block(md_path, "论文详细总结（自动生成）", summary)
-        _progress("deep_summary", "精读详细总结完成")
+        _progress("deep_summary", "详细总结写好了")
 
     return paper_id, title, md_path
 
