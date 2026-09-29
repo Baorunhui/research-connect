@@ -372,7 +372,7 @@ window.SurveyGenerator = (function () {
           var input = job.input || {};
           var report = (job.result && job.result.report) || {};
           var status = String(job.status || '').toLowerCase();
-          var label = report.title || input.query || job.job_id || '';
+          var label = report.title_zh || report.title || input.query || '未命名综述';
           row.appendChild(el('span', 'survey-history-id', label));
           var btn = el('button', 'survey-history-view',
             status === 'completed' ? '打开报告' : (status === 'failed' ? '查看原因' : '继续看进度'));

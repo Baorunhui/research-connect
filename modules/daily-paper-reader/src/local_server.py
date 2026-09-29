@@ -763,6 +763,20 @@ def _job_event(event_type: str, job_id: str, *, stage: str = "", message: str = 
     return ev
 
 
+def _input_without_file_bytes(payload: dict[str, Any]) -> dict[str, Any]:
+    """历史和轮询不需要把上传的 PDF 再带回去。后台线程仍使用原始 payload。"""
+    shown = dict(payload)
+    if shown.get("data_b64"):
+        shown.pop("data_b64", None)
+        shown["has_file"] = True
+    seed = shown.get("seed")
+    if isinstance(seed, dict) and seed.get("data_b64"):
+        seed = {key: value for key, value in seed.items() if key != "data_b64"}
+        seed["has_file"] = True
+        shown["seed"] = seed
+    return shown
+
+
 class SummarizeJobStore:
     """论文总结异步 job 存储 + 后台执行。线程安全。
 
@@ -781,7 +795,7 @@ class SummarizeJobStore:
             "schema_version": "connect.job.v1",
             "job_id": job_id,
             "status": "queued",
-            "input": payload,
+            "input": _input_without_file_bytes(payload),
             "events": [_job_event("job.accepted", job_id, message="已接收总结请求")],
             "result": None,
             "error": None,
@@ -1075,7 +1089,7 @@ class SurveyJobStore:
             "schema_version": "connect.job.v1",
             "job_id": job_id,
             "status": "queued",
-            "input": payload,
+            "input": _input_without_file_bytes(payload),
             "events": [_job_event("job.accepted", job_id, message="已接收综述请求")],
             "result": None,
             "error": None,
@@ -1153,10 +1167,15 @@ class SurveyJobStore:
 
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
-            jobs = [self._copy_public(job) for job in self._jobs.values()]
-        jobs = [job for job in jobs if job]
+            jobs = []
+            for job in self._jobs.values():
+                public = self._copy_public(job)
+                if not public:
+                    continue
+                public.pop("events", None)
+                jobs.append(public)
         jobs.sort(key=lambda job: str(job.get("created_at") or ""), reverse=True)
-        return jobs  # type: ignore[return-value]
+        return jobs
 
     def _worker(
         self,
