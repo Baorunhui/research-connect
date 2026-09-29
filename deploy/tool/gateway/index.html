@@ -23,25 +23,25 @@
 <body>
 <main>
   <h1>Research Connect 工具箱</h1>
-  <p class="lead">在浏览器中直接使用 Research Connect 的三个研究模块，无需飞书机器人或 Connect Hub。</p>
+  <p class="lead">三个工具都在这台服务器上，打开就能用。</p>
   <div class="grid">
     <a class="card" href="papers/">
-      <h2>论文日报 / 论文阅读</h2>
+      <h2>论文日报</h2>
       <code>/papers/</code>
-      <p>Daily Paper Reader：按主题生成近期论文日报，总结论文 URL/PDF，或围绕主题生成领域综述。</p>
+      <p>按主题找近期论文，总结一篇论文，或围绕一个题目写综述。</p>
     </a>
     <a class="card" href="citations/">
-      <h2>查引用</h2>
+      <h2>查他引</h2>
       <code>/citations/</code>
-      <p>CitationClaw：查询施引论文、知名学者引用和引用语境。已查询过的学者主页会直接展示本地缓存结果。</p>
+      <p>看一篇论文被谁引用过，以及有没有熟悉的学者。查过的学者主页会直接打开上次的结果。</p>
     </a>
     <a class="card" href="xhs/">
-      <h2>小红书内容包</h2>
+      <h2>小红书文案</h2>
       <code>/xhs/</code>
-      <p>XHS Agent：根据论文或项目材料生成小红书标题、正文、标签和 1080×1440 卡片图。</p>
+      <p>根据论文或项目材料，写出标题、正文、标签，并生成配图。</p>
     </a>
   </div>
-  <footer>论文日报的模型在页面设置里修改；查引用的接口配置由服务器维护，页面上不能改。任务结果保存在服务器本地的 Docker 数据卷中。</footer>
+  <footer>论文日报的模型在页面设置里修改。查他引的接口由服务器维护，页面上不能改。生成的结果都留在这台服务器上。</footer>
 </main>
 </body>
 </html>

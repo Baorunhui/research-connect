@@ -87,7 +87,7 @@ window.PaperSummarizer = (function () {
       renderFigureInterpretations(out, figures);
     }
     if (!out.childElementCount) {
-      out.appendChild(el('p', '', '未能生成总结内容，请检查 LLM 配置或换用更清晰的论文来源。'));
+      out.appendChild(el('p', '', '没能写出总结。请到页面设置检查模型，或换一个论文链接。'));
     }
   }
 
@@ -486,7 +486,7 @@ window.PaperSummarizer = (function () {
 
     var pause = el('div', 'paper-summarize-pause');
     pause.id = 'paper-summarize-pause';
-    pause.textContent = '正在请求 LLM 总结，DeepSeek 结构化输出可能需要数秒~数十秒，请稍候…';
+    pause.textContent = '正在写总结，可能要几十秒。';
     root.appendChild(pause);
 
     var progress = el('div', 'paper-summarize-progress');

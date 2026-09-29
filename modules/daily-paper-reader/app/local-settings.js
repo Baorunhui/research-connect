@@ -241,7 +241,7 @@
       '  </div>' +
       '  <fieldset class="dpr-smart-query">' +
       '    <label class="dpr-smart-title">✨ AI 生成候选</label>' +
-      '    <p class="dpr-smart-hint">输入一句检索需求，LLM 解析成候选关键词/意图查询，勾选后应用到下面两个输入框。</p>' +
+      '    <p class="dpr-smart-hint">写一句想找的论文，这里会给出候选关键词。勾选后填到下面两个框。</p>' +
       '    <div class="dpr-smart-row">' +
       '      <input type="text" class="dpr-smart-intent" placeholder="例：追踪用强化学习做神经组合优化的最新论文" />' +
       '      <button type="button" class="secret-gate-btn secondary" data-dpr-smart-generate>生成候选</button>' +
@@ -254,7 +254,7 @@
       '      <span class="dpr-smart-progress-label"></span>' +
       '    </div>' +
       '    <div class="dpr-smart-cands"></div>' +
-      '    <button type="button" class="secret-gate-btn primary dpr-smart-apply" data-dpr-smart-apply style="display:none;">应用所选到关键词 / 意图查询</button>' +
+      '    <button type="button" class="secret-gate-btn primary dpr-smart-apply" data-dpr-smart-apply style="display:none;">把勾选的填进去</button>' +
       '  </fieldset>' +
       '  <div class="dpr-settings-field">' +
       '    <label>关键词（BM25 召回，每行一个）</label>' +
@@ -337,8 +337,8 @@
     // 避免把估算动画伪装成真实完成度。
     const percent = Math.min(92, Math.round(8 + 84 * (1 - Math.exp(-seconds / 24))));
     let phase = '正在提交请求';
-    if (seconds >= 3 && seconds < 45) phase = 'LLM 正在解析检索需求';
-    if (seconds >= 45) phase = 'LLM 仍在处理，请继续等待';
+    if (seconds >= 3 && seconds < 45) phase = '正在理解检索需求';
+    if (seconds >= 45) phase = '还在处理，请再等一会儿';
     return { seconds, percent, label: phase + ' · 已等待 ' + seconds + ' 秒' };
   }
 
@@ -388,7 +388,7 @@
     }
     refs.genBtn.disabled = true;
     refs.statusEl.style.color = '';
-    refs.statusEl.textContent = '正在让 LLM 解析检索需求；耗时会随模型负载变化。';
+    refs.statusEl.textContent = '正在理解这句检索需求，请稍候。';
     refs.candsEl.innerHTML = '';
     refs.applyEl.style.display = 'none';
     const progress = startSmartQueryProgress(refs.progressEl);
@@ -404,7 +404,7 @@
       }
       const cands = normalizeCandidates(data);
       if (!cands.keywords.length && !cands.queries.length) {
-        throw new Error('LLM 没有给出可用候选，请换一句更具体的描述重试。');
+        throw new Error('没有给出可用的关键词，请换一句更具体的描述。');
       }
       refs.candsEl.innerHTML =
         (cands.keywords.length
@@ -504,7 +504,7 @@
       '      <option value="local">本地抓取（不依赖云端库）</option>' +
       '    </select>' +
       '    <p style="font-size:12px;color:#666;margin:4px 0 0;">云端更快，但依赖共享库。本地每次会先抓一批新论文，大约多等几分钟。保存后，下一次生成按新选择运行。</p></div>' +
-      '  <div class="dpr-settings-field"><label>Reranker 精选后端（日报与综述共用）</label>' +
+      '  <div class="dpr-settings-field"><label>精排方式（日报和综述共用）</label>' +
       '    <select id="dpr-settings-rerank-profile">' +
       '      <option value="auto">自动（跟随 .env，缺省远程）</option>' +
       '      <option value="public-zwwen-rerank">远程 · zwwen 公益端点（推荐，免配置）</option>' +
@@ -516,7 +516,7 @@
       '  <div class="dpr-settings-field"><label><input type="checkbox" id="dpr-settings-sched-enabled" /> 每天定时自动跑流水线</label>' +
       '    <p id="dpr-settings-sched-hint" style="font-size:12px;color:#666;margin:4px 0 0;">正在确认定时器是否已启动。</p></div>' +
       '  <div class="dpr-settings-field"><label>定时时间（本地 24 小时制）</label><input type="text" id="dpr-settings-sched-time" placeholder="18:30" /></div>' +
-      '  <div class="dpr-settings-field"><label><input type="checkbox" id="dpr-settings-run-enrich" /> 触发日报时启用 Step 0：LLM 扩充检索关键词</label>' +
+      '  <div class="dpr-settings-field"><label><input type="checkbox" id="dpr-settings-run-enrich" /> 生成日报前，先把订阅词扩成更多检索词</label>' +
       '    <p style="font-size:12px;color:#666;margin:4px 0 0;">打开后，每次生成日报会先用模型把订阅词扩成更多检索词。默认关闭。这个开关记在当前浏览器里。</p></div>' +
       '  <div class="dpr-settings-field"><label>默认运行模式（快速抓取弹窗与本面板共用）</label>' +
       '    <select id="dpr-settings-fetch-mode">' +

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import threading
 from collections import OrderedDict
@@ -143,24 +144,33 @@ def create_package(request: SocialContentRequest) -> SocialContentResponse:
         )
 
 
+def _package_summary(response_path: Path) -> dict[str, str] | None:
+    try:
+        payload = json.loads(response_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return None
+    package_id = str(data.get("package_id") or "").strip()
+    note = data.get("xhs_payload") if isinstance(data.get("xhs_payload"), dict) else {}
+    if not package_id:
+        return None
+    return {"package_id": package_id, "title": str(note.get("title") or "").strip()}
+
+
 @app.get("/v1/xhs/packages")
 def list_packages() -> dict[str, list[dict[str, str]]]:
     output_root = _output_root()
-    packages = []
+    packages: list[dict[str, str]] = []
     if output_root.is_dir():
         for response_path in sorted(output_root.glob("*/response.json"), reverse=True):
-            try:
-                response = SocialContentResponse.model_validate_json(
-                    response_path.read_text(encoding="utf-8")
-                )
-            except ValueError:
+            item = _package_summary(response_path)
+            if item is None:
                 continue
-            if response.data is None:
-                continue
-            packages.append({
-                "package_id": response.data.package_id,
-                "title": response.data.xhs_payload.title,
-            })
+            packages.append(item)
+            if len(packages) >= 20:
+                break
     return {"packages": packages}
 
 

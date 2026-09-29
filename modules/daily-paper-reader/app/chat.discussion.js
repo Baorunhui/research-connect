@@ -248,26 +248,10 @@ window.PrivateDiscussionChat = (function () {
                 </div>
                 <button id="chat-quick-run-10d-btn" class="chat-quick-run-item" type="button">立即搜寻十天内论文</button>
                 <button id="chat-quick-run-30d-btn" class="chat-quick-run-item" type="button">立即搜寻三十天内论文</button>
-                <label class="chat-quick-run-enrich" for="chat-quick-run-enrich-checkbox" title="运行时先让 LLM 根据现有关键词扩充检索词（Step 0）。默认关闭，开启后关键词/查询会在下次运行重算向量缓存。">
+                <label class="chat-quick-run-enrich" for="chat-quick-run-enrich-checkbox" title="打开后，这次抓取会先把订阅词扩成更多检索词。默认关闭。">
                   <input id="chat-quick-run-enrich-checkbox" type="checkbox" />
-                  <span>启用 Step 0：LLM 扩充检索关键词</span>
+                  <span>抓取前先扩充检索词</span>
                 </label>
-                <div class="chat-quick-run-divider" aria-hidden="true"></div>
-                <div class="chat-quick-run-title">会议论文（暂未接入）</div>
-                <div class="chat-quick-run-row">
-                  <label for="chat-quick-run-year-select">年份</label>
-                  <select id="chat-quick-run-year-select">
-                    <option value="">选择年份</option>
-                  </select>
-                </div>
-                <div class="chat-quick-run-row">
-                  <label for="chat-quick-run-conference-select">会议名</label>
-                  <select id="chat-quick-run-conference-select">
-                    <option value="">选择会议名</option>
-                  </select>
-                </div>
-                <button id="chat-quick-run-conference-run-btn" class="chat-quick-run-run-btn" type="button">运行</button>
-                <div id="chat-quick-run-conference-msg" class="chat-quick-run-msg"></div>
               </div>
             </div>
           </div>

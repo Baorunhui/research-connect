@@ -45,18 +45,18 @@ window.SurveyGenerator = (function () {
     render: 0.98,
   };
   var STAGE_LABELS = {
-    seed: '种子分析',
-    recall: '召回',
-    coarse: '语义粗排',
-    rerank: '精选',
-    extract: '抽取',
-    cluster: '聚类',
-    deepread: '全文深读',
-    analyse: '分析',
-    outline: '大纲',
-    write: '写作',
-    review: '审校',
-    render: '落盘',
+    seed: '看种子论文',
+    recall: '找相关论文',
+    coarse: '先筛一批',
+    rerank: '精排',
+    extract: '抽出要点',
+    cluster: '按主题分组',
+    deepread: '细读全文',
+    analyse: '整理发现',
+    outline: '列大纲',
+    write: '写综述',
+    review: '检查一遍',
+    render: '保存成页面',
   };
 
   function isProbablyLocal() {

@@ -91,10 +91,17 @@ function render(resp) {
     '<h2 style="margin-top:0">' + esc(p.title) + '</h2>' +
     '<div class="tags">' + (p.tags || []).map(t => '<span>#' + esc(t) + '</span>').join('') + '</div>' +
     '<pre>' + esc(p.content) + '</pre>' +
-    '<div class="muted">事实风险：' + esc(d.quality.fact_risk) + ' · 风格风险：' + esc(d.quality.style_risk) +
-    ' · <a href="' + fileUrl(d.package_id, d.artifacts.note_md) + '" target="_blank">note.md</a></div>' +
+    '<div class="muted">事实是否稳妥：' + esc(riskText(d.quality.fact_risk)) + ' · 语气是否合适：' + esc(riskText(d.quality.style_risk)) +
+    ' · <a href="' + fileUrl(d.package_id, d.artifacts.note_md) + '" target="_blank">正文文件</a></div>' +
     (human ? '<div class="muted" style="margin-top:8px">发布前请人工核对：<ul>' + human + '</ul></div>' : '') +
     '<div class="cards">' + cards + '</div>';
+}
+
+function riskText(value) {
+  if (value === 'low') return '低';
+  if (value === 'medium') return '中';
+  if (value === 'high') return '高';
+  return value || '';
 }
 
 async function loadHistory() {
@@ -103,7 +110,7 @@ async function loadHistory() {
     const data = await res.json();
     const items = (data.packages || []).slice(0, 20);
     if (!items.length) return;
-    $('history').innerHTML = '<div class="muted" style="margin-top:14px">历史内容包：</div>' +
+    $('history').innerHTML = '<div class="muted" style="margin-top:14px">以前生成的：</div>' +
       items.map(it => '<a data-id="' + esc(it.package_id) + '">' + esc(it.title || it.package_id) + '</a>').join('');
     $('history').querySelectorAll('a').forEach(a => a.addEventListener('click', async () => {
       const r = await fetch('v1/xhs/packages/' + encodeURIComponent(a.dataset.id));
