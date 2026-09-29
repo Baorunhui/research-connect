@@ -2242,8 +2242,8 @@ class TaskExecutor:
         label = cached.get("scholar_name") or cached.get("profile_url") or cached.get("result_dir")
         self.log_manager.info("=" * 50)
         self.log_manager.success(
-            f"[学者缓存] 命中本地缓存: {label}（{cached.get('updated_at', '')}），"
-            "跳过外部查询，直接展示已有结果"
+            f"打开上次的结果：{label}"
+            + (f"（{cached.get('updated_at', '')}）" if cached.get("updated_at") else "")
         )
         print(f"[citationclaw] cached result dir: {DATA_DIR / str(cached.get('result_dir') or '')}", flush=True)
         self.log_manager.info("设置没变，所以打开的是上次的结果。勾选「重新查」会再查一次。")
@@ -2526,10 +2526,8 @@ class TaskExecutor:
             folder_name = f"{_folder_prefix}-result-{timestamp}" if _folder_prefix else f"result-{timestamp}"
             result_dir = DATA_DIR / folder_name
             result_dir.mkdir(parents=True, exist_ok=True)
-            self.log_manager.info("=" * 50)
-            self.log_manager.info("学者主页快速流水线")
+            self.log_manager.info("开始查得更全的分析。这一步更慢。")
             print(f"[citationclaw] result dir: {result_dir}", flush=True)
-            self.log_manager.info("=" * 50)
 
             if config.api_access_token and config.api_user_id:
                 await cost_tracker.snapshot_before(
@@ -2540,10 +2538,10 @@ class TaskExecutor:
             desc_cache = CitingDescriptionCache()
 
             # ── Step 1: 获取论文列表 ──
-            self.log_manager.info("Step 1 · 获取学者论文列表")
+            self.log_manager.info("正在读取论文列表")
             if profile_html:
                 all_papers = ScholarProfileScraper.parse_html(profile_html)
-                self.log_manager.info(f"  [本地上传] 解析到 {len(all_papers)} 篇论文")
+                self.log_manager.info(f"已从上传的主页读到 {len(all_papers)} 篇论文")
             elif profile_url:
                 from citationclaw.core.scholar_profile_cache import openalex_author_id_from_url
                 oa_author = openalex_author_id_from_url(profile_url)
@@ -2552,13 +2550,21 @@ class TaskExecutor:
                     all_papers = got["papers"]
                     if got["name"]:
                         scholar_name = got["name"]
-                    self.log_manager.info(
-                        f"  [OpenAlex] {scholar_name or oa_author}：论文列表 {len(all_papers)} 篇"
-                    )
+                    self.log_manager.info(f"已读到论文列表，共 {len(all_papers)} 篇")
                 else:
+                    def _profile_log(message: str) -> None:
+                        text = " ".join(str(message).split())
+                        print(f"[citationclaw] {text}", flush=True)
+                        if "不通" in text:
+                            self.log_manager.warning("这台服务器访问不了谷歌学术。请改用 OpenAlex 链接，或上传保存的主页。")
+                        elif "429" in text:
+                            self.log_manager.warning("论文目录暂时限流，请过几分钟再试。")
+                        elif "共爬取到" in text or "S2 兜底获取到" in text:
+                            self.log_manager.info("已读到论文列表")
+
                     scraper = ScholarProfileScraper(
                         api_keys=config.scraper_api_keys,
-                        log_callback=self.log_manager.info,
+                        log_callback=_profile_log,
                         retry_max_attempts=config.retry_max_attempts,
                         retry_intervals=config.retry_intervals,
                         s2_api_key=getattr(config, 's2_api_key', ''),
@@ -2580,10 +2586,9 @@ class TaskExecutor:
             min_cit = getattr(config, "profile_min_citations", 0) or 0
             target_papers = filter_top_papers(all_papers, top_n=top_n, min_citations=min_cit)
             self.log_manager.info(
-                f"Step 2 · 筛选: 共 {len(all_papers)} 篇 → 取引用量最高 "
-                f"{len(target_papers)} 篇"
-                + (f"（门槛 ≥{min_cit} 引）" if min_cit else "")
-                + (f"（上限 {top_n} 篇）" if top_n else "")
+                f"按引用从高到低，留下 {len(target_papers)} 篇"
+                + (f"（至少 {min_cit} 次引用）" if min_cit else "")
+                + (f"（最多 {top_n} 篇）" if top_n else "")
             )
             if not target_papers:
                 message = "筛选后无目标论文，任务结束"
@@ -2592,12 +2597,10 @@ class TaskExecutor:
                 return
 
             # ── Step 3+4: S2 获取每篇目标的施引文献（含作者名）──
-            self.log_manager.info(
-                f"Step 3+4 · 通过 Semantic Scholar 获取 {len(target_papers)} 篇目标的施引文献"
-            )
+            self.log_manager.info(f"正在查这 {len(target_papers)} 篇论文被谁引用")
             s2_key = getattr(config, "s2_api_key", "") or ""
             if not s2_key:
-                self.log_manager.warning("未配置 S2 API Key，施引文献获取可能较慢且不完整")
+                self.log_manager.warning("服务器上没有论文库密钥，这一步会更慢，结果也可能不全。")
             s2 = S2Client(api_key=s2_key or None)
             from citationclaw.core.arxiv_client import ArxivClient
             from citationclaw.core.arxiv_db import ArxivDB
