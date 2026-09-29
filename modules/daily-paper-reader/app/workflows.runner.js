@@ -52,7 +52,6 @@ window.DPRWorkflowRunner = (function () {
       dispatchInputs: {
         run_enrich: 'false',
         fetch_days: '30',
-        fetch_mode: 'skims',
       },
     },
     '30-skims': {

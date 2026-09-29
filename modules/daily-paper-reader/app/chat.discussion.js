@@ -234,7 +234,7 @@ window.PrivateDiscussionChat = (function () {
                 <div class="chat-quick-run-row">
                   <label for="chat-quick-run-mode-select">运行模式</label>
                   <select id="chat-quick-run-mode-select">
-                    <option value="auto">自动（跟随所选天数）</option>
+                    <option value="auto">自动：十天及以内精读，再长就速览</option>
                     <option value="standard">标准精读</option>
                     <option value="skims">速览（全部进速读）</option>
                   </select>
