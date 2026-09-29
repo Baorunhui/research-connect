@@ -172,6 +172,7 @@ $('xhs-form').addEventListener('submit', async (ev) => {
     $('status').textContent = data.status === 'completed' ? '已完成。' : (data.error || '生成结束，请看上面的提示。');
     loadHistory();
   } catch (e) {
+    if (e && e.forget) sessionStorage.removeItem('xhs_job');
     $('status').className = 'status error';
     $('status').textContent = e.message || '请求失败';
   } finally {
@@ -179,19 +180,43 @@ $('xhs-form').addEventListener('submit', async (ev) => {
   }
 });
 
+function stopError(message) {
+  const err = new Error(message);
+  err.forget = true;
+  return err;
+}
+
 async function waitForJob(jobId) {
+  let failures = 0;
   for (;;) {
-    const res = await fetch('v1/xhs/jobs/' + encodeURIComponent(jobId));
-    if (res.status === 404) throw new Error('上次生成已中断，请重新提交。');
-    const job = await res.json();
-    if (!res.ok) throw new Error('进度查询失败');
+    let res;
+    try {
+      res = await fetch('v1/xhs/jobs/' + encodeURIComponent(jobId));
+    } catch (e) {
+      failures += 1;
+      if (failures >= 5) throw new Error('进度暂时没刷新。这次生成还在继续，请稍后刷新页面。');
+      $('status').textContent = '进度暂时没刷新，正在重试。';
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      continue;
+    }
+    if (res.status === 404) throw stopError('上次生成已中断，请重新提交。');
+    let job = null;
+    try { job = await res.json(); } catch (e) { job = null; }
+    if (!res.ok || !job) {
+      failures += 1;
+      if (failures >= 5) throw new Error('进度暂时没刷新。这次生成还在继续，请稍后刷新页面。');
+      $('status').textContent = '进度暂时没刷新，正在重试。';
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      continue;
+    }
+    failures = 0;
     if (job.message) $('status').textContent = job.message;
     if (job.status === 'running') {
       await new Promise((resolve) => setTimeout(resolve, 1200));
       continue;
     }
-    if (!job.response) throw new Error(job.message || '生成失败');
-    if (job.response.status === 'failed') throw new Error(job.response.error || '生成失败');
+    if (!job.response) throw stopError(job.message || '生成失败');
+    if (job.response.status === 'failed') throw stopError(job.response.error || '生成失败');
     return job.response;
   }
 }
@@ -206,7 +231,7 @@ if (pendingJob) {
     $('status').textContent = '已完成。';
     loadHistory();
   }).catch((e) => {
-    sessionStorage.removeItem('xhs_job');
+    if (e && e.forget) sessionStorage.removeItem('xhs_job');
     $('status').className = 'status error';
     $('status').textContent = e.message || '生成失败';
   }).finally(() => {
