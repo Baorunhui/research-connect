@@ -85,6 +85,17 @@ def _output_root() -> Path:
     return Path(os.getenv("XHS_AGENT_OUTPUT_DIR", "outputs"))
 
 
+def _safe_package_dir(package_id: str) -> Path:
+    root = _output_root().resolve()
+    name = str(package_id or "").strip()
+    if not name or name in {".", ".."} or "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(status_code=404, detail="package not found")
+    package_dir = (root / name).resolve()
+    if package_dir.parent != root:
+        raise HTTPException(status_code=404, detail="package not found")
+    return package_dir
+
+
 def _pipeline_config() -> PipelineConfig:
     model = os.getenv("XHS_AGENT_MODEL", "").strip()
     return PipelineConfig(models={step: model for step in DEFAULT_MODELS} if model else None)
@@ -241,17 +252,16 @@ def list_packages() -> dict[str, list[dict[str, str]]]:
 
 @app.get("/v1/xhs/packages/{package_id}", response_model=SocialContentResponse)
 def get_package(package_id: str) -> SocialContentResponse:
-    response_path = _output_root() / package_id / "response.json"
-    if not response_path.exists():
+    response_path = _safe_package_dir(package_id) / "response.json"
+    if not response_path.is_file():
         raise HTTPException(status_code=404, detail="package not found")
     return SocialContentResponse.model_validate_json(response_path.read_text(encoding="utf-8"))
 
 
 @app.get("/v1/xhs/packages/{package_id}/files/{file_path:path}")
 def get_package_file(package_id: str, file_path: str) -> FileResponse:
-    output_root = _output_root().resolve()
-    package_dir = (output_root / package_id).resolve()
+    package_dir = _safe_package_dir(package_id)
     target = (package_dir / file_path).resolve()
-    if package_dir.parent != output_root or package_dir not in target.parents or not target.is_file():
+    if package_dir not in target.parents or not target.is_file():
         raise HTTPException(status_code=404, detail="file not found")
     return FileResponse(target)
