@@ -9,6 +9,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import posixpath
 import re
 import signal
 import shutil
@@ -1808,8 +1809,12 @@ _BLOCKED_STATIC_PREFIXES = (
 
 
 def _static_path_blocked(path: str) -> bool:
-    """静态目录是整个模块，密钥和运行记录不能当网页文件下载。"""
-    clean = urlparse(path or "").path or ""
+    """静态目录是整个模块，密钥和运行记录不能当网页文件下载。
+
+    先解码再折叠 ..，避免 /docs/../config.yaml 这类地址绕过名单。
+    """
+    text = unquote(path or "").split("?", 1)[0].split("#", 1)[0]
+    clean = posixpath.normpath("/" + text.lstrip("/"))
     if clean in _BLOCKED_STATIC_EXACT or clean.startswith("/.env"):
         return True
     return any(clean == prefix or clean.startswith(prefix + "/") for prefix in _BLOCKED_STATIC_PREFIXES)
