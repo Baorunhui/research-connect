@@ -88,12 +88,15 @@ def ensure_runtime_docs_shell() -> None:
         "如果页面提示暂时不可用，请稍后刷新再试。",
         "「论文总结」由本地后端（`python src/local_server.py`）驱动，核心思路是":
         "论文总结就在这个网站上做。它的做法是",
+        "流水线由 GitHub Actions 定时触发（北京时间每天凌晨 02:30 左右），也可在站内手动触发：":
+        "在这个网站上，点右下角的火箭，或在页面设置里点「保存并生成日报」，就会开始写。每天自动跑目前是关掉的，避免夜里一直调用模型。",
     }
     for path in (
         docs_dir / "survey.md",
         docs_dir / "summarize.md",
         docs_dir / "tutorial" / "survey.md",
         docs_dir / "tutorial" / "paper-summarize.md",
+        docs_dir / "tutorial" / "workflow.md",
     ):
         if not path.is_file():
             continue
