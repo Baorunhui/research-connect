@@ -14,6 +14,7 @@ _CHATTER = re.compile(
     r"文件前缀|保存位置|调试文件|剩余额度|并行查询|并行搜索|查询异常|^\s*[\[│→⚠💾📄]"
 )
 _PHASES = (
+    (re.compile(r"未找到任何施引"), "没有查到施引论文。"),
     (re.compile(r"Phase\s*1.*完成"), "引用列表查完了"),
     (re.compile(r"Phase\s*1"), "正在查这些论文被谁引用"),
     (re.compile(r"Phase\s*2.*完成"), "作者单位对过了"),
