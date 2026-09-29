@@ -1250,7 +1250,7 @@ function initIndexPage() {
     }
 
     // 学者主页快速流水线启动后，复用主运行 UI 状态
-    window._onProfileStarted = function() {
+    window._onProfileStarted = function(mode) {
         runBtn.disabled = true;
         runBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="animation:spin .8s linear infinite"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="40" stroke-dashoffset="10"/></svg>&nbsp; 运行中...';
         var cancelBtn = document.getElementById('idx-cancel-btn');
@@ -1265,7 +1265,8 @@ function initIndexPage() {
         if (logSection) logSection.style.display = 'block';
         var resultsSection = document.getElementById('idx-results-section');
         if (resultsSection) resultsSection.style.display = 'none';
-        document.getElementById('idx-pipeline-info').style.display = '';
+        var pipe = document.getElementById('idx-pipeline-info');
+        if (pipe) pipe.style.display = mode === 'full' ? '' : 'none';
         document.querySelectorAll('.pipeline-phase').forEach(el => {
             el.classList.remove('active', 'done');
         });
