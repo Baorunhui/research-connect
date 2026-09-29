@@ -601,7 +601,7 @@ window.SurveyGenerator = (function () {
   // 万级候选随后由本地语义粗排收窄到数百再进 rerank
   function buildCoarseTopField() {
     var wrap = el('div', 'survey-param');
-    var lab = el('label', 'survey-label survey-param-label', '粗筛规模');
+    var lab = el('label', 'survey-label survey-param-label', '先找多少篇');
     lab.setAttribute('for', 'survey-coarse-top');
     var row = el('span', 'survey-param-row');
     var select = document.createElement('select');
@@ -619,7 +619,7 @@ window.SurveyGenerator = (function () {
       select.appendChild(opt);
     });
     row.appendChild(select);
-    lab.appendChild(el('span', 'survey-param-hint', 'Kaggle 快照候选量'));
+    lab.appendChild(el('span', 'survey-param-hint', '从本地论文库里先捞出这么多篇，再从中挑选'));
     wrap.appendChild(lab);
     wrap.appendChild(row);
     return wrap;
@@ -705,7 +705,7 @@ window.SurveyGenerator = (function () {
     var seedSection = el('div', 'survey-section');
     var seedLabel = el('label', 'survey-label', '种子论文（可选，推荐）');
     seedLabel.setAttribute('for', 'survey-seed-url');
-    seedLabel.appendChild(el('span', 'survey-param-hint', '锚定任务范式并自动追踪其参考文献'));
+    seedLabel.appendChild(el('span', 'survey-param-hint', '用来对准这个题目，并带上它引用的论文'));
     seedSection.appendChild(seedLabel);
     var seedUrlInput = el('input', 'survey-input survey-seed-url');
     seedUrlInput.type = 'text';
