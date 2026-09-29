@@ -1050,9 +1050,11 @@ def recall_papers(
             lane_tags.append(f"本地库 {len(local_lane)}")
             ctx.lane_stats["local"] = {"latency_s": round(time.time() - t0, 1), "hits": len(local_lane)}
         except Exception as exc:  # noqa: BLE001
-            ctx.warn(f"本地库召回失败（已跳过该路）：{exc}")
+            print(f"[papers] survey local recall failed: {exc}", flush=True)
+            ctx.warn("本地论文库这次没查成，已跳过。")
     else:
-        ctx.warn("config.yaml 缺少 Supabase 读配置，本地库召回跳过")
+        print("[papers] survey local lane skipped: no supabase config", flush=True)
+        ctx.warn("本地论文库这次没接上，已跳过。")
 
     # 路 2：DeepXiv 外部检索（前 5 条查询；语义检索 + 被引数 + 周级新鲜度）
     if use_deepxiv:
@@ -1067,9 +1069,11 @@ def recall_papers(
                 lane_tags.append(f"DeepXiv {len(deepxiv_lane)}")
                 ctx.lane_stats["deepxiv"] = {"latency_s": round(time.time() - t0, 1), "hits": len(deepxiv_lane)}
             except Exception as exc:  # noqa: BLE001
-                ctx.warn(f"DeepXiv 外部检索失败（已跳过该路）：{exc}")
+                print(f"[papers] survey external recall failed: {exc}", flush=True)
+                ctx.warn("外部论文库这次没查成，已跳过。")
         else:
-            ctx.warn(reason)
+            print(f"[papers] survey external recall unavailable: {reason}", flush=True)
+            ctx.warn("外部论文库这次没接上，不影响已经开始的查找。")
 
     # 路 3：种子引文直取（按引文位置排序，种子背书）
     if seed_citations:
@@ -1091,9 +1095,12 @@ def recall_papers(
                     lane_tags.append(f"Kaggle {len(kaggle_lane)}")
                     ctx.lane_stats["kaggle"] = {"latency_s": round(time.time() - t0, 1), "hits": len(kaggle_lane)}
             except Exception as exc:  # noqa: BLE001
-                ctx.warn(f"Kaggle 快照粗筛失败（已跳过该路）：{exc}")
+                print(f"[papers] survey snapshot recall failed: {exc}", flush=True)
+                ctx.warn("本地论文快照这次没查成，已跳过。")
         else:
+            print(f"[papers] survey snapshot unavailable: {reason}", flush=True)
             ctx.warn(reason)
+            ctx.warn("这台服务器上还没有本地论文快照，这次没用这条路。")
 
     # Kaggle 命中时融合池抬到粗筛量级；纯小池场景维持自适应上限
     fuse_cap = pool_cap
@@ -1577,7 +1584,8 @@ def deep_read_core_papers(
                 text = (text or "").strip()
             except Exception as exc:  # noqa: BLE001
                 text = ""
-                ctx.warn(f"深读失败 {paper.get('paper_id')}：{exc}")
+                print(f"[papers] survey deep read failed: {exc}", flush=True)
+                ctx.warn("有一篇论文的全文没读到，先用摘要。")
         if text:
             extractions[idx]["full_text"] = text[:DEEP_READ_TEXT_CHAR_CAP]
             if deepxiv is not None:
@@ -1647,8 +1655,9 @@ def analyse_clusters(
         try:
             analysis = _chat_text(client_factory(), _DEEP_ANALYSE_SYSTEM, user)
         except Exception as exc:  # noqa: BLE001
-            analysis = f"（该簇分析失败：{exc}）"
-            ctx.warn(f"簇 {cluster['cluster_id']} 深析失败：{exc}")
+            print(f"[papers] survey cluster analysis failed: {exc}", flush=True)
+            analysis = "（这一组没整理完，先跳过。）"
+            ctx.warn("有一个主题没整理完，先跳过。")
         with lock:
             results[cluster["cluster_id"]] = {
                 "cluster_id": cluster["cluster_id"],
@@ -1695,7 +1704,8 @@ def analyse_clusters(
         global_analysis = _chat_text(client_factory(), _GLOBAL_ANALYSE_SYSTEM, user)
     except Exception as exc:  # noqa: BLE001
         global_analysis = ""
-        ctx.warn(f"全局分析失败：{exc}")
+        print(f"[papers] survey overall analysis failed: {exc}", flush=True)
+        ctx.warn("总的梳理没写完，先用各组已经整理好的内容。")
     if not global_analysis and cluster_analyses:
         global_analysis = "\n\n".join(f"## {item['theme']}\n\n{item['analysis']}" for item in cluster_analyses)
     ctx.progress("analyse", "主题汇总好了")
@@ -2137,7 +2147,8 @@ def run_survey(
             try:
                 deepxiv_client_obj = DeepXivClient()
             except Exception as exc:  # noqa: BLE001
-                ctx.warn(f"DeepXiv 客户端不可用（种子全文与引文富化将走兜底链路）：{exc}")
+                print(f"[papers] survey seed client unavailable: {exc}", flush=True)
+                ctx.warn("读种子论文时，外部论文库没接上，改用别的办法。")
         ctx.progress("seed", "抓取种子论文全文")
         seed_text = fetch_seed_text(seed_paper, deepxiv=deepxiv_client_obj, log=_log)
         ctx.progress("seed", "正在分析种子论文")
@@ -2234,7 +2245,8 @@ def run_survey(
     if relevance_values:
         avg_relevance = round(sum(relevance_values) / len(relevance_values), 2)
         if avg_relevance < 5.5:
-            note = f"终稿平均相关度偏低（avg_relevance={avg_relevance}），候选文献与主题的贴合情况建议人工复核"
+            print(f"[papers] survey avg relevance {avg_relevance}", flush=True)
+            note = "写出来的内容和题目贴得不太紧，建议再看一眼。"
             quality_warnings.append(note)
             ctx.warn(note)
     else:
