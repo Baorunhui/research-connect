@@ -497,6 +497,7 @@ async def fetch_scholar_papers(request: ScholarProfileRequest):
             "papers": papers,
             "total": len(papers),
             "truncated": bool(got.get("truncated")),
+            "incomplete": bool(got.get("incomplete")),
             "total": got.get("total") if isinstance(got.get("total"), int) else None,
             "scholar_name": got.get("name") or "",
         }

@@ -2303,6 +2303,7 @@ class TaskExecutor:
             scraper = None
             oa_author = ""
             catalog_total = None
+            papers_incomplete = False
             if profile_html:
                 all_papers = ScholarProfileScraper.parse_html(profile_html)
                 name = scholar_identity_from_html(profile_html, scholar_name)[1]
@@ -2315,6 +2316,7 @@ class TaskExecutor:
                     all_papers = got["papers"]
                     name = got["name"] or scholar_name
                     catalog_total = got.get("total")
+                    papers_incomplete = bool(got.get("incomplete"))
                     self.log_manager.info(
                         f"  [OpenAlex] {name or oa_author}：论文列表 {len(all_papers)} 篇"
                     )
@@ -2351,7 +2353,11 @@ class TaskExecutor:
             target_papers = filter_top_papers(all_papers, top_n=top_n, min_citations=min_cit)
             checked = len(target_papers)
             fetched = len(all_papers)
-            if isinstance(catalog_total, int) and catalog_total > fetched:
+            if papers_incomplete:
+                self.log_manager.warning(
+                    f"按引用从高到低，这次先查 {checked} 篇。论文目录有一页没返回，可能还有没看到的。"
+                )
+            elif isinstance(catalog_total, int) and catalog_total > fetched:
                 self.log_manager.info(
                     f"按引用从高到低，这次查 {checked} 篇。这位作者大约有 {catalog_total} 篇，其余这次不查。"
                 )

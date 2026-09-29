@@ -169,7 +169,7 @@ class OpenAlexCitingFetcher:
                     retry_after = r.headers.get("Retry-After")
                     if status not in (429, 500, 502, 503, 504):
                         print(f"[openalex] {err} {url} {r.text[:160]}", flush=True)
-                        self.log("论文目录这一页没有返回，先跳过。")
+                        self.log("论文目录这一页没有返回。")
                         return None
             self.retries += 1
             try:
@@ -256,6 +256,7 @@ class OpenAlexCitingFetcher:
         name = ""
         cursor = "*"
         truncated = False
+        incomplete = False
         catalog_total = None
         while cursor and not self.should_cancel():
             data = await self._get(WORKS_URL, {
@@ -266,6 +267,7 @@ class OpenAlexCitingFetcher:
                 "cursor": cursor,
             })
             if not data:
+                incomplete = bool(papers)
                 break
             batch = data.get("results") or []
             for work in batch:
@@ -296,7 +298,13 @@ class OpenAlexCitingFetcher:
             if enough or below or not batch:
                 truncated = bool(enough and more)
                 break
-        return {"name": name, "papers": papers, "truncated": truncated, "total": catalog_total}
+        return {
+            "name": name,
+            "papers": papers,
+            "truncated": truncated,
+            "incomplete": incomplete,
+            "total": catalog_total,
+        }
 
     # ── citing works ─────────────────────────────────────────────────────
     async def _chain(self, filt: str, label: str, expected: int, progress: dict) -> Optional[List[dict]]:
