@@ -413,7 +413,7 @@ async def check_quota():
 async def run_pipeline(request: RunRequest):
     if task_executor.is_running:
         return JSONResponse(status_code=400,
-            content={"status": "error", "message": "任务运行中，请等待"})
+            content={"status": "error", "message": "已经有一次查询在进行，请等它完成。"})
 
     groups = [{"title": p.title.strip(), "aliases": [a.strip() for a in p.aliases if a.strip()]}
               for p in request.papers if p.title.strip()]
@@ -448,7 +448,7 @@ class FromCacheRequest(BaseModel):
 async def run_from_cache(request: FromCacheRequest):
     if task_executor.is_running:
         return JSONResponse(status_code=400,
-            content={"status": "error", "message": "任务运行中，请等待"})
+            content={"status": "error", "message": "已经有一次查询在进行，请等它完成。"})
 
     if not request.paper_title.strip():
         return JSONResponse(status_code=400,
@@ -647,13 +647,13 @@ async def run_profile_pipeline(request: ProfileRunRequest):
     """Launch the scholar-profile fast pipeline from a Google Scholar profile URL."""
     if task_executor.is_running:
         return JSONResponse(status_code=400,
-            content={"status": "error", "message": "任务运行中，请等待"})
+            content={"status": "error", "message": "已经有一次查询在进行，请等它完成。"})
     from citationclaw.core.scholar_profile_cache import is_author_profile_url
     url = _validate_scholar_url(request.profile_url)
     if not is_author_profile_url(url):
         return JSONResponse(status_code=400, content={
             "status": "error",
-            "message": "请输入 OpenAlex 作者主页（https://openalex.org/A…）或 Google Scholar 主页 URL",
+            "message": "请填写 OpenAlex 的作者主页（https://openalex.org/A…），或上传保存的主页。",
         })
     config = config_manager.get()
     config = _apply_profile_params(config,
@@ -697,7 +697,7 @@ async def upload_profile_pipeline(request: Request,
         mode = request.query_params.get("mode", "")
     if task_executor.is_running:
         return JSONResponse(status_code=400,
-            content={"status": "error", "message": "任务运行中，请等待"})
+            content={"status": "error", "message": "已经有一次查询在进行，请等它完成。"})
     content = await file.read()
     try:
         html = content.decode("utf-8")
