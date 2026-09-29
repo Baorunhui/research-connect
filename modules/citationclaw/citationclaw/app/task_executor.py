@@ -1579,9 +1579,6 @@ class TaskExecutor:
                 all_renowned = excel_file.with_stem(excel_file.stem + "_all_renowned_scholar")
                 top_renowned = excel_file.with_stem(excel_file.stem + "_top-tier_scholar")
 
-                def _fwd(p: Path) -> str:
-                    return str(p).replace("\\", "/")
-
                 await self._run_skill(
                     "phase5_report_generate",
                     config,
@@ -1591,19 +1588,19 @@ class TaskExecutor:
                     output_html=html_file,
                     canonical_titles=[output_prefix],
                     download_filenames={
-                        "excel": _fwd(citing_desc_excel),
-                        "all_renowned": _fwd(all_renowned),
-                        "top_renowned": _fwd(top_renowned),
+                        "excel": self._data_result_path(citing_desc_excel),
+                        "all_renowned": self._data_result_path(all_renowned),
+                        "top_renowned": self._data_result_path(top_renowned),
                     },
                     skip_citing_analysis=config.dashboard_skip_citing_analysis,
                 )
 
             self.log_manager.success("=" * 50)
             self.log_manager.success("全部任务完成!")
-            self.log_manager.success(f"Excel文件: {excel_file}")
-            self.log_manager.success(f"JSON文件: {json_file}")
+            print(f"[citationclaw] excel: {excel_file}", flush=True)
+            print(f"[citationclaw] json: {json_file}", flush=True)
             if html_file:
-                self.log_manager.success(f"Dashboard: {html_file}")
+                print(f"[citationclaw] dashboard: {html_file}", flush=True)
             self.log_manager.success("=" * 50)
 
             await self.log_manager._broadcast({"type": "all_done", "data": {
@@ -1819,8 +1816,8 @@ class TaskExecutor:
 
             self.log_manager.success("=" * 50)
             self.log_manager.success("全部任务完成!")
-            self.log_manager.success(f"Excel文件: {excel_file}")
-            self.log_manager.success(f"JSON文件: {json_file}")
+            print(f"[citationclaw] excel: {excel_file}", flush=True)
+            print(f"[citationclaw] json: {json_file}", flush=True)
             self.log_manager.success("=" * 50)
 
             # 清空阶段1结果
@@ -2135,9 +2132,6 @@ class TaskExecutor:
                 all_renowned = excel_file.with_stem(excel_file.stem + "_all_renowned_scholar")
                 top_renowned = excel_file.with_stem(excel_file.stem + "_top-tier_scholar")
 
-                def _fwd(p: Path) -> str:
-                    return str(p).replace("\\", "/")
-
                 await self._run_skill(
                     "phase5_report_generate",
                     config,
@@ -2147,9 +2141,9 @@ class TaskExecutor:
                     output_html=html_file,
                     canonical_titles=canonical_titles,
                     download_filenames={
-                        "excel": _fwd(citing_desc_excel),
-                        "all_renowned": _fwd(all_renowned),
-                        "top_renowned": _fwd(top_renowned),
+                        "excel": self._data_result_path(citing_desc_excel),
+                        "all_renowned": self._data_result_path(all_renowned),
+                        "top_renowned": self._data_result_path(top_renowned),
                     },
                     skip_citing_analysis=config.dashboard_skip_citing_analysis,
                 )
@@ -2174,7 +2168,7 @@ class TaskExecutor:
             self.log_manager.success(f"Excel: {excel_file}")
             self.log_manager.success(f"JSON:  {json_file}")
             if html_file:
-                self.log_manager.success(f"Dashboard: {html_file}")
+                print(f"[citationclaw] dashboard: {html_file}", flush=True)
 
             # 日志输出费用摘要
             self.log_manager.info("=" * 50)
@@ -2898,9 +2892,6 @@ class TaskExecutor:
                 all_renowned = excel_file.with_stem(excel_file.stem + "_all_renowned_scholar")
                 top_renowned = excel_file.with_stem(excel_file.stem + "_top-tier_scholar")
 
-                def _fwd(p: Path) -> str:
-                    return str(p).replace("\\", "/")
-
                 canonical_titles = [p.get("title", "") for p in target_papers]
                 await self._run_skill(
                     "phase5_report_generate",
@@ -2911,9 +2902,9 @@ class TaskExecutor:
                     output_html=html_file,
                     canonical_titles=canonical_titles,
                     download_filenames={
-                        "excel": _fwd(citing_desc_excel),
-                        "all_renowned": _fwd(all_renowned),
-                        "top_renowned": _fwd(top_renowned),
+                        "excel": self._data_result_path(citing_desc_excel),
+                        "all_renowned": self._data_result_path(all_renowned),
+                        "top_renowned": self._data_result_path(top_renowned),
                     },
                     skip_citing_analysis=config.dashboard_skip_citing_analysis,
                 )
@@ -2933,7 +2924,7 @@ class TaskExecutor:
             self.log_manager.success(f"Excel: {excel_file}")
             self.log_manager.success(f"JSON:  {json_file}")
             if html_file:
-                self.log_manager.success(f"Dashboard: {html_file}")
+                print(f"[citationclaw] dashboard: {html_file}", flush=True)
             self.log_manager.info("=" * 50)
 
             await self.log_manager._broadcast({"type": "all_done", "data": {
@@ -3114,9 +3105,6 @@ class TaskExecutor:
             self.log_manager.info("Phase 5 · 报告生成与导出")
             html_file = result_dir / f"{output_prefix}_dashboard.html"
 
-            def _fwd(p: Path) -> str:
-                return str(p).replace("\\", "/")
-
             await self._run_skill(
                 "phase5_report_generate",
                 config,
@@ -3126,16 +3114,16 @@ class TaskExecutor:
                 output_html=html_file,
                 canonical_titles=[paper_title],
                 download_filenames={
-                    "excel": _fwd(citing_desc_excel),
-                    "all_renowned": _fwd(all_renowned),
-                    "top_renowned": _fwd(top_renowned),
+                    "excel": self._data_result_path(citing_desc_excel),
+                    "all_renowned": self._data_result_path(all_renowned),
+                    "top_renowned": self._data_result_path(top_renowned),
                 },
                 skip_citing_analysis=config.dashboard_skip_citing_analysis,
             )
 
             self.log_manager.success("=" * 50)
             self.log_manager.success("缓存报告生成完成!")
-            self.log_manager.success(f"Dashboard: {html_file}")
+            print(f"[citationclaw] dashboard: {html_file}", flush=True)
             self.log_manager.success("=" * 50)
 
             await self.log_manager._broadcast({"type": "all_done", "data": {

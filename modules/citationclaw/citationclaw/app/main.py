@@ -1132,11 +1132,29 @@ def _safe_data_path(filepath: str) -> Path:
     return resolved
 
 
+def _html_for_public_view(raw: str) -> str:
+    """Keep report downloads under the public prefix, and hide the in-report assistant.
+
+    Root-relative ``/api/results/`` links miss ``/citations`` behind the gateway.
+    The floating assistant also calls the model, which this server does not expose on the report page.
+    """
+    base = _public_base_path()
+    if not base:
+        return raw
+    raw = raw.replace('href="/api/results/', f'href="{base}/api/results/')
+    raw = raw.replace("href='/api/results/", f"href='{base}/api/results/")
+    hide = "<style>#cc-fab,#cc-win{display:none!important}</style>"
+    if "</head>" in raw:
+        return raw.replace("</head>", hide + "</head>", 1)
+    return hide + raw
+
+
 @app.get("/api/results/view/{filepath:path}")
 async def view_result_html(filepath: str):
     p = _safe_data_path(filepath)
     if p.exists() and p.is_file():
-        return FileResponse(path=p, media_type="text/html")
+        text = p.read_text(encoding="utf-8", errors="replace")
+        return HTMLResponse(_html_for_public_view(text))
     raise HTTPException(status_code=404, detail="文件不存在")
 
 
