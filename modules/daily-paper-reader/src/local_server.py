@@ -2603,9 +2603,12 @@ def _extract_pdf_text(data_b64: str) -> str:
     import tempfile
     import fitz
 
+    limit = _pdf_max_bytes()
+    if len(data_b64) > limit * 4 // 3 + 8:
+        raise ValueError(f"PDF 文件过大（上限 {limit // (1024 * 1024)}MB）")
     raw = base64.b64decode(data_b64)
-    if len(raw) > _pdf_max_bytes():
-        raise ValueError(f"PDF 文件过大（上限 {_pdf_max_bytes() // (1024 * 1024)}MB）")
+    if len(raw) > limit:
+        raise ValueError(f"PDF 文件过大（上限 {limit // (1024 * 1024)}MB）")
     tmp_path: str | None = None
     try:
         # Windows 上 NamedTemporaryFile 默认占用文件句柄，PyMuPDF 无法重新打开同一文件，

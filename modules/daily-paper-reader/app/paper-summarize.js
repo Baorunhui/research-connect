@@ -426,9 +426,19 @@ window.PaperSummarizer = (function () {
     return doSummarize({ source: 'url', url: url });
   }
 
+  var PDF_MAX_BYTES = 50 * 1024 * 1024;
+
+  function pdfProblem(file) {
+    if (!file) return '请先选择或拖入一个 PDF 文件';
+    if (!/\.pdf$/i.test(file.name || '')) return '请选择 PDF 文件';
+    if (file.size > PDF_MAX_BYTES) return 'PDF 不能超过 50MB，请换一个小一点的文件。';
+    return '';
+  }
+
   function handlePdf() {
-    if (!state.file) {
-      renderError('请先选择或拖入一个 PDF 文件');
+    var problem = pdfProblem(state.file);
+    if (problem) {
+      renderError(problem);
       return;
     }
     var reader = new FileReader();
@@ -457,7 +467,16 @@ window.PaperSummarizer = (function () {
     var dropZone = elems && elems.dropZone;
     if (fileInput) {
       fileInput.addEventListener('change', function () {
-        state.file = fileInput.files && fileInput.files[0] || null;
+        var picked = fileInput.files && fileInput.files[0] || null;
+        var problem = pdfProblem(picked);
+        if (picked && problem) {
+          state.file = null;
+          fileInput.value = '';
+          setFileLabel('');
+          renderError(problem);
+          return;
+        }
+        state.file = picked;
         setFileLabel(state.file ? state.file.name : '');
       });
     }
@@ -473,12 +492,16 @@ window.PaperSummarizer = (function () {
         e.stopPropagation();
         dropZone.classList.remove('is-dragover');
         var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (f && /\.pdf$/i.test(f.name)) {
+        if (!f) return;
+        var problem = pdfProblem(f);
+        if (!problem) {
           state.file = f;
           if (fileInput) fileInput.value = '';
           setFileLabel(f.name);
         } else {
-          renderError('请拖入 PDF 文件');
+          state.file = null;
+          setFileLabel('');
+          renderError(problem);
         }
       });
       dropZone.addEventListener('click', function () {

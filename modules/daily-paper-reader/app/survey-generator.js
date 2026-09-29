@@ -466,6 +466,11 @@ window.SurveyGenerator = (function () {
     };
     // 种子论文：PDF 文件优先，否则读 arXiv 链接
     if (state.seedFile) {
+      var seedProblem = seedPdfProblem(state.seedFile);
+      if (seedProblem) {
+        renderError(seedProblem);
+        return;
+      }
       var reader = new FileReader();
       var file = state.seedFile;
       reader.onload = function () {
@@ -661,7 +666,16 @@ window.SurveyGenerator = (function () {
     });
     if (seedFileInputEl) {
       seedFileInputEl.addEventListener('change', function () {
-        state.seedFile = seedFileInputEl.files && seedFileInputEl.files[0] || null;
+        var picked = seedFileInputEl.files && seedFileInputEl.files[0] || null;
+        var problem = seedPdfProblem(picked);
+        if (picked && problem) {
+          state.seedFile = null;
+          seedFileInputEl.value = '';
+          setSeedFileLabel('');
+          renderError(problem);
+          return;
+        }
+        state.seedFile = picked;
         setSeedFileLabel(state.seedFile ? state.seedFile.name : '');
       });
     }
@@ -677,18 +691,31 @@ window.SurveyGenerator = (function () {
         e.stopPropagation();
         seedDropEl.classList.remove('is-dragover');
         var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (f && /\.pdf$/i.test(f.name)) {
+        if (!f) return;
+        var problem = seedPdfProblem(f);
+        if (!problem) {
           state.seedFile = f;
           if (seedFileInputEl) seedFileInputEl.value = '';
           setSeedFileLabel(f.name);
         } else if (f) {
-          renderError('种子论文请拖入 PDF 文件，或使用上方 arXiv 链接');
+          state.seedFile = null;
+          setSeedFileLabel('');
+          renderError(problem);
         }
       });
       seedDropEl.addEventListener('click', function () {
         if (seedFileInputEl) seedFileInputEl.click();
       });
     }
+  }
+
+  var PDF_MAX_BYTES = 50 * 1024 * 1024;
+
+  function seedPdfProblem(file) {
+    if (!file) return '';
+    if (!/\.pdf$/i.test(file.name || '')) return '种子论文请用 PDF，或改填论文链接。';
+    if (file.size > PDF_MAX_BYTES) return 'PDF 不能超过 50MB，请换一个小一点的文件。';
+    return '';
   }
 
   function setSeedFileLabel(name) {
