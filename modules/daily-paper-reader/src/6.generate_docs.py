@@ -2168,7 +2168,7 @@ def generate_external_paper_docs(
         paper["_glance_overview"] = glance
     _progress("glance", "速览五段完成")
 
-    _progress("figures", "正在从 PDF 抽取图表")
+    _progress("figures", "正在抽出文中的图和表")
     figures, tables = maybe_generate_paper_media(
         paper,
         docs_dir=docs_dir,
@@ -2196,7 +2196,7 @@ def generate_external_paper_docs(
                     f.write(full_text)
             except Exception:
                 pass
-        _progress("figure_interpretation", "正在纯文本解读图表")
+        _progress("figure_interpretation", "正在看这些图表在说什么")
         apply_figure_interpretation(paper, docs_dir=docs_dir, section=section, txt_path=txt_path, client=paper_llm_client)
         _progress("figure_interpretation", "图表解读完成")
 

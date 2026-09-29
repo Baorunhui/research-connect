@@ -914,7 +914,17 @@ class SummarizeJobStore:
         if not job:
             return None  # type: ignore[return-value]
         out = {k: v for k, v in job.items() if k != "input"}
-        # input 可能含 base64 PDF，不返回给轮询；events 整体返回
+        # input 可能含 base64 PDF，不返回给轮询。结果里的磁盘路径和正文摘录也不发给页面。
+        result = out.get("result")
+        if isinstance(result, dict):
+            result = dict(result)
+            result.pop("preview", None)
+            meta = result.get("meta")
+            if isinstance(meta, dict):
+                meta = dict(meta)
+                meta.pop("md_path", None)
+                result["meta"] = meta
+            out["result"] = result
         return out
 
     def list(self) -> list[dict[str, Any]]:

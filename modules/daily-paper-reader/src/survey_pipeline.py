@@ -449,9 +449,9 @@ def define_task_paradigm(
         ctx.dataset_names = [str(d) for d in (seed_analysis.get("dataset_names") or [])][:20]
         ctx.non_arxiv_refs = (seed_analysis.get("non_arxiv_refs") or [])[:15]
         _log(f"目标范式（种子锚定）：{paradigm[:120]}")
-        ctx.progress("extract", "任务范式已由种子论文锚定：" + paradigm[:80])
+        ctx.progress("extract", "已按种子论文确定这篇综述要回答的问题")
         return paradigm
-    ctx.progress("extract", "归纳主题的目标任务范式（用于统一研究方向）")
+    ctx.progress("extract", "正在确定这篇综述要回答的问题")
     system = (
         "你是一位严谨的学术调研规划专家。给定一个综述主题，请先判定其核心任务范式，"
         "再输出一段 2-4 句的英文范式定义（target_task_paradigm），说明：输入-输出形式、"
@@ -461,12 +461,13 @@ def define_task_paradigm(
     try:
         definition = _chat_text(client_factory(), system, f"Survey topic: {ctx.query}")
     except Exception as exc:  # noqa: BLE001
-        ctx.warn(f"任务范式归纳失败，本篇综述退化为仅按相关度过滤：{exc}")
+        print(f"[papers] survey scope failed: {exc}", flush=True)
+        ctx.warn("没能先划定问题范围，后面只按相关程度筛选。")
         return ""
     definition = (definition or "").strip().strip('"')
     if definition:
         _log(f"目标范式：{definition[:120]}")
-        ctx.progress("extract", "任务范式已确定：" + definition[:80])
+        ctx.progress("extract", "已经确定这篇综述要回答的问题")
     return definition
 
 
@@ -2144,7 +2145,7 @@ def run_survey(
     else:
         # 无种子：中文/小语种主题必须先转写成英文查询，否则英文文献库三路全空或漂移
         recall_queries = plan_recall_queries(ctx, factory)
-    ctx.progress("recall", f"综述启动：{query}")
+    ctx.progress("recall", "开始查找相关论文")
     papers = recall_papers(
         ctx,
         fetch_days=fetch_days,
