@@ -47,6 +47,13 @@ def build_fast_report(
     seen_self: set = set()
     match_cache: Dict[tuple, dict] = {}
     n_name_only = n_meta = n_resolved = n_fetched = n_kaggle = 0
+    author_names: List[str] = []
+    for tp in target_papers:
+        entry = citing.get(normalize_title(tp.get("title", ""))) or {}
+        for rec in entry.get("records") or []:
+            for author in rec.get("authors") or []:
+                author_names.append(str(author.get("name", "") or ""))
+    prepared = honor.candidates_many(author_names) if hasattr(honor, "candidates_many") else None
     for tp in target_papers:
         title = tp.get("title", "")
         meta = (
@@ -75,7 +82,12 @@ def build_fast_report(
                 ck = (a.get("name", ""), a.get("affiliation", ""), a.get("email", ""))
                 res = match_cache.get(ck)
                 if res is None:
-                    res = match_cache[ck] = honor.match(*ck)
+                    if prepared is None:
+                        res = honor.match(*ck)
+                    else:
+                        key = name_key(ck[0])
+                        res = honor.match(*ck, prepared=prepared.get(key, []) if key else [])
+                    match_cache[ck] = res
                     n_name_only += res["name_only"]
                 for h in res["hits"]:
                     hits_here.append({

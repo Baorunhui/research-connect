@@ -36,7 +36,7 @@ import threading
 import time
 import unicodedata
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 ENV_DB = "CITATIONCLAW_HONOR_DB"
 
@@ -331,13 +331,44 @@ class HonorList:
                 "WHERE k.key = ?", (key,)).fetchall()
         return [dict(r) for r in rows]
 
-    def match(self, name: str, affiliation: str = "", email: str = "") -> dict:
+    def candidates_many(self, names: List[str]) -> Dict[str, List[dict]]:
+        """一次取出这批姓名对应的名单。键是姓名键，值和 candidates() 相同。"""
+        db = self._db()
+        if db is None:
+            return {}
+        keys: List[str] = []
+        seen = set()
+        for name in names:
+            key = name_key(name)
+            if key and key not in seen:
+                seen.add(key)
+                keys.append(key)
+        found: Dict[str, List[dict]] = {key: [] for key in keys}
+        for start in range(0, len(keys), 400):
+            chunk = keys[start:start + 400]
+            marks = ",".join("?" * len(chunk))
+            with self._lock:
+                rows = db.execute(
+                    "SELECT k.key AS name_key, h.* FROM name_keys k "
+                    "JOIN honorees h ON h.id = k.honoree_id "
+                    f"WHERE k.key IN ({marks})",
+                    tuple(chunk),
+                ).fetchall()
+            for row in rows:
+                item = dict(row)
+                key = str(item.pop("name_key", "") or "")
+                found.setdefault(key, []).append(item)
+        for rows in found.values():
+            rows.sort(key=lambda item: int(item.get("id") or 0))
+        return found
+
+    def match(self, name: str, affiliation: str = "", email: str = "", *, prepared: Optional[List[dict]] = None) -> dict:
         """Return ``{"hits": [...], "name_only": n}`` for one author.
 
         Each hit: name, honor, source, basis (邮箱/邮箱域名/单位), matched_value,
         listed_affiliation.
         """
-        cands = self.candidates(name)
+        cands = self.candidates(name) if prepared is None else prepared
         if not cands:
             return {"hits": [], "name_only": 0}
         email = str(email or "").strip().lower()
