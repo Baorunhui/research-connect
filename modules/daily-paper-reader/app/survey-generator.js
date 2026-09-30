@@ -118,6 +118,7 @@ window.SurveyGenerator = (function () {
     seenEventIds: {},
     timer: null,
     pollFailures: 0,
+    pollGeneration: 0,
     showingLog: false,
     lastJob: null,
     progressKey: '',
@@ -318,15 +319,19 @@ window.SurveyGenerator = (function () {
 
   // ---- 轮询 ----
   function pollJob(jobId) {
-    if (state.polling || !jobId) return;
+    if (!jobId) return;
+    if (state.jobId && state.jobId !== jobId) state.showingLog = false;
+    stopPolling();
+    state.pollGeneration += 1;
+    var generation = state.pollGeneration;
     state.jobId = jobId;
     state.seenEventIds = {};
     state.pollFailures = 0;
     state.polling = true;
-    schedulePoll(jobId);
+    schedulePoll(jobId, generation);
   }
 
-  function schedulePoll(jobId) {
+  function schedulePoll(jobId, generation) {
     fetch(surveyEndpoint() + '/' + encodeURIComponent(jobId), { cache: 'no-store' })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (data) {
@@ -334,8 +339,8 @@ window.SurveyGenerator = (function () {
         });
       })
       .then(function (res) {
+        if (generation !== state.pollGeneration || state.jobId !== jobId) return;
         state.polling = false;
-        if (state.jobId !== jobId) return;
         var data = res.data || {};
         var job = data.job;
         if (!res.ok || !job) {
@@ -371,20 +376,22 @@ window.SurveyGenerator = (function () {
           listRuns();
         } else {
           state.timer = setTimeout(function () {
+            if (generation !== state.pollGeneration || state.jobId !== jobId) return;
             state.polling = true;
-            schedulePoll(jobId);
+            schedulePoll(jobId, generation);
           }, POLL_INTERVAL);
         }
       })
       .catch(function () {
+        if (generation !== state.pollGeneration || state.jobId !== jobId) return;
         state.polling = false;
-        if (state.jobId !== jobId) return;
         state.pollFailures += 1;
         if (state.pollFailures < 5) {
           setStatus('进度暂时没刷新，正在重试。');
           state.timer = setTimeout(function () {
+            if (generation !== state.pollGeneration || state.jobId !== jobId) return;
             state.polling = true;
-            schedulePoll(jobId);
+            schedulePoll(jobId, generation);
           }, POLL_INTERVAL);
           return;
         }
