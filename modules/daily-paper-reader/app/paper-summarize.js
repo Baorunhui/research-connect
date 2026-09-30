@@ -220,7 +220,7 @@ window.PaperSummarizer = (function () {
           return;
         }
         if (!data || !data.ok || !data.job_id) {
-          state.busy = false;
+          setBusy(false);
           var msg = visibleMessage(data && (data.error || data.detail || data.message));
           renderError(msg || '没有开始，请稍后重试。');
           setStatus('');
@@ -234,7 +234,7 @@ window.PaperSummarizer = (function () {
         pollJob(data.job_id);
       })
       .catch(function () {
-        state.busy = false;
+        setBusy(false);
         renderError('总结没有提交成功，请稍后重试。');
         setStatus('');
       });
@@ -263,7 +263,7 @@ window.PaperSummarizer = (function () {
         if (!res.ok || !data.ok || !data.job) {
           if (res.status === 404) {
             forgetSummarizeJob();
-            state.busy = false;
+            setBusy(false);
             renderError('没有找到这次总结，请重新提交。');
             setStatus('');
             return;
@@ -277,16 +277,16 @@ window.PaperSummarizer = (function () {
         renderProgress(events, status, state.seenEventIds);
         if (status === 'completed') {
           forgetSummarizeJob();
-          state.busy = false;
+          setBusy(false);
           handleJobResult(job);
         } else if (status === 'failed') {
           forgetSummarizeJob();
-          state.busy = false;
+          setBusy(false);
           renderError(job.error || '总结失败');
           setStatus('');
         } else if (status === 'cancelled') {
           forgetSummarizeJob();
-          state.busy = false;
+          setBusy(false);
           setStatus('这次已停下。');
         } else {
           state.pollTimer = setTimeout(function () { pollJob(jobId); }, POLL_INTERVAL);
@@ -300,7 +300,7 @@ window.PaperSummarizer = (function () {
           state.pollTimer = setTimeout(function () { pollJob(jobId); }, POLL_INTERVAL);
           return;
         }
-        state.busy = false;
+        setBusy(false);
         renderError('进度更新中断，请稍后刷新页面。这次总结还在继续。');
         setStatus('');
       });
