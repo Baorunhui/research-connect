@@ -279,7 +279,7 @@ if (pendingJob) {
   }).catch((e) => {
     if (e && e.forget) sessionStorage.removeItem('xhs_job');
     $('status').className = 'status error';
-    $('status').textContent = e.message || '生成失败';
+    $('status').textContent = shownError(e);
   }).finally(() => {
     $('submit').disabled = false;
   });
