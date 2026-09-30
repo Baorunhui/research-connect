@@ -1833,6 +1833,8 @@
     unreadResultPaperIds: null,
     pendingPaperHref: '',
     lastFetchAt: 0,
+    sidebarSource: '',
+    scheduleRaw: '',
     expandedGroups: defaultExpandedGroups(),
     expandedAxisSections: new Set(),
     dailyViewMode: 'date',
@@ -3516,8 +3518,13 @@
         return r.text();
       })
       .then(function (text) {
-        state.model = parseSidebar(text);
         state.lastFetchAt = Date.now();
+        if (state.rootEl && state.bodyEl && text === state.sidebarSource) {
+          loadSchedule();
+          return;
+        }
+        state.sidebarSource = text;
+        state.model = parseSidebar(text);
         determineInitialExpansion();
         if (!state.rootEl) {
           state.rootEl = ensureRoot();
@@ -3552,9 +3559,15 @@
     return fetch(SCHEDULE_URL, { cache: 'no-store' })
       .then(function (r) {
         if (!r.ok) throw new Error('schedule HTTP ' + r.status);
-        return r.json();
+        return r.text();
       })
-      .then(function (json) {
+      .then(function (text) {
+        if (state.scheduleLastFetchAt && text === state.scheduleRaw && state.bodyEl) {
+          state.scheduleLastFetchAt = Date.now();
+          return state.schedule;
+        }
+        var json = JSON.parse(text);
+        state.scheduleRaw = text;
         state.schedule = parseSchedule(json || {});
         state.scheduleLastFetchAt = Date.now();
         if (state.bodyEl) state.bodyEl.innerHTML = renderBodyHtml(state.model, viewStateForRender(state, ReadState.getAll()));
@@ -3564,6 +3577,8 @@
       .catch(function (err) {
         // 日程数据缺失或接口异常时静默降级，不影响主侧边栏。
         state.schedule = null;
+        state.scheduleRaw = '';
+        state.scheduleLastFetchAt = 0;
         return null;
       });
   }
