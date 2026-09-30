@@ -287,14 +287,31 @@ def _package_summary(response_path: Path) -> dict[str, str] | None:
 def list_packages() -> dict[str, list[dict[str, str]]]:
     output_root = _output_root()
     packages: list[dict[str, str]] = []
-    if output_root.is_dir():
-        for response_path in sorted(output_root.glob("*/response.json"), reverse=True):
-            item = _package_summary(response_path)
-            if item is None:
-                continue
-            packages.append(item)
-            if len(packages) >= 20:
-                break
+    if not output_root.is_dir():
+        return {"packages": packages}
+    # 目录名按字母倒序并不是生成时间。按文件时间从新到旧取最近 20 份。
+    newest: list[tuple[float, Path]] = []
+    try:
+        with os.scandir(output_root) as entries:
+            for entry in entries:
+                if not entry.is_dir(follow_symlinks=False):
+                    continue
+                response_path = Path(entry.path) / "response.json"
+                try:
+                    mtime = response_path.stat().st_mtime
+                except OSError:
+                    continue
+                newest.append((mtime, response_path))
+    except OSError:
+        return {"packages": packages}
+    newest.sort(key=lambda item: item[0], reverse=True)
+    for _mtime, response_path in newest:
+        item = _package_summary(response_path)
+        if item is None:
+            continue
+        packages.append(item)
+        if len(packages) >= 20:
+            break
     return {"packages": packages}
 
 
