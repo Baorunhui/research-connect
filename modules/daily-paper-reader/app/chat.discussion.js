@@ -842,26 +842,10 @@ window.PrivateDiscussionChat = (function () {
         const resp = await fetch(txtUrl);
         if (resp.ok) {
           const txt = await resp.text();
-          if (txt && txt.trim()) {
-            paperContent = txt;
-            const snippet = txt.slice(0, 50).replace(/\s+/g, ' ');
-            console.log(
-              `[DPR DEBUG] paper_txt_content (${paperId}): '${snippet}'`,
-            );
-          } else {
-            console.log(
-              `[DPR DEBUG] paper_txt_content (${paperId}): <empty or whitespace>`,
-            );
-          }
-        } else {
-          console.log(
-            `[DPR DEBUG] paper_txt_content (${paperId}): <http ${resp.status}>`,
-          );
+          if (txt && txt.trim()) paperContent = txt;
         }
       } catch {
-        console.log(
-          `[DPR DEBUG] paper_txt_content (${paperId}): <fetch failed>`,
-        );
+        paperContent = '';
       }
     }
 
@@ -980,21 +964,6 @@ window.PrivateDiscussionChat = (function () {
     const aiAnswerDiv = aiItem.querySelector('.msg-content');
 
     const history = await loadChatHistory(paperId);
-
-    // 调试：打印历史消息前 50 个字符
-    try {
-      history.forEach((m, idx) => {
-        const role = m.role || 'unknown';
-        const snippet = (m.content || '').slice(0, 50).replace(/\s+/g, ' ');
-        console.log(
-          `[DPR DEBUG] history[${idx}] role=${role}: '${snippet}'`,
-        );
-      });
-      const qSnippet = question.slice(0, 50).replace(/\s+/g, ' ');
-      console.log(`[DPR DEBUG] current_question: '${qSnippet}'`);
-    } catch {
-      // 忽略调试输出错误
-    }
     history.push({
       role: 'user',
       content: question,
