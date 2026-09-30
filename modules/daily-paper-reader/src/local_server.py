@@ -249,6 +249,28 @@ def _redacted_log_tail(text: str, tail: int = 20000) -> str:
     return clipped
 
 
+def _read_log_tail(path: Path, tail: int = 20000) -> str:
+    """Read the end of a log. A line cut by the window is dropped, then secrets are hidden."""
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return ""
+    window = max(tail * 4, 65536)
+    try:
+        with path.open("rb") as handle:
+            if size > window:
+                handle.seek(size - window)
+                raw = handle.read(window)
+                text = raw.decode("utf-8", errors="replace")
+                newline = text.find("\n")
+                text = text[newline + 1 :] if newline >= 0 else ""
+            else:
+                text = handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+    return _redacted_log_tail(text, tail)
+
+
 def norm_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -823,7 +845,7 @@ class RunStore:
         path = Path(str(run.get("log_path") or ""))
         if not path.exists():
             return ""
-        return _redacted_log_tail(path.read_text(encoding="utf-8", errors="replace"))
+        return _read_log_tail(path)
 
     def _update(self, run_id: str, **patch: Any) -> None:
         with self._lock:
@@ -1562,7 +1584,7 @@ def _survey_job_log(job_id: str, tail: int = 20000) -> str:
     path = _survey_job_log_path(job_id)
     if not path.exists():
         return ""
-    return _redacted_log_tail(path.read_text(encoding="utf-8", errors="replace"), tail)
+    return _read_log_tail(path, tail)
 
 
 def _run_survey_job(
