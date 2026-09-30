@@ -27,6 +27,31 @@ DISCLAIMER = (
 )
 
 
+def _target_bibliography(target_papers: List[dict], kaggle) -> List[Optional[dict]]:
+    """One batched snapshot lookup for the author's own papers.
+
+    Falls back to single lookups when the snapshot object has no batch method,
+    and those calls omit ``brief`` so older stubs keep working.
+    """
+    blank: List[Optional[dict]] = [None] * len(target_papers)
+    if kaggle is None or not target_papers:
+        return blank
+    many = getattr(kaggle, "lookup_many", None)
+    if callable(many):
+        got = list(many(target_papers) or [])
+        if len(got) < len(target_papers):
+            got.extend([None] * (len(target_papers) - len(got)))
+        return got[: len(target_papers)]
+    return [
+        kaggle.lookup(
+            title=tp.get("title", ""),
+            arxiv_id=tp.get("arxiv_id", ""),
+            doi=tp.get("doi", ""),
+        )
+        for tp in target_papers
+    ]
+
+
 def build_fast_report(
     target_papers: List[dict],
     scholar_name: str,
@@ -54,12 +79,9 @@ def build_fast_report(
             for author in rec.get("authors") or []:
                 author_names.append(str(author.get("name", "") or ""))
     prepared = honor.candidates_many(author_names) if hasattr(honor, "candidates_many") else None
-    for tp in target_papers:
+    target_meta = _target_bibliography(target_papers, kaggle)
+    for tp, meta in zip(target_papers, target_meta):
         title = tp.get("title", "")
-        meta = (
-            kaggle.lookup(title=title, arxiv_id=tp.get("arxiv_id", ""), doi=tp.get("doi", ""), brief=True)
-            if kaggle is not None else None
-        )
         if meta:
             n_meta += 1
         entry = citing.get(normalize_title(title)) or {}
