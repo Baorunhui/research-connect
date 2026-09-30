@@ -3118,8 +3118,12 @@
     var readMap = ReadState.getAll();
     if (shouldAutoMark && currentPaperId && shouldAutoMarkRead(readMap[currentPaperId])) {
       markPaperStatus(currentPaperId, 'read', { notify: false });
-      rerenderSidebarBody({ syncActive: true, centerActive: shouldCenter, autoMark: false });
-      return;
+      // 未读筛选下重画列表，已经看过、又不是当前这篇的论文会离开列表。
+      if (state.filter === 'unread') {
+        rerenderSidebarBody({ syncActive: true, centerActive: shouldCenter, autoMark: false });
+        return;
+      }
+      updateReadStateMarks();
     }
     // 居中滚动
     if (shouldCenter) centerOn(li);
