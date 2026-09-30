@@ -604,6 +604,9 @@ def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
         pass
 
 
+_RUN_MEMORY_MAX = 40
+
+
 class RunStore:
     ACTIVE_STATUSES = {"queued", "running", "in_progress", "cancelling"}
 
@@ -662,6 +665,21 @@ class RunStore:
                 )
             self._runs[str(run["id"])] = run
             self._persist_locked(run)
+        self._trim_finished_locked()
+
+    def _trim_finished_locked(self) -> None:
+        """Keep recent finished runs in memory. The files on disk stay."""
+        finished = [
+            (run_id, run)
+            for run_id, run in self._runs.items()
+            if str(run.get("status") or "").lower() not in self.ACTIVE_STATUSES
+        ]
+        overflow = len(finished) - _RUN_MEMORY_MAX
+        if overflow <= 0:
+            return
+        finished.sort(key=lambda item: str(item[1].get("created_at") or ""))
+        for run_id, _ in finished[:overflow]:
+            self._runs.pop(run_id, None)
 
     def create(
         self,
@@ -721,6 +739,7 @@ class RunStore:
                     return public
             self._runs[run_id] = run
             self._persist_locked(run)
+            self._trim_finished_locked()
         thread = threading.Thread(target=self._run_process, args=(run_id,), daemon=True)
         thread.start()
         return self._public_run(run)
