@@ -645,6 +645,7 @@ class RunStore:
         self._processes: dict[str, subprocess.Popen[str]] = {}
         self._runs_dir = Path(runs_dir) if runs_dir is not None else RUNS_DIR
         self._runs_dir.mkdir(parents=True, exist_ok=True)
+        self._max_run_number = 0
         self._load_existing()
 
     def _metadata_path(self, run_id: str) -> Path:
@@ -663,38 +664,66 @@ class RunStore:
         )
         temp.replace(path)
 
+    def _note_run_number(self, item: dict[str, Any]) -> None:
+        try:
+            number = int(item.get("run_number") or 0)
+        except (TypeError, ValueError):
+            number = 0
+        if number > self._max_run_number:
+            self._max_run_number = number
+
+    def _remember_run(self, item: dict[str, Any]) -> None:
+        item["secret_env"] = {}
+        item["events"] = item.get("events") if isinstance(item.get("events"), list) else []
+        self._runs[str(item["id"])] = item
+
     def _load_existing(self) -> None:
-        loaded: list[dict[str, Any]] = []
+        """Mark a run that was still going, and only keep recent finished runs in memory."""
+        sensitive = {"secret_env", "command", "log_path", "config_path", "returncode", "last_output_at"}
+        finished: list[tuple[str, Path]] = []
+        now = utc_now()
         for path in self._runs_dir.glob("*/run.json"):
             try:
                 item = json.loads(path.read_text(encoding="utf-8"))
-                if not isinstance(item, dict) or str(item.get("id") or "") != path.parent.name:
-                    continue
-                item["secret_env"] = {}
-                item["events"] = item.get("events") if isinstance(item.get("events"), list) else []
-                loaded.append(item)
             except (OSError, ValueError, TypeError):
                 continue
-        loaded.sort(key=lambda item: str(item.get("created_at") or ""))
-        now = utc_now()
-        for index, run in enumerate(loaded, start=1):
-            run.setdefault("run_number", index)
-            if str(run.get("status") or "").lower() in self.ACTIVE_STATUSES:
-                run["status"] = "completed"
-                run["conclusion"] = "interrupted"
-                run["error"] = "上次生成时服务停过，这次已标成中断。可以重新开始。"
-                run["completed_at"] = now
-                run["updated_at"] = now
-                run["cancel_requested"] = False
-                run["events"].append(
+            if not isinstance(item, dict) or str(item.get("id") or "") != path.parent.name:
+                continue
+            self._note_run_number(item)
+            active = str(item.get("status") or "").lower() in self.ACTIVE_STATUSES
+            if active:
+                self._remember_run(item)
+                item["status"] = "completed"
+                item["conclusion"] = "interrupted"
+                item["error"] = "上次生成时服务停过，这次已标成中断。可以重新开始。"
+                item["completed_at"] = now
+                item["updated_at"] = now
+                item["cancel_requested"] = False
+                item["events"].append(
                     _run_event(
                         "run.interrupted",
-                        str(run.get("id") or ""),
+                        str(item.get("id") or ""),
                         message="上次生成时服务停过，这次已标成中断。可以重新开始。",
                     )
                 )
-            self._runs[str(run["id"])] = run
-            self._persist_locked(run)
+                self._persist_locked(item)
+                continue
+            if sensitive.intersection(item):
+                self._remember_run(item)
+                self._persist_locked(item)
+                self._runs.pop(str(item.get("id") or ""), None)
+            finished.append((str(item.get("created_at") or ""), path))
+        finished.sort()
+        for _created, path in finished[-_RUN_MEMORY_MAX:]:
+            run_id = path.parent.name
+            if run_id in self._runs:
+                continue
+            try:
+                item = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                continue
+            if isinstance(item, dict) and str(item.get("id") or "") == run_id:
+                self._remember_run(item)
         self._trim_finished_locked()
 
     def _trim_finished_locked(self) -> None:
@@ -736,7 +765,7 @@ class RunStore:
             )
         run = {
             "id": run_id,
-            "run_number": max((int(item.get("run_number") or 0) for item in self._runs.values()), default=0) + 1,
+            "run_number": 0,
             "workflow_key": workflow_key,
             "workflow_file": workflow_file,
             "inputs": inputs,
@@ -767,6 +796,8 @@ class RunStore:
                     public["already_running"] = True
                     shutil.rmtree(run_dir, ignore_errors=True)
                     return public
+            self._max_run_number += 1
+            run["run_number"] = self._max_run_number
             self._runs[run_id] = run
             self._persist_locked(run)
             self._trim_finished_locked()
