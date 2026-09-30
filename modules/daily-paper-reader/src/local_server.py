@@ -1467,6 +1467,10 @@ class SurveyJobStore:
             job["status"] = status
             job["updated_at"] = utc_now()
             for key, value in extra.items():
+                if key == "result" and isinstance(value, dict):
+                    report = value.get("report") if isinstance(value.get("report"), dict) else {}
+                    report = {item_key: item for item_key, item in report.items() if item_key != "md_path"}
+                    value = {"ok": value.get("ok"), "report": report}
                 job[key] = value
             # 进入终态即触发 FIFO 淘汰，保证任何时刻驻留的终态记录不超过上限
             if status in ("completed", "failed", "cancelled"):
@@ -1526,8 +1530,7 @@ class SurveyJobStore:
                 runtime_credentials=runtime_credentials,
             )
             self._set_status(job_id, "completed", result=result)
-            self._emit(job_id, _job_event("job.completed", job_id, message="综述完成",
-                                          payload={"report": result.get("report")}))
+            self._emit(job_id, _job_event("job.completed", job_id, message="综述完成"))
         except _CancelRequested as exc:
             self._set_status(job_id, "cancelled")
             self._emit(job_id, _job_event("job.cancelled", job_id, message=str(exc)))
