@@ -89,6 +89,7 @@ window.DPRWorkflowRunner = (function () {
   let liveProgressEl = null;
   let liveProgressTimer = null;
   let liveProgressRunId = '';
+  let liveProgressSignature = '';
   let dismissedLiveRunId = '';
 
   const syncSidebarFromStep6 = (run) => {
@@ -394,6 +395,7 @@ window.DPRWorkflowRunner = (function () {
       const run = active || previous;
       if (!run) {
         liveProgressRunId = '';
+        liveProgressSignature = '';
         if (liveProgressEl) liveProgressEl.hidden = true;
         return;
       }
@@ -409,11 +411,16 @@ window.DPRWorkflowRunner = (function () {
       if (active && runId !== liveProgressRunId) dismissedLiveRunId = '';
       liveProgressRunId = runId;
       if (dismissedLiveRunId === runId) return;
+      const events = Array.isArray(detailed.events) ? detailed.events : [];
+      const signature = runId + '\n' + String(detailed.conclusion || detailed.status || '') + '\n' +
+        events.map((ev) => (ev && ev.event_id) || '').join(',');
       const card = ensureLiveProgressCard();
+      if (signature === liveProgressSignature && !card.hidden) return;
+      liveProgressSignature = signature;
       card.hidden = false;
       const body = card.querySelector('.dpr-live-progress-body');
       window.DPRTaskProgress.render(body, {
-        events: Array.isArray(detailed.events) ? detailed.events : [],
+        events: events,
         status: detailed.conclusion || detailed.status || 'running',
         steps: PIPELINE_STEPS,
         title: '正在写论文日报',
