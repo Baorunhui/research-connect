@@ -438,6 +438,7 @@ window.DPRWorkflowRunner = (function () {
   // 原始日志默认折叠；跨重渲染保留用户展开状态。
   let rawLogExpanded = false;
   let localRunFetchGen = 0;
+  let localRunViewKey = '';
 
   const renderLocalRun = (run, logText) => {
     if (!runsEl || !run) return;
@@ -445,10 +446,23 @@ window.DPRWorkflowRunner = (function () {
     if (previousDetails) {
       rawLogExpanded = previousDetails.open;
     }
-    const previousLogEl = runsEl.querySelector('[data-dpr-workflow-log]');
-    const shouldFollowLog = rawLogExpanded && isWorkflowLogNearBottom(previousLogEl);
     const status = run.status || '';
     const conclusion = run.conclusion || '';
+    const stepMap = buildStepStateMap(run);
+    const stepKey = PIPELINE_STEPS.map((step) => step.key + '=' + (stepMap[step.key] || '')).join(',');
+    const viewKey = [
+      run.id || '',
+      status,
+      conclusion,
+      String(run.error || ''),
+      stepKey,
+      rawLogExpanded ? 'open' : 'shut',
+      rawLogExpanded ? String(logText || '') : '',
+    ].join('\n');
+    if (viewKey === localRunViewKey && runsEl.querySelector('[data-dpr-local-run]')) return;
+    localRunViewKey = viewKey;
+    const previousLogEl = runsEl.querySelector('[data-dpr-workflow-log]');
+    const shouldFollowLog = rawLogExpanded && isWorkflowLogNearBottom(previousLogEl);
     const badgeColor =
       conclusion === 'success'
         ? '#2e7d32'
@@ -468,7 +482,7 @@ window.DPRWorkflowRunner = (function () {
            <pre data-dpr-workflow-log="1" style="white-space:pre-wrap; max-height:360px; overflow:auto; background:#111; color:#ddd; padding:10px; border-radius:6px; font-size:12px; margin-top:6px;">${logBody}</pre>
          </details>`;
     runsEl.innerHTML = `
-      <div style="margin-bottom:8px;">
+      <div data-dpr-local-run="1" style="margin-bottom:8px;">
         <div style="font-weight:600;">任务 #${escapeHtml(run.run_number || run.id)}</div>
         <div style="color:#666; margin-top:2px;">
           <span style="display:inline-block; padding:1px 6px; border-radius:999px; background:rgba(0,0,0,0.06); color:${badgeColor};">
