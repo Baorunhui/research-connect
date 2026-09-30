@@ -654,12 +654,12 @@ function initIndexPage() {
 
     // Phase label 映射
     const phaseLabels = {
-        'URL': 'Phase 0 · 查找引用链接',
-        'Phase 1': 'Phase 1 · 施引文献检索',
-        'Phase 2': 'Phase 2 · 作者信息采集',
-        'Phase 3': 'Phase 3 · 学者影响力评估',
-        'Phase 4': 'Phase 4 · 引文语境提取',
-        'Phase 5': 'Phase 5 · 报告生成与导出',
+        'URL': '正在查找引用',
+        'Phase 1': '正在查这些论文被谁引用',
+        'Phase 2': '正在核对作者和单位',
+        'Phase 3': '正在整理结果',
+        'Phase 4': '正在读引用原文',
+        'Phase 5': '正在写报告',
     };
     let currentPhase = '处理中...';
 
@@ -1154,7 +1154,7 @@ function initIndexPage() {
         appendIndexLog({
             timestamp: new Date().toLocaleString('zh-CN'),
             level: 'INFO',
-            message: '🔍 搜索模型：' + (_modelEl ? _modelEl.value || '(未设置)' : '(未设置)')
+            message: '查找时使用的模型：' + (_modelEl ? _modelEl.value || '还没选' : '还没选')
         });
 
         // 显示 thinking indicator
@@ -1163,12 +1163,12 @@ function initIndexPage() {
 
         // 重置进度
         updateIndexProgress({ percentage: 0, current: 0, total: 0 });
-        currentPhase = '初始化中...';
+        currentPhase = '正在开始';
         var phaseLbl = document.getElementById('idx-phase-label');
         if (phaseLbl) phaseLbl.textContent = currentPhase;
 
         // Show global progress bar
-        GlobalProgress.show('初始化中...', 0);
+        GlobalProgress.show('正在开始', 0);
 
         try {
             const resp = await safeFetch('/api/run', {
