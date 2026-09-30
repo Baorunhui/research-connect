@@ -1574,12 +1574,19 @@ def _run_survey_job(
 ) -> dict[str, Any]:
     """执行综述流水线并落盘报告，分阶段发进度事件。失败抛异常。"""
     log_lines: list[str] = [f"[survey] job_id={job_id}"]
+    written = 0
 
     def _flush_log() -> None:
+        nonlocal written
         try:
             path = _survey_job_log_path(job_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("\n".join(log_lines), encoding="utf-8")
+            new = log_lines[written:]
+            if not new:
+                return
+            with path.open("a" if written else "w", encoding="utf-8") as handle:
+                handle.write("\n".join(new) + "\n")
+            written = len(log_lines)
         except Exception:  # noqa: BLE001 - 日志失败不影响主流程
             pass
 
