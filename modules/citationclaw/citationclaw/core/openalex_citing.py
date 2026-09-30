@@ -188,7 +188,8 @@ class OpenAlexCitingFetcher:
                 wait = float(retry_after) if retry_after else min(2 ** attempt, 30)
             except ValueError:
                 wait = min(2 ** attempt, 30)
-            self.log("论文目录暂时没有响应，稍后会再试。")
+            if attempt == 0:
+                self.log("论文目录暂时没有响应，稍后会再试。")
             await asyncio.sleep(wait)
         return None
 
