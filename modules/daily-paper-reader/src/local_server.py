@@ -1522,6 +1522,8 @@ def _run_survey_job(
     query = str(payload.get("query") or "").strip()
     if not query:
         raise ValueError("缺少综述主题 query")
+    if len(query) > 2000:
+        raise ValueError("综述主题太长了，请缩短到 2000 字以内。")
     credential_envelope = runtime_credentials if isinstance(runtime_credentials, dict) else {}
     embedding_credentials = (
         credential_envelope.get("embedding")
@@ -3209,6 +3211,8 @@ class Handler(SimpleHTTPRequestHandler):
             query = str(payload.get("query") or "").strip()
             if not query:
                 return self._json({"ok": False, "error": "请先填写综述主题。"}, status=400)
+            if len(query) > 2000:
+                return self._json({"ok": False, "error": "综述主题太长了，请缩短到 2000 字以内。"}, status=400)
             job = SURVEY_JOB_STORE.create(
                 payload,
                 runtime_credentials=runtime_credentials,

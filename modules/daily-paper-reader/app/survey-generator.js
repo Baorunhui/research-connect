@@ -449,6 +449,10 @@ window.SurveyGenerator = (function () {
       renderError('请先输入研究主题。');
       return;
     }
+    if (query.length > 2000) {
+      renderError('综述主题太长了，请缩短到 2000 字以内。');
+      return;
+    }
     var maxP = getEl('survey-max-papers');
     var rerankEl = getEl('survey-use-rerank');
     var deepEl = getEl('survey-deep-read');
