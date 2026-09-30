@@ -15,5 +15,7 @@ assert.match(plugin, /Math\.min\(authorParagraphs\.length, 6\)/);
 assert.doesNotMatch(runner, /python src\/local_server\.py/);
 assert.doesNotMatch(runner, /run_id=/);
 assert.doesNotMatch(runner, /任务 #/);
+assert.match(fs.readFileSync('app/paper-summarize.js', 'utf8'), /只用于这次总结，上限 50MB/);
+assert.doesNotMatch(fs.readFileSync('app/chat.discussion.js', 'utf8'), /仅保存在本机/);
 
 console.log('sidebar prefetch tests passed');

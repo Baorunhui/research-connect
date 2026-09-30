@@ -232,7 +232,7 @@ window.PrivateDiscussionChat = (function () {
     return `
       <div id="paper-chat-container">
         <div id="chat-history">
-            <div style="text-align:center; color:#999">暂无讨论，输入你的想法开始对话（仅保存在本机）</div>
+            <div style="text-align:center; color:#999">暂无讨论，输入你的想法开始对话（只留在这个浏览器里）</div>
         </div>
         <div class="input-area">
           <textarea id="user-input" rows="3" placeholder="针对这篇论文提问，仅自己可见..."></textarea>

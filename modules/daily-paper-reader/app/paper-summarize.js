@@ -601,7 +601,7 @@ window.PaperSummarizer = (function () {
       var fileLabel = el('div', 'paper-summarize-file-name', '拖入 PDF，或点击选择文件');
       fileLabel.id = 'paper-summarize-file-name';
       drop.appendChild(fileLabel);
-      drop.appendChild(el('div', 'paper-summarize-drop-hint', 'PDF 将经当前安装的安全中继交给本机后端解析，上限 50MB'));
+      drop.appendChild(el('div', 'paper-summarize-drop-hint', '只用于这次总结，上限 50MB'));
       var fileInput = el('input', 'paper-summarize-file-input');
       fileInput.type = 'file';
       fileInput.id = 'paper-summarize-file-input';
