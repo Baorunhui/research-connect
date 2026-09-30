@@ -2302,10 +2302,12 @@ window.$docsify = {
           const pageText = item.page ? `PDF 第 ${item.page} 页` : '';
           const caption = item.caption ? `<div class="paper-figure-caption">${escapePaperHtml(item.caption)}</div>` : '';
           const interpretation = item.interpretation ? `<div class="paper-figure-interpretation">${escapePaperHtml(item.interpretation)}</div>` : '';
+          const imageUrl = escapePaperHtml(resolveDocsAssetUrl(item.url));
+          const srcAttr = index === 0 ? ` src="${imageUrl}"` : '';
           return [
             `<div class="paper-figure-slide${index === 0 ? ' is-active' : ''}" data-figure-slide="${index}">`,
             '<div class="paper-figure-frame">',
-            `<img class="paper-figure-image" src="${escapePaperHtml(resolveDocsAssetUrl(item.url))}" alt="Paper ${label} ${index + 1}" loading="lazy">`,
+            `<img class="paper-figure-image"${srcAttr} data-src="${imageUrl}" alt="Paper ${label} ${index + 1}">`,
             '</div>',
             '<div class="paper-figure-meta">',
             `<div class="paper-figure-badge">${label} ${index + 1}${pageText ? ` · ${escapePaperHtml(pageText)}` : ''}</div>`,
@@ -2318,9 +2320,11 @@ window.$docsify = {
 
         const thumbs = items.map((item, index) => {
           const thumbPageText = item.page ? ` · PDF 第 ${item.page} 页` : '';
+          const imageUrl = escapePaperHtml(resolveDocsAssetUrl(item.url));
+          const srcAttr = index === 0 ? ` src="${imageUrl}"` : '';
           return [
             `<button class="paper-figure-thumb${index === 0 ? ' is-active' : ''}" type="button" data-figure-thumb="${index}" aria-label="切换到第 ${index + 1} 张${labelCn}">`,
-            `<img class="paper-figure-thumb-image" src="${escapePaperHtml(resolveDocsAssetUrl(item.url))}" alt="${label} Thumbnail ${index + 1}" loading="lazy">`,
+            `<img class="paper-figure-thumb-image"${srcAttr} data-src="${imageUrl}" alt="${label} Thumbnail ${index + 1}">`,
             `<span class="paper-figure-thumb-label">${label} ${index + 1}${thumbPageText ? escapePaperHtml(thumbPageText) : ''}</span>`,
             '</button>',
           ].join('');
@@ -2832,6 +2836,15 @@ window.$docsify = {
           if (!slides.length) return;
 
           let current = 0;
+          const loadFigure = (index) => {
+            [slides[index], thumbs[index]].forEach((node) => {
+              if (!node) return;
+              const img = node.querySelector('img');
+              if (!img || img.getAttribute('src')) return;
+              const pending = img.getAttribute('data-src');
+              if (pending) img.setAttribute('src', pending);
+            });
+          };
           const centerActiveThumb = () => {
             if (!thumbsTrack || !thumbs[current]) return;
             const activeThumb = thumbs[current];
@@ -2860,6 +2873,8 @@ window.$docsify = {
             if (nextBtn) nextBtn.disabled = slides.length <= 1;
             if (thumbPrevBtn) thumbPrevBtn.disabled = slides.length <= 1;
             if (thumbNextBtn) thumbNextBtn.disabled = slides.length <= 1;
+            loadFigure(current);
+            if (slides.length > 1) loadFigure((current + 1) % slides.length);
             centerActiveThumb();
           };
 
