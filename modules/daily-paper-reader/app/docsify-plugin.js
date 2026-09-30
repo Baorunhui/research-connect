@@ -550,7 +550,7 @@ window.$docsify = {
                     className: contentEl.className || '',
                   });
                   if (!speaker) return;
-                  const contentText = (contentEl.innerText || '').trim();
+                  const contentText = (contentEl.textContent || '').trim();
                   if (!contentText) return;
                   const icon = speaker === 'User' ? '👤' : '🤖';
                   lines.push(`${icon} ${speaker}: ${contentText}`);

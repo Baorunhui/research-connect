@@ -873,7 +873,8 @@ window.PrivateDiscussionChat = (function () {
         const clone = section.cloneNode(true);
         const chat = clone.querySelector('#paper-chat-container');
         if (chat) chat.remove();
-        paperContent = String(clone.innerText || '').trim();
+        // 副本不在页面上，innerText 会是空的，问答就读不到这篇论文。
+        paperContent = String(clone.textContent || '').trim();
       }
     }
     paperContent = shortenPaperText(paperContent);
