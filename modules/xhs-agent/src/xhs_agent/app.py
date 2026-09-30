@@ -23,6 +23,7 @@ _STAGE_TEXT = {
     "writer": "正在写正文和标题",
     "card": "正在排卡片",
     "qa": "正在核对事实",
+    "render": "正在导出卡片",
 }
 _jobs: OrderedDict[str, dict] = OrderedDict()
 _jobs_lock = threading.Lock()
@@ -119,6 +120,8 @@ def _execute(request: SocialContentRequest, runtime: _JobProgress | None = None)
     if runtime is not None:
         pipeline.runtime = runtime
     result = pipeline.run(request)
+    if runtime is not None:
+        runtime.progress("正在导出卡片", stage="render")
     return write_package(result, output_root)
 
 
