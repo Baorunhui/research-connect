@@ -894,7 +894,27 @@ class RunStore:
             run = self._runs.get(run_id)
             if not run:
                 return
-            run["events"].append(event)
+            events = run.setdefault("events", [])
+            payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+            step = str(payload.get("step") or event.get("stage") or "")
+            state = str(payload.get("state") or "")
+            replaced = False
+            if event.get("event_type") == "run.progress" and step and state == "running":
+                for index in range(len(events) - 1, -1, -1):
+                    old = events[index]
+                    old_payload = old.get("payload") if isinstance(old.get("payload"), dict) else {}
+                    old_step = str(old_payload.get("step") or old.get("stage") or "")
+                    old_state = str(old_payload.get("state") or "")
+                    if (
+                        old.get("event_type") == "run.progress"
+                        and old_step == step
+                        and old_state == "running"
+                    ):
+                        events[index] = event
+                        replaced = True
+                        break
+            if not replaced:
+                events.append(event)
             run["updated_at"] = utc_now()
             self._persist_locked(run)
 
