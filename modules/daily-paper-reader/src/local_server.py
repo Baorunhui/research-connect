@@ -2261,6 +2261,26 @@ def _http_get_with_retry(
     raise last_exc  # type: ignore[misc]
 
 
+def _survey_seed_error(payload: dict[str, Any]) -> str:
+    """Reject a seed the survey cannot read, before a job is started."""
+    seed = payload.get("seed")
+    if not isinstance(seed, dict) or not seed:
+        return ""
+    if str(seed.get("source") or "").strip() == "pdf":
+        data_b64 = str(seed.get("data_b64") or "")
+        if not data_b64:
+            return "没有读到上传的 PDF，请重新选择文件。"
+        limit = _pdf_max_bytes()
+        if len(data_b64) > limit * 4 // 3 + 8:
+            mb = limit // (1024 * 1024)
+            return f"PDF 不能超过 {mb}MB，请换一个小一点的文件。"
+        return ""
+    seed_url = str(seed.get("url") or "").strip()
+    if not seed_url or len(seed_url) > 500 or not _extract_arxiv_id(seed_url):
+        return "请填写 arXiv 论文链接，或改用上传 PDF。"
+    return ""
+
+
 def _extract_arxiv_id(url: str) -> str | None:
     """从 arXiv 链接里提取论文 ID（含 abs / pdf / 裸 ID 形式）。"""
     text = url.strip()
@@ -3213,6 +3233,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": False, "error": "请先填写综述主题。"}, status=400)
             if len(query) > 2000:
                 return self._json({"ok": False, "error": "综述主题太长了，请缩短到 2000 字以内。"}, status=400)
+            seed_error = _survey_seed_error(payload)
+            if seed_error:
+                return self._json({"ok": False, "error": seed_error}, status=400)
             job = SURVEY_JOB_STORE.create(
                 payload,
                 runtime_credentials=runtime_credentials,

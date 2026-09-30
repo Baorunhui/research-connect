@@ -442,6 +442,14 @@ window.SurveyGenerator = (function () {
     return Math.min(max, Math.max(min, Math.round(n)));
   }
 
+  function looksLikeArxiv(text) {
+    var value = String(text || '').trim();
+    if (!value || value.length > 500) return false;
+    if (/arxiv\.org\/(?:abs|pdf)\//i.test(value)) return true;
+    if (/(?:^|\s)arXiv:\s*\S+/i.test(value)) return true;
+    return /^\d{4}\.\d{4,5}(v\d+)?$/.test(value);
+  }
+
   function handleLaunch() {
     var q = getEl('survey-query');
     var query = (q && q.value || '').trim();
@@ -490,6 +498,10 @@ window.SurveyGenerator = (function () {
     }
     var seedUrlEl = getEl('survey-seed-url');
     var seedUrl = (seedUrlEl && seedUrlEl.value || '').trim();
+    if (seedUrl && !looksLikeArxiv(seedUrl)) {
+      renderError('请填写 arXiv 论文链接，或改用上传 PDF。');
+      return;
+    }
     if (seedUrl) payload.seed = { source: 'url', url: seedUrl };
     doLaunch(payload);
   }
