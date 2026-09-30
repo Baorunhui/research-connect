@@ -79,9 +79,13 @@ class TaskExecutor:
         self._year_traverse_event: Optional[asyncio.Event] = None
         self._year_traverse_choice: bool = False   # True = 用户同意开启
         self._year_traverse_prompted: bool = False  # 本次运行已提示过，不再重复
+        self._terminal_status = ""
+        self._terminal_message = ""
         self.skills_runtime = SkillsRuntime()
 
     def _task_finished_payload(self, status: str, message: str, **extra) -> dict:
+        self._terminal_status = str(status or "")
+        self._terminal_message = str(message or "")
         payload = {"status": status, "message": message, "success": status == "success"}
         payload.update(extra)
         return payload

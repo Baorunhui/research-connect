@@ -105,7 +105,22 @@ def _make_task_done_callback(executor: TaskExecutor, lm: LogManager):
                 lm.broadcast_event("task_error", {"message": message, "error": message})
             else:
                 result = task.result()
-                _connect_task_state.update(status="completed", error="", result=result)
+                if result:
+                    _connect_task_state.update(status="completed", error="", result=result)
+                else:
+                    # 停下、没查到、或额度用完时协程是正常返回的。不能记成已完成，
+                    # 否则页面只靠轮询时按钮会一直停在运行中。
+                    terminal = str(getattr(executor, "_terminal_status", "") or "")
+                    message = str(getattr(executor, "_terminal_message", "") or "")
+                    if terminal == "cancelled":
+                        status = "cancelled"
+                    elif terminal in ("failed", "error", "quota_exceeded"):
+                        status = "failed"
+                    elif terminal == "no_results":
+                        status = "no_results"
+                    else:
+                        status = "completed"
+                    _connect_task_state.update(status=status, error=message, result=None)
         except asyncio.CancelledError:
             _connect_task_state.update(status="cancelled", error="这次查询已停下。", result=None)
             message = "这次查询已停下。"
@@ -124,6 +139,8 @@ def _make_task_done_callback(executor: TaskExecutor, lm: LogManager):
 def _launch_task(coro, *, external_job_id: str = ""):
     """Set is_running, create task, attach done_callback. Returns task."""
     task_executor.is_running = True
+    task_executor._terminal_status = ""
+    task_executor._terminal_message = ""
     log_manager.set_task_log_suppressed(False)
     _connect_task_state.update(
         schema_version="connect.job.v1",

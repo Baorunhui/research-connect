@@ -90,13 +90,20 @@ class WebSocketManager {
                 const status = data.status || (data.is_running ? 'running' : 'idle');
                 const runBtn = document.getElementById('idx-run-btn');
                 const waiting = !!(runBtn && runBtn.disabled);
-                if (!announced && status === 'completed' && data.result
-                    && (previousStatus === 'running' || (catchCompleted && waiting))) {
+                const leftRunning = previousStatus === 'running' || (catchCompleted && waiting && !data.is_running);
+                if (!announced && leftRunning && status === 'completed' && data.result) {
                     announced = true;
                     this.emit('all_done', data.result);
                 }
-                if (previousStatus === 'running' && (status === 'failed' || status === 'cancelled')) {
-                    this.emit('task_finished', {status, message: data.error || '任务已结束'});
+                if (!announced && previousStatus === 'running' && !data.is_running && (
+                    status === 'failed' || status === 'cancelled' || status === 'no_results'
+                    || (status === 'completed' && !data.result)
+                )) {
+                    announced = true;
+                    this.emit('task_finished', {
+                        status: status === 'completed' ? 'no_results' : status,
+                        message: data.error || '这次查询结束了。',
+                    });
                 }
                 previousStatus = status;
                 this.updateStatus('改为定时刷新', 'success');
