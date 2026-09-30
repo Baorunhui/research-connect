@@ -66,7 +66,7 @@
         本地对不上时，再用模型补查
       </label>
       <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer"
-             title="默认是快查：到 OpenAlex 分页拉取每篇论文的全部施引（仅题录与作者单位），用 Kaggle arXiv 核对题录，再与荣誉名单匹配；不下载 PDF">
+             title="默认只查引用名单，不下载全文。勾选后会查得更慢，也会更全。">
         <input class="form-check-input" type="checkbox" id="profile-full-mode">
         查得更全（更慢）
       </label>
@@ -509,7 +509,10 @@ async function fetchScholarPapers() {
             body: JSON.stringify({profile_url: url})
         });
         const data = await res.json();
-        if (!res.ok) { alert(data.error || '没有读到论文列表，请稍后重试。'); return; }
+        if (!res.ok || !Array.isArray(data.papers)) {
+            alert((data && (data.error || data.message)) || '没有读到论文列表，请稍后重试。');
+            return;
+        }
         renderScholarPapers(data.papers, data.truncated, data.total, data.incomplete);
     } catch(e) { alert('没有连上服务器，请稍后重试。'); }
     finally { btn.disabled = false; btn.textContent = '获取论文列表'; }
