@@ -1454,6 +1454,7 @@ function initIndexPage() {
         // Detect phase from message
         detectPhase(log.message || '');
 
+        const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
         const entry = document.createElement('div');
         entry.className = 're-entry';
 
@@ -1483,7 +1484,7 @@ function initIndexPage() {
             container.removeChild(container.firstChild);
         }
 
-        container.scrollTop = container.scrollHeight;
+        if (nearBottom) container.scrollTop = container.scrollHeight;
 
         if (log.message && log.message.includes('全部完成')) {
             resetRunBtn();
