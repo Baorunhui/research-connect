@@ -3083,7 +3083,7 @@
     var liRect = li.getBoundingClientRect();
     var current = state.bodyEl.scrollTop;
     var targetTop = current + (liRect.top - bodyRect.top) - bodyRect.height / 2 + liRect.height / 2;
-    state.bodyEl.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+    state.bodyEl.scrollTop = Math.max(0, targetTop);
   }
 
   function scrollPanelIntoView(panelKey) {

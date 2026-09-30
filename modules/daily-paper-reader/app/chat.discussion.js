@@ -983,10 +983,7 @@ window.PrivateDiscussionChat = (function () {
     };
 
     // 发送消息后立即滚动到底部
-    window.scrollTo({
-      top: document.documentElement.scrollHeight,
-      behavior: 'smooth'
-    });
+    window.scrollTo(0, document.documentElement.scrollHeight);
 
     const thinkingContainer = aiItem.querySelector('.thinking-container');
     const thinkingContent = aiItem.querySelector('.thinking-content');
