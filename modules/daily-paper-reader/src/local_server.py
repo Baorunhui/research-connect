@@ -3254,7 +3254,78 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "private, max-age=0, must-revalidate")
         else:
             self.send_header("Cache-Control", "no-store")
+        path = urlparse(self.path).path
+        if not path.startswith("/api/"):
+            self.send_header("Accept-Ranges", "bytes")
         super().end_headers()
+
+    def _send_byte_range_if_requested(self) -> bool:
+        """PDF 预览会按区间取文件。只回请求的那一段，前面的页不用等整份下完。"""
+        header = (self.headers.get("Range") or "").strip()
+        if not header:
+            return False
+        path = urlparse(self.path).path
+        if path.startswith("/api/"):
+            return False
+        fs_path = self.translate_path(self.path)
+        if not os.path.isfile(fs_path):
+            return False
+        try:
+            size = os.path.getsize(fs_path)
+        except OSError:
+            return False
+        if not header.lower().startswith("bytes="):
+            self._range_not_satisfiable(size)
+            return True
+        first = header.split("=", 1)[1].split(",", 1)[0].strip()
+        if "-" not in first:
+            self._range_not_satisfiable(size)
+            return True
+        start_text, end_text = first.split("-", 1)
+        try:
+            if start_text == "":
+                suffix = int(end_text)
+                if suffix <= 0:
+                    raise ValueError
+                start = max(0, size - suffix)
+                end = size - 1
+            else:
+                start = int(start_text)
+                end = int(end_text) if end_text else size - 1
+        except ValueError:
+            self._range_not_satisfiable(size)
+            return True
+        if size <= 0 or start < 0 or start >= size or end < start:
+            self._range_not_satisfiable(size)
+            return True
+        end = min(end, size - 1)
+        length = end - start + 1
+        try:
+            self.send_response(206)
+            self.send_header("Content-Type", self.guess_type(fs_path))
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Content-Length", str(length))
+            self.end_headers()
+            if self.command == "HEAD":
+                return True
+            with open(fs_path, "rb") as handle:
+                handle.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = handle.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            return True
+        return True
+
+    def _range_not_satisfiable(self, size: int) -> None:
+        self.send_response(416)
+        self.send_header("Content-Range", f"bytes */{size}")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_OPTIONS(self) -> None:
         if not self._host_allowed():
@@ -3377,7 +3448,21 @@ class Handler(SimpleHTTPRequestHandler):
             return self._index_with_public_base()
         if _static_path_blocked(parsed.path):
             return self._json({"ok": False, "error": "not found"}, status=404)
+        if self._send_byte_range_if_requested():
+            return
         return super().do_GET()
+
+    def do_HEAD(self) -> None:
+        if not self._host_allowed():
+            return self._json({"ok": False, "error": "forbidden"}, status=403)
+        parsed = urlparse(self.path)
+        if (
+            not parsed.path.startswith("/api/")
+            and not _static_path_blocked(parsed.path)
+            and self._send_byte_range_if_requested()
+        ):
+            return
+        return super().do_HEAD()
 
     def _index_with_public_base(self) -> None:
         """Serve index.html for a reverse proxy that mounts the UI under a sub-path."""
