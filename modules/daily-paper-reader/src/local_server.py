@@ -3264,15 +3264,28 @@ class Handler(SimpleHTTPRequestHandler):
                 or not target.is_file()
             ):
                 return self._json({"ok": False, "error": "document not found"}, status=404)
-            data = target.read_bytes()
+            try:
+                size = target.stat().st_size
+            except OSError:
+                return self._json({"ok": False, "error": "document not found"}, status=404)
             content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
             if target.suffix.lower() in {".md", ".markdown"}:
                 content_type = "text/markdown; charset=utf-8"
             self.send_response(200)
             self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Length", str(size))
             self.end_headers()
-            self.wfile.write(data)
+            remaining = size
+            try:
+                with target.open("rb") as handle:
+                    while remaining > 0:
+                        chunk = handle.read(min(65536, remaining))
+                        if not chunk:
+                            break
+                        remaining -= len(chunk)
+                        self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                return
             return
         if parsed.path.startswith("/api/local/runtime/runs/"):
             parts = parsed.path.strip("/").split("/")
