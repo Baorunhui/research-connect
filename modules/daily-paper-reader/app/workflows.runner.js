@@ -507,7 +507,7 @@ window.DPRWorkflowRunner = (function () {
          </details>`;
     runsEl.innerHTML = `
       <div data-dpr-local-run="1" style="margin-bottom:8px;">
-        <div style="font-weight:600;">任务 #${escapeHtml(run.run_number || run.id)}</div>
+        <div style="font-weight:600;">论文日报</div>
         <div style="color:#666; margin-top:2px;">
           <span style="display:inline-block; padding:1px 6px; border-radius:999px; background:rgba(0,0,0,0.06); color:${badgeColor};">
             ${escapeHtml(formatRunBadgeText(status, conclusion))}
@@ -839,7 +839,7 @@ window.DPRWorkflowRunner = (function () {
           .forEach((n) => n.classList.remove('is-active'));
         btn.classList.add('is-active');
         selectedRun = { owner, repo, runId, token: loadGithubToken() };
-        setStatus(`正在加载运行详情：run_id=${runId}`, '#666', { waiting: true });
+        setStatus('正在打开这次生成。', '#666', { waiting: true });
         await refreshRun(owner, repo, runId);
         startRunPolling(() => {
           if (!selectedRun) return;
@@ -867,7 +867,7 @@ window.DPRWorkflowRunner = (function () {
           const isActive = ['queued', 'running', 'in_progress', 'cancelling'].indexOf(String(run.status || '').toLowerCase()) >= 0;
           return `<div class="dpr-wf-recent-local-row" data-run-row="${escapeHtml(run.id || '')}" style="display:flex;gap:6px;align-items:stretch;margin:0 0 6px;">
             <button type="button" class="dpr-wf-recent-item" data-run-id="${escapeHtml(run.id || '')}" style="display:block;flex:1;min-width:0;padding:8px;text-align:left;border:1px solid #eee;border-radius:6px;background:#fff;cursor:pointer;">
-              <strong>任务 #${escapeHtml(run.run_number || run.id || '')}</strong>
+              <strong>论文日报</strong>
               <span style="margin-left:8px;color:#666;">${escapeHtml(status)}</span>
               <span style="float:right;color:#999;">${escapeHtml(formatRunTime(run.created_at))}</span>
             </button>
@@ -1041,10 +1041,7 @@ window.DPRWorkflowRunner = (function () {
         console.error(e);
         const msg = plainNotice(e && e.message, '这次没有开始，请稍后重试。');
         setStatus(msg, '#c00');
-        const localHint = String(window.DPR_LOCAL_API_BASE || '').trim()
-          ? ''
-          : '<br/>请确认本机服务已启动：<code>python src/local_server.py</code>';
-        runsEl.innerHTML = `<div style="color:#c00;">${escapeHtml(msg)}${localHint}</div>`;
+        runsEl.innerHTML = `<div style="color:#c00;">${escapeHtml(msg)}</div>`;
         return;
       }
     }
@@ -1173,7 +1170,7 @@ window.DPRWorkflowRunner = (function () {
 
       activeRun = { owner, repo, runId: run.id, token };
       selectedRun = activeRun;
-      setStatus(`运行已创建：run_id=${run.id}，开始拉取进度...`, '#080', { waiting: true });
+      setStatus('已开始，正在看进度。', '#080', { waiting: true });
       await refreshRun(owner, repo, run.id);
 
       startRunPolling(() => {

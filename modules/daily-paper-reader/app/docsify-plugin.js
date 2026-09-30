@@ -463,21 +463,16 @@ window.$docsify = {
           }
           const citationDate = date ? date.replace(/-/g, '/') : '';
 
-          let authors = [];
-          const authorParagraphs = document.querySelectorAll('.markdown-section p');
-          for (let authorIndex = 0; authorIndex < authorParagraphs.length; authorIndex += 1) {
-            const authorText = authorParagraphs[authorIndex].textContent || '';
-            if (!authorText.includes('Authors:')) continue;
-            let text = authorText.replace('Authors:', '').trim();
-            text = text.replace(/\s+/g, ' ').trim();
-            text = text
-              .replace(/Date\s*:\s*\d{4}-\d{2}-\d{2}.*/i, '')
-              .trim();
-            authors = text
-              .split(/,|，/)
-              .map((a) => a.trim())
-              .filter(Boolean);
-            break;
+          let authors = authorsFromPaperText(rawPaperContent, frontmatterPaperMeta);
+          if (!authors.length) {
+            const authorParagraphs = document.querySelectorAll('.markdown-section p');
+            const limit = Math.min(authorParagraphs.length, 6);
+            for (let authorIndex = 0; authorIndex < limit; authorIndex += 1) {
+              const authorText = authorParagraphs[authorIndex].textContent || '';
+              if (!authorText.includes('Authors:')) continue;
+              authors = splitAuthorLine(authorText.replace('Authors:', ''));
+              break;
+            }
           }
 
           updateMetaTag('citation_title', title);
@@ -2176,6 +2171,24 @@ window.$docsify = {
       };
 
       // --- 解析 YAML front matter 并转换为 HTML ---
+      const splitAuthorLine = (value) => String(value || '')
+        .replace(/\s+/g, ' ')
+        .replace(/Date\s*:\s*\d{4}-\d{2}-\d{2}.*/i, '')
+        .split(/,|，/)
+        .map((name) => name.trim())
+        .filter(Boolean);
+
+      const authorsFromPaperText = (raw, meta) => {
+        const source = meta && typeof meta === 'object' ? meta : {};
+        const listed = source.authors != null ? source.authors : source.Authors;
+        if (Array.isArray(listed)) {
+          return listed.map((name) => String(name || '').trim()).filter(Boolean);
+        }
+        if (typeof listed === 'string' && listed.trim()) return splitAuthorLine(listed);
+        const match = String(raw || '').match(/(?:^|\n)\s*(?:\*\*)?Authors:\*?\*?\s*([^\n]+)/);
+        return match ? splitAuthorLine(match[1]) : [];
+      };
+
       const parseFrontMatter = (content) => {
         if (!content || !content.startsWith('---')) {
           return { meta: null, body: content };

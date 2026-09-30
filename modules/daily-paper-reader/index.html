@@ -162,7 +162,7 @@
       detail.className = 'dpr-initial-error-detail';
       detail.textContent = error && error.message
         ? error.message
-        : '本地静态资源暂时无法读取，请重新加载。';
+        : '页面暂时打不开，请重新加载。';
 
       var retry = document.createElement('button');
       retry.type = 'button';
@@ -188,8 +188,13 @@
         if (!/\.(md|html)$/i.test(pagePath)) {
           pagePath = pagePath.replace(/\/$/, '/README') + '.md';
         }
+        // 目录在脚本加载前就开始取，侧栏直接用这一份，避免再要一遍。
+        window.DPR_SIDEBAR_TEXT = fetch('docs/_sidebar.md', { credentials: 'same-origin' })
+          .then(function (response) {
+            if (!response.ok) throw new Error('sidebar HTTP ' + response.status);
+            return response.text();
+          });
         var requests = [
-          'docs/_sidebar.md',
           'docs/' + pagePath.replace(/^\/+/, ''),
         ].filter(function (url, index, list) {
           return url && list.indexOf(url) === index;
@@ -376,8 +381,8 @@
       { type: 'script', path: 'app/vendor/js-yaml/4.1.0/dist/js-yaml.min.js' },
       { type: 'script', path: 'app/llm-config-utils.js' },
       { type: 'script', path: 'app/read-state-sync.js' },
-      { type: 'script', path: 'app/dpr-sidebar.js?v=19' },
-      { type: 'script', path: 'app/docsify-plugin.js?v=13' },
+      { type: 'script', path: 'app/dpr-sidebar.js?v=20' },
+      { type: 'script', path: 'app/docsify-plugin.js?v=14' },
       { type: 'script', path: 'app/vendor/docsify/4/lib/docsify.min.js' },
     ]).then(function () {
       document.addEventListener('dpr-docsify-ready', function loadDeferredAssetsOnce() {
@@ -394,7 +399,7 @@
           { type: 'script', path: 'app/vendor/katex/0.16.9/dist/contrib/auto-render.min.js' },
           { type: 'script', path: 'app/chat.discussion.js?v=22' },
           { type: 'script', path: 'app/task-progress.js?v=4' },
-          { type: 'script', path: 'app/workflows.runner.js?v=16' },
+          { type: 'script', path: 'app/workflows.runner.js?v=17' },
           { type: 'script', path: 'app/local-settings.js?v=10' },
           { type: 'script', path: 'app/paper-summarize.js?v=14' },
           { type: 'script', path: 'app/survey-generator.js?v=23' },

@@ -3628,14 +3628,27 @@
     syncResolvedAxisState();
   }
 
+  function loadSidebarText(force) {
+    // 第一次打开用页面启动时已经发出的那一次；之后再打开才重新要。
+    var pending = !force && window.DPR_SIDEBAR_TEXT;
+    if (pending) window.DPR_SIDEBAR_TEXT = null;
+    if (pending && typeof pending.then === 'function') {
+      return pending.catch(function () {
+        return fetch(SIDEBAR_URL, { cache: 'no-store' }).then(function (r) {
+          if (!r.ok) throw new Error('sidebar HTTP ' + r.status);
+          return r.text();
+        });
+      });
+    }
+    return fetch(SIDEBAR_URL, force ? { cache: 'no-store' } : {}).then(function (r) {
+      if (!r.ok) throw new Error('sidebar HTTP ' + r.status);
+      return r.text();
+    });
+  }
+
   function loadAndRender(force) {
-    // 第一次打开沿用页面已经预取的目录；隔一段时间回来再强制要一份新的。
     var hadSidebar = Boolean(state.sidebarSource);
-    return fetch(SIDEBAR_URL, force ? { cache: 'no-store' } : {})
-      .then(function (r) {
-        if (!r.ok) throw new Error('sidebar HTTP ' + r.status);
-        return r.text();
-      })
+    return loadSidebarText(force)
       .then(function (text) {
         state.lastFetchAt = Date.now();
         if (state.rootEl && state.bodyEl && text === state.sidebarSource) {
