@@ -8,7 +8,7 @@
 <div id="global-progress" class="spa-global-progress" title="点击查看运行日志">
   <div class="spa-global-progress-inner">
     <div class="spa-global-progress-dot"></div>
-    <span id="global-progress-label" class="spa-global-progress-label">处理中...</span>
+    <span id="global-progress-label" class="spa-global-progress-label">正在开始</span>
     <div class="spa-global-progress-track">
       <div id="global-progress-bar" class="spa-global-progress-bar"></div>
     </div>
@@ -226,7 +226,7 @@
   <div class="agent-progress-header">
     <div class="agent-phase-label">
       <div class="phase-dot"></div>
-      <span id="idx-phase-label">处理中...</span>
+      <span id="idx-phase-label">正在开始</span>
     </div>
     <span id="idx-progress-text" class="agent-progress-count"></span>
   </div>
@@ -248,14 +248,14 @@
       <div class="think-dot"></div>
       <div class="think-dot"></div>
       <div class="think-dot"></div>
-      <span style="font-family:'Inter',sans-serif">Thinking and Searching</span>
+      <span>正在查找</span>
     </div>
     <button id="idx-clear-log-btn" class="btn-agent-sm" style="margin-left:8px">清空</button>
   </div>
   <div class="reasoning-body" id="idx-log-container">
     <div class="reasoning-empty">
       <div class="reasoning-empty-icon">🤖</div>
-      <div class="reasoning-empty-text">等待智能体启动...</div>
+      <div class="reasoning-empty-text">正在开始，请稍候。</div>
     </div>
   </div>
   <!-- 运行中心跳状态栏 -->
@@ -446,7 +446,7 @@
 
 {% block scripts %}
 <script src="/static/js/websocket.js?v=2.2"></script>
-<script src="/static/js/main.js?v=2.16"></script>
+<script src="/static/js/main.js?v=2.17"></script>
 <script>
 // ── API Key 检查 ────────────────────────────────────────────────
 function checkApiKeysAndAlert() {

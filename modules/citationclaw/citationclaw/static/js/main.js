@@ -661,7 +661,7 @@ function initIndexPage() {
         'Phase 4': '正在读引用原文',
         'Phase 5': '正在写报告',
     };
-    let currentPhase = '处理中...';
+    let currentPhase = '正在开始';
 
     let _configLoaded = false;
     const _configDirty = new Set();
