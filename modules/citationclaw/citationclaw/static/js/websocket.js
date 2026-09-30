@@ -74,7 +74,6 @@ class WebSocketManager {
             level: 'WARNING',
             message: '实时连接中断，改为每 2 秒刷新进度。查完后结果仍会显示在这里。'
         });
-        let lastLogCount = 0;
         let previousStatus = 'idle';
         let announced = false;
         const poll = async () => {
@@ -84,9 +83,9 @@ class WebSocketManager {
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 const data = await response.json();
                 const logs = Array.isArray(data.logs) ? data.logs : [];
-                if (logs.length < lastLogCount) lastLogCount = 0;
-                logs.slice(lastLogCount).forEach(item => this.emit('log', item));
-                lastLogCount = logs.length;
+                // The status payload is only the latest lines. Replaying them is safe;
+                // the page skips a line it already showed, including after the list stops growing.
+                logs.forEach(item => this.emit('log', item));
                 if (data.progress) this.emit('progress', data.progress);
                 const status = data.status || (data.is_running ? 'running' : 'idle');
                 const runBtn = document.getElementById('idx-run-btn');

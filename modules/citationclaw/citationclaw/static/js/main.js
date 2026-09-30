@@ -1434,10 +1434,15 @@ function initIndexPage() {
     }
 
     const MAX_LOG_ENTRIES = 500;
+    const seenLogKeys = new Set();
 
     function appendIndexLog(log) {
         const container = document.getElementById('idx-log-container');
         if (!container) return;
+        const logKey = (log.timestamp || '') + '\n' + (log.level || '') + '\n' + (log.message || '');
+        if (seenLogKeys.has(logKey)) return;
+        seenLogKeys.add(logKey);
+        if (seenLogKeys.size > 600) seenLogKeys.delete(seenLogKeys.values().next().value);
         // Clear empty placeholder
         const empty = container.querySelector('.reasoning-empty');
         if (empty) container.innerHTML = '';
