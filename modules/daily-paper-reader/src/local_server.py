@@ -641,6 +641,9 @@ class RunStore:
 
     def __init__(self, runs_dir: Path | None = None) -> None:
         self._lock = threading.Lock()
+        self._disk_lock = threading.Lock()
+        self._persist_seq: dict[str, int] = {}
+        self._pending_persist: dict[str, tuple[int, dict[str, Any]]] = {}
         self._runs: dict[str, dict[str, Any]] = {}
         self._processes: dict[str, subprocess.Popen[str]] = {}
         self._runs_dir = Path(runs_dir) if runs_dir is not None else RUNS_DIR
@@ -651,18 +654,34 @@ class RunStore:
     def _metadata_path(self, run_id: str) -> Path:
         return self._runs_dir / run_id / "run.json"
 
-    def _persist_locked(self, run: dict[str, Any]) -> None:
+    def _queue_persist_locked(self, run: dict[str, Any]) -> None:
+        """记下要写盘的快照。调用方须已持有 _lock，写盘放到 _flush_persisted。"""
         run_id = str(run.get("id") or "").strip()
         if not run_id:
             return
-        path = self._metadata_path(run_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp = path.with_suffix(".json.tmp")
-        temp.write_text(
-            json.dumps(self._public_run(run), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        temp.replace(path)
+        seq = self._persist_seq.get(run_id, 0) + 1
+        self._persist_seq[run_id] = seq
+        self._pending_persist[run_id] = (seq, self._public_run(run))
+
+    def _flush_persisted(self) -> None:
+        """把进度写到磁盘，但不占着读取进度用的那把锁。"""
+        with self._lock:
+            pending = self._pending_persist
+            self._pending_persist = {}
+        if not pending:
+            return
+        with self._disk_lock:
+            for run_id, (seq, public) in pending.items():
+                if self._persist_seq.get(run_id) != seq:
+                    continue
+                path = self._metadata_path(run_id)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temp = path.with_suffix(".json.tmp")
+                temp.write_text(
+                    json.dumps(public, ensure_ascii=False, separators=(",", ":")),
+                    encoding="utf-8",
+                )
+                temp.replace(path)
 
     def _note_run_number(self, item: dict[str, Any]) -> None:
         try:
@@ -706,11 +725,11 @@ class RunStore:
                         message="上次生成时服务停过，这次已标成中断。可以重新开始。",
                     )
                 )
-                self._persist_locked(item)
+                self._queue_persist_locked(item)
                 continue
             if sensitive.intersection(item):
                 self._remember_run(item)
-                self._persist_locked(item)
+                self._queue_persist_locked(item)
                 self._runs.pop(str(item.get("id") or ""), None)
             finished.append((str(item.get("created_at") or ""), path))
         finished.sort()
@@ -725,6 +744,7 @@ class RunStore:
             if isinstance(item, dict) and str(item.get("id") or "") == run_id:
                 self._remember_run(item)
         self._trim_finished_locked()
+        self._flush_persisted()
 
     def _trim_finished_locked(self) -> None:
         """Keep recent finished runs in memory. The files on disk stay."""
@@ -799,8 +819,9 @@ class RunStore:
             self._max_run_number += 1
             run["run_number"] = self._max_run_number
             self._runs[run_id] = run
-            self._persist_locked(run)
+            self._queue_persist_locked(run)
             self._trim_finished_locked()
+        self._flush_persisted()
         thread = threading.Thread(target=self._run_process, args=(run_id,), daemon=True)
         thread.start()
         return self._public_run(run)
@@ -840,7 +861,8 @@ class RunStore:
             run["error"] = message
             run["completed_at"] = utc_now()
             run["updated_at"] = utc_now()
-            self._persist_locked(run)
+            self._queue_persist_locked(run)
+        self._flush_persisted()
         print(f"[papers] run {run_id} silent for {_RUN_SILENCE_S}s", flush=True)
         if proc is not None and proc.poll() is None:
             _terminate_process_tree(proc)
@@ -885,7 +907,8 @@ class RunStore:
                 return
             run.update(patch)
             run["updated_at"] = utc_now()
-            self._persist_locked(run)
+            self._queue_persist_locked(run)
+        self._flush_persisted()
 
     def _emit(self, run_id: str, event: dict[str, Any]) -> None:
         if not event:
@@ -920,7 +943,8 @@ class RunStore:
             if not replaced:
                 events.append(event)
             run["updated_at"] = utc_now()
-            self._persist_locked(run)
+            self._queue_persist_locked(run)
+        self._flush_persisted()
 
     def delete(self, run_id: str) -> tuple[bool, str]:
         with self._lock:
