@@ -500,8 +500,6 @@ async function fetchScholarPapers() {
     const btn = document.getElementById('scholar-fetch-btn');
     btn.disabled = true; btn.textContent = '获取中…';
     document.getElementById('scholar-result-area').style.display = 'none';
-    // 自动保存当前所有配置（复用主保存函数）
-    try { await saveIndexConfig(); } catch(e) { console.error('自动保存配置失败:', e); }
     try {
         const res = await fetch(citationPublicApiUrl('/api/scholar/papers'), {
             method: 'POST',
