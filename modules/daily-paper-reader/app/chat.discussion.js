@@ -1592,6 +1592,8 @@ window.PrivateDiscussionChat = (function () {
   const initForPage = (paperId) => {
     const mainContent = document.querySelector('.markdown-section');
     if (!mainContent || !paperId) return;
+    // 总结和综述脚本各补挂一次。同一页再挂会叠出两个问答框。
+    if (mainContent.querySelector('#paper-chat-container')) return;
 
     const container = document.createElement('div');
     container.innerHTML = renderChatUI();
