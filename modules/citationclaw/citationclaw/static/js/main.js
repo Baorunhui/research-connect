@@ -264,7 +264,7 @@ var GlobalProgress = (function () {
             el.addEventListener('click', function () {
                 SpaRouter.switchTo('home');
                 var log = document.getElementById('idx-log-section');
-                if (log) log.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                if (log) log.scrollIntoView({ behavior: 'auto', block: 'nearest' });
             });
         }
     }
@@ -323,7 +323,7 @@ window.scrollToApiConfig = function() {
     var modalEl = document.getElementById('api-key-modal');
     if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
     var card = document.getElementById('api-config-card');
-    if (card) card.scrollIntoView({behavior: 'smooth', block: 'center'});
+    if (card) card.scrollIntoView({behavior: 'auto', block: 'center'});
 };
 
 // ==================== Config Panel Functions (module scope) ====================
@@ -1632,7 +1632,7 @@ function initIndexPage() {
         body.innerHTML = html || '<p style="color:var(--muted);font-size:12px;padding:8px 0">没有找到结果文件。</p>';
 
         // Scroll into view
-        section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        section.scrollIntoView({ behavior: 'auto', block: 'nearest' });
     }
 }
 
