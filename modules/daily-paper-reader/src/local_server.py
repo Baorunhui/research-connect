@@ -3203,12 +3203,21 @@ class Handler(SimpleHTTPRequestHandler):
             ".js", ".css", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".woff2",
         ))
 
+    def _revalidatable_doc(self) -> bool:
+        """论文正文可以留在浏览器里，但打开前先问服务器有没有更新。"""
+        path = urlparse(self.path).path.lower()
+        if path.startswith("/api/"):
+            return False
+        return path.endswith((".md", ".markdown", ".txt"))
+
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         if self._cacheable_static():
             self.send_header("Cache-Control", "public, max-age=86400")
+        elif self._revalidatable_doc():
+            self.send_header("Cache-Control", "private, max-age=0, must-revalidate")
         else:
             self.send_header("Cache-Control", "no-store")
         super().end_headers()
