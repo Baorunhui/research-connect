@@ -413,6 +413,9 @@ window.PaperSummarizer = (function () {
     var meta = result.meta || {};
     var paperId = meta.paper_id || '';
     if (paperId) {
+      if (window.DPRSidebar && typeof window.DPRSidebar.refresh === 'function') {
+        window.DPRSidebar.refresh();
+      }
       setStatus('✅ 已生成纸张页，即将跳转…');
       var target = '#/' + paperId.replace(/^#?\//, '');
       try {

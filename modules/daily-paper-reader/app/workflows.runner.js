@@ -543,6 +543,9 @@ window.DPRWorkflowRunner = (function () {
       renderLocalRun(run, wantLog ? (data.log || '') : '');
       if (['completed', 'interrupted', 'cancelled'].indexOf(String(run.status || '').toLowerCase()) >= 0) {
         stopPolling();
+        if (window.DPRSidebar && typeof window.DPRSidebar.refresh === 'function') {
+          window.DPRSidebar.refresh();
+        }
         const doneLabel = formatRunBadgeText(run.status, run.conclusion);
         const reason = String(run.error || '').trim();
         const safeReason = reason && reason.length <= 180 && !/[A-Za-z]{3,}|https?:\/\//.test(reason)

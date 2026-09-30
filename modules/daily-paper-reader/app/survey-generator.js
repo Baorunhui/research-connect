@@ -406,6 +406,9 @@ window.SurveyGenerator = (function () {
     var report = result.report || {};
     var paperId = report.paper_id || report.route || '';
     if (paperId) {
+      if (window.DPRSidebar && typeof window.DPRSidebar.refresh === 'function') {
+        window.DPRSidebar.refresh();
+      }
       setStatus('✅ 综述已生成，正在打开报告页…');
       var target = '#/' + String(paperId).replace(/^#?\//, '');
       try {
