@@ -3477,7 +3477,11 @@
     window.addEventListener('hashchange', function () { syncActive(); });
     window.addEventListener('resize', syncResponsiveSidebarMode);
     document.addEventListener('dpr-paper-read-state-changed', function () {
-      rerenderSidebarBody(rerenderOptionsForReadStateEvent());
+      if (state.filter === 'unread') {
+        rerenderSidebarBody(rerenderOptionsForReadStateEvent());
+        return;
+      }
+      updateReadStateMarks();
     });
 
     document.addEventListener('visibilitychange', function () {
