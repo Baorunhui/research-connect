@@ -836,9 +836,9 @@ window.PrivateDiscussionChat = (function () {
     }
 
     // 优先使用与后端一致的 .txt 抽取全文作为上下文（不截断）
-    if (paperId) {
+    if (paperId && paperId.indexOf('..') < 0 && paperId.indexOf('\\') < 0) {
       try {
-        const txtUrl = `docs/${paperId}.txt`;
+        const txtUrl = 'docs/' + paperId.split('/').filter(Boolean).map(encodeURIComponent).join('/') + '.txt';
         const resp = await fetch(txtUrl);
         if (resp.ok) {
           const txt = await resp.text();
@@ -867,9 +867,13 @@ window.PrivateDiscussionChat = (function () {
 
     // 回退策略：如果 .txt 不存在，就用页面正文纯文本
     if (!paperContent) {
-      paperContent =
-        (document.querySelector('.markdown-section') || {}).innerText ||
-        '';
+      const section = document.querySelector('.markdown-section');
+      if (section) {
+        const clone = section.cloneNode(true);
+        const chat = clone.querySelector('#paper-chat-container');
+        if (chat) chat.remove();
+        paperContent = String(clone.innerText || '').trim();
+      }
     }
 
     if (!question) return;
