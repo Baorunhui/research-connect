@@ -1963,9 +1963,11 @@ def _trim_chat_messages(messages: list) -> list[dict]:
     system = [item for item in cleaned if item["role"] == "system"][:1]
     rest = [item for item in cleaned if item["role"] != "system"]
     paper: dict | None = None
-    if rest and rest[0]["role"] == "user" and len(rest[0]["content"]) > 2000:
-        paper = rest[0]
-        rest = rest[1:]
+    if rest and rest[0]["role"] == "user":
+        text = rest[0]["content"]
+        if len(text) > 2000 or text.startswith("下面是当前论文的完整纯文本内容"):
+            paper = rest[0]
+            rest = rest[1:]
     tail = rest[-8:]
     return system + ([paper] if paper else []) + tail
 
