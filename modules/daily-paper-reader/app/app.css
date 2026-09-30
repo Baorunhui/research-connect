@@ -6499,6 +6499,14 @@ body.dpr-pdf-preview-resizing .dpr-pdf-preview-resize-handle::after {
   gap: 16px;
 }
 
+.dpr-pdf-preview-more {
+  margin: 0 0 8px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .dpr-pdf-preview-page {
   position: relative;
   max-width: 100%;

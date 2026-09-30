@@ -2923,6 +2923,7 @@ window.$docsify = {
       const PDF_PREVIEW_TARGET_TOTAL_PIXELS = 40000000;
       let pdfJsLoadPromise = null;
       let pdfPreviewRenderSeq = 0;
+      let pdfPreviewDocument = null;
 
       const resolvePdfCanvasMetrics = (
         baseWidth,
@@ -3084,11 +3085,20 @@ window.$docsify = {
           if (renderSeq !== pdfPreviewRenderSeq) return;
           const loadingTask = pdfjsLib.getDocument({ url: rawUrl });
           const pdf = await loadingTask.promise;
-          if (renderSeq !== pdfPreviewRenderSeq) return;
+          if (renderSeq !== pdfPreviewRenderSeq) {
+            if (pdf && pdf.destroy) pdf.destroy();
+            return;
+          }
+          if (pdfPreviewDocument && pdfPreviewDocument.destroy) {
+            try { pdfPreviewDocument.destroy(); } catch (e) { /* 旧预览已经关掉 */ }
+          }
+          pdfPreviewDocument = pdf;
           setPdfPreviewMessage(panel, '', '');
 
-          for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-            if (renderSeq !== pdfPreviewRenderSeq) return;
+          const stage = panel.querySelector('.dpr-pdf-preview-stage') || pagesEl;
+          let nextPage = 1;
+          let rendering = false;
+          const paintPage = async (pageNumber) => {
             const page = await pdf.getPage(pageNumber);
             if (renderSeq !== pdfPreviewRenderSeq) return;
             const baseViewport = page.getViewport({ scale: 1 });
@@ -3123,8 +3133,53 @@ window.$docsify = {
               viewport,
               transform: [outputScale, 0, 0, outputScale, 0, 0],
             }).promise;
-          }
-          panel.dataset.renderedPdfUrl = rawUrl;
+          };
+          const pump = async () => {
+            if (rendering || renderSeq !== pdfPreviewRenderSeq) return;
+            rendering = true;
+            try {
+              const existingMore = pagesEl.querySelector('.dpr-pdf-preview-more');
+              if (existingMore) existingMore.remove();
+              while (nextPage <= pdf.numPages && renderSeq === pdfPreviewRenderSeq) {
+                if (nextPage > 2) {
+                  const viewportHeight = stage.clientHeight || 0;
+                  if (viewportHeight <= 0) break;
+                  const filled = stage.scrollHeight > viewportHeight + 24;
+                  const nearEnd = stage.scrollTop + viewportHeight >= stage.scrollHeight - 720;
+                  if (filled && !nearEnd) break;
+                }
+                const pageNumber = nextPage;
+                nextPage += 1;
+                await paintPage(pageNumber);
+              }
+              if (renderSeq !== pdfPreviewRenderSeq) return;
+              let more = pagesEl.querySelector('.dpr-pdf-preview-more');
+              if (nextPage > pdf.numPages) {
+                if (more) more.remove();
+                panel.dataset.renderedPdfUrl = rawUrl;
+              } else {
+                if (!more) {
+                  more = document.createElement('p');
+                  more.className = 'dpr-pdf-preview-more';
+                  more.textContent = '先显示前面几页。继续往下翻，后面的页会出来。';
+                }
+                pagesEl.appendChild(more);
+              }
+            } finally {
+              rendering = false;
+            }
+          };
+          const onScroll = () => {
+            if (renderSeq !== pdfPreviewRenderSeq) {
+              stage.removeEventListener('scroll', onScroll);
+              return;
+            }
+            pump();
+          };
+          if (panel._dprPdfScroll) stage.removeEventListener('scroll', panel._dprPdfScroll);
+          panel._dprPdfScroll = onScroll;
+          stage.addEventListener('scroll', onScroll, { passive: true });
+          await pump();
         } catch (err) {
           if (renderSeq !== pdfPreviewRenderSeq) return;
           pagesEl.innerHTML = '';
