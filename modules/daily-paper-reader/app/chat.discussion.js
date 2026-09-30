@@ -1138,6 +1138,7 @@ window.PrivateDiscussionChat = (function () {
       });
     };
 
+    let stopChatTimers = function () {};
     try {
       const messages = [];
       messages.push({
@@ -1175,8 +1176,26 @@ window.PrivateDiscussionChat = (function () {
       }
 
       const controller = new AbortController();
-      const timeoutMs = 120000;
-      const timerId = setTimeout(() => controller.abort(), timeoutMs);
+      const idleMs = 90000;
+      const hardMs = 360000;
+      const startedAt = Date.now();
+      let idleTimer = null;
+      const armIdle = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        const left = hardMs - (Date.now() - startedAt);
+        if (left <= 0) {
+          controller.abort();
+          return;
+        }
+        idleTimer = setTimeout(() => controller.abort(), Math.min(idleMs, left));
+      };
+      stopChatTimers = () => {
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+      };
+      armIdle();
       let resp = null;
 
       const primaryPayload = buildStreamingChatPayload('', model, messages);
@@ -1196,34 +1215,34 @@ window.PrivateDiscussionChat = (function () {
         body: JSON.stringify(payload),
       });
 
-      try {
-        resp = await doChatFetch(primaryPayload);
-        if (
-          resp
-          && !resp.ok
-          && (
-            JSON.stringify(primaryPayload).includes('"reasoning"')
-            || JSON.stringify(primaryPayload).includes('"extra_body"')
-            || JSON.stringify(primaryPayload).includes('"thinking"')
-          )
-        ) {
-          let retryText = '';
-          try {
-            retryText = await resp.text();
-          } catch {
-            retryText = '';
-          }
-          if (
-            resp.status === 400
-            && /reasoning|extra_body|return_reasoning|thinking/i.test(retryText)
-          ) {
-            resp = await doChatFetch(fallbackPayload);
-          } else {
-            resp._dprErrorPreview = retryText;
-          }
+      resp = await doChatFetch(primaryPayload);
+      if (
+        resp
+        && !resp.ok
+        && (
+          JSON.stringify(primaryPayload).includes('"reasoning"')
+          || JSON.stringify(primaryPayload).includes('"extra_body"')
+          || JSON.stringify(primaryPayload).includes('"thinking"')
+        )
+      ) {
+        let retryText = '';
+        try {
+          retryText = await resp.text();
+        } catch {
+          retryText = '';
         }
-      } finally {
-        clearTimeout(timerId);
+        if (
+          resp.status === 400
+          && /reasoning|extra_body|return_reasoning|thinking/i.test(retryText)
+        ) {
+          resp = await doChatFetch(fallbackPayload);
+        } else {
+          resp._dprErrorPreview = retryText;
+        }
+      }
+
+      if (!resp) {
+        throw new Error('chat response missing');
       }
 
       if (!resp.ok) {
@@ -1281,6 +1300,7 @@ window.PrivateDiscussionChat = (function () {
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
+          armIdle();
           buffer += decoder.decode(value, { stream: true });
 
           const parts = buffer.split('\n\n');
@@ -1378,10 +1398,22 @@ window.PrivateDiscussionChat = (function () {
           e.name === 'TimeoutError' ||
           /timed out|timed_out/i.test((e.message || '')));
       if (isTimeout) {
-        aiAnswerDiv.textContent = '这次等太久了，请稍后重试。';
-        if (statusEl) {
-          statusEl.textContent = '回答超时，请稍后重试。';
-          statusEl.style.color = '#c00';
+        const kept = (answerBuffer || thinkingBuffer || '').trim();
+        if (kept) {
+          if (!answerBuffer.trim()) {
+            answerBuffer = kept;
+            applyAnswerView();
+          }
+          if (statusEl) {
+            statusEl.textContent = '后面的回答没有继续，已显示前面收到的部分。';
+            statusEl.style.color = '#c90';
+          }
+        } else {
+          aiAnswerDiv.textContent = '这次等太久了，请稍后重试。';
+          if (statusEl) {
+            statusEl.textContent = '回答超时，请稍后重试。';
+            statusEl.style.color = '#c00';
+          }
         }
       } else if (e && e.name === 'TypeError') {
         aiAnswerDiv.textContent = '没有连上问答服务，请稍后重试。';
@@ -1396,10 +1428,8 @@ window.PrivateDiscussionChat = (function () {
           statusEl.style.color = '#c00';
         }
       }
-      if (statusEl) {
-        statusEl.style.color = '#c00';
-      }
     } finally {
+      stopChatTimers();
       // 确保思考动画及其容器被移除
       const responseHeader = aiItem.querySelector('.ai-response-header');
       if (responseHeader) {
