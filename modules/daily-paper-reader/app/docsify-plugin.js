@@ -317,7 +317,7 @@ window.$docsify = {
         let currentContent = [];
         let seenHeading = false;
         let skipCurrentSection = false;
-        const collectText = (node) => normalizeTextForMeta(node && (node.innerText || node.textContent || ''));
+        const collectText = (node) => normalizeTextForMeta(node && (node.textContent != null ? node.textContent : node.innerText || ''));
 
         const flush = () => {
           const text = trimBeforeMarkers(collectText({ innerText: currentContent.join('\n') }), []);
@@ -348,7 +348,7 @@ window.$docsify = {
 
           if (headingTag.includes(tag)) {
             flush();
-            const text = normalizeTextForMeta(child.innerText || '').trim();
+            const text = normalizeTextForMeta(child.textContent || '').trim();
             skipCurrentSection = shouldSkipHeadingBlock(text);
             if (skipCurrentSection) {
               continue;
@@ -464,20 +464,21 @@ window.$docsify = {
           const citationDate = date ? date.replace(/-/g, '/') : '';
 
           let authors = [];
-          document.querySelectorAll('.markdown-section p').forEach((p) => {
-            if (p.innerText.includes('Authors:')) {
-              let text = p.innerText.replace('Authors:', '').trim();
-              // 清理可能被其它扩展注入的换行和尾部信息，以及尾部日期
-              text = text.replace(/\s+/g, ' ').trim();
-              text = text
-                .replace(/Date\s*:\s*\d{4}-\d{2}-\d{2}.*/i, '')
-                .trim();
-              authors = text
-                .split(/,|，/)
-                .map((a) => a.trim())
-                .filter(Boolean);
-            }
-          });
+          const authorParagraphs = document.querySelectorAll('.markdown-section p');
+          for (let authorIndex = 0; authorIndex < authorParagraphs.length; authorIndex += 1) {
+            const authorText = authorParagraphs[authorIndex].textContent || '';
+            if (!authorText.includes('Authors:')) continue;
+            let text = authorText.replace('Authors:', '').trim();
+            text = text.replace(/\s+/g, ' ').trim();
+            text = text
+              .replace(/Date\s*:\s*\d{4}-\d{2}-\d{2}.*/i, '')
+              .trim();
+            authors = text
+              .split(/,|，/)
+              .map((a) => a.trim())
+              .filter(Boolean);
+            break;
+          }
 
           updateMetaTag('citation_title', title);
           updateMetaTag('citation_journal_title', 'arxiv');
@@ -676,7 +677,7 @@ window.$docsify = {
                 .filter(Boolean);
             };
             const getNodeText = (el) =>
-              normalizeTextForMeta(el && (el.innerText || el.textContent || ''));
+              normalizeTextForMeta(el && (el.textContent || ''));
             const titleZhText = getNodeText(
               document.querySelector('.paper-title-row .paper-title-zh'),
             ) || getNodeText(document.querySelector('.paper-title-zh'));
