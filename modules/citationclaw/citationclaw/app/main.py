@@ -53,6 +53,18 @@ app = FastAPI(title="CitationClaw v2", version="2.0.0", lifespan=lifespan)
 _PKG_DIR = Path(__file__).parent.parent
 _ROOT_DIR = _PKG_DIR.parent
 app.mount("/static", StaticFiles(directory=str(_PKG_DIR / "static")), name="static")
+
+_STATIC_CACHE_SUFFIXES = (".js", ".css", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".woff", ".woff2")
+
+
+@app.middleware("http")
+async def cache_versioned_static(request: Request, call_next):
+    """Scripts and styles are loaded with a version query, so a day of caching is safe."""
+    response = await call_next(request)
+    path = request.url.path.lower()
+    if path.startswith("/static/") and path.endswith(_STATIC_CACHE_SUFFIXES):
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
 if (_ROOT_DIR / "docs" / "assets").exists():
     app.mount("/docs-assets", StaticFiles(directory=str(_ROOT_DIR / "docs" / "assets")), name="docs-assets")
 templates = Jinja2Templates(directory=str(_PKG_DIR / "templates"))
