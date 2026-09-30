@@ -46,6 +46,17 @@ def _mask_token(token: str) -> str:
     return f"***({len(token)} chars)"
 
 
+def merge_citing_descriptions(excel_file: Path, desc_map: dict, out_file: Path) -> tuple:
+    """Write citing descriptions into a spreadsheet off the request loop."""
+    import pandas as pd
+
+    df = pd.read_excel(excel_file)
+    df["Citing_Description"] = df["Paper_Title"].str.strip().map(desc_map).fillna("")
+    df.to_excel(out_file, index=False)
+    filled = int((df["Citing_Description"].astype(str).str.strip() != "").sum())
+    return filled, len(df)
+
+
 class TaskExecutor:
     def __init__(self, log_manager: LogManager, config_manager: ConfigManager):
         """
@@ -1529,7 +1540,6 @@ class TaskExecutor:
                 self.log_manager.info("Phase 4 · 引文语境提取: PDF 解析 + 轻量 LLM")
                 self.log_manager.info("=" * 50)
 
-                import pandas as pd
                 phase4_output_jsonl = result_dir / f"{file_prefix}_citing_desc.jsonl"
                 await self._run_skill(
                     "phase4_citation_extract",
@@ -1566,13 +1576,12 @@ class TaskExecutor:
                                 continue
 
                     if desc_map:
-                        df = pd.read_excel(excel_file)
-                        df["Citing_Description"] = df["Paper_Title"].str.strip().map(desc_map).fillna("")
                         citing_desc_excel = result_dir / f"{file_prefix}_results_with_citing_desc.xlsx"
-                        df.to_excel(citing_desc_excel, index=False)
-                        n_with = (df["Citing_Description"].str.strip() != "").sum()
+                        n_with, n_rows = await asyncio.to_thread(
+                            merge_citing_descriptions, excel_file, desc_map, citing_desc_excel,
+                        )
                         self.log_manager.success(
-                            f"Phase 4 完成: {n_with}/{len(df)} 篇有引文语境描述"
+                            f"Phase 4 完成: {n_with}/{n_rows} 篇有引文语境描述"
                         )
 
             # ==================== 阶段5: HTML报告（可选）====================
@@ -2072,8 +2081,6 @@ class TaskExecutor:
             # —— Phase 4：引文语境提取（可选，PDF 下载 + 本地解析）——
             citing_desc_excel = excel_file
             if config.enable_citing_description:
-                import pandas as pd
-
                 self.log_manager.info("=" * 50)
                 self.log_manager.info("Phase 4 · 引文语境提取: PDF 解析 + 轻量 LLM (复用 Phase 2 PDF)")
                 self.log_manager.info("=" * 50)
@@ -2122,13 +2129,12 @@ class TaskExecutor:
                                 continue
 
                     if desc_map:
-                        df = pd.read_excel(excel_file)
-                        df["Citing_Description"] = df["Paper_Title"].str.strip().map(desc_map).fillna("")
                         citing_desc_excel = result_dir / f"{output_prefix}_results_with_citing_desc.xlsx"
-                        df.to_excel(citing_desc_excel, index=False)
-                        n_with = (df["Citing_Description"].str.strip() != "").sum()
+                        n_with, n_rows = await asyncio.to_thread(
+                            merge_citing_descriptions, excel_file, desc_map, citing_desc_excel,
+                        )
                         self.log_manager.success(
-                            f"Phase 4 完成: {n_with}/{len(df)} 篇有引文语境描述"
+                            f"Phase 4 完成: {n_with}/{n_rows} 篇有引文语境描述"
                         )
 
             # —— Phase 5：生成 HTML 画像报告（可选）——
@@ -2901,7 +2907,6 @@ class TaskExecutor:
 
                 # 合并引用描述回 Excel
                 if phase4_output_jsonl.exists():
-                    import pandas as pd
                     desc_map = {}
                     with open(phase4_output_jsonl, encoding="utf-8") as f:
                         for line in f:
@@ -2923,13 +2928,12 @@ class TaskExecutor:
                             except Exception:
                                 continue
                     if desc_map:
-                        df = pd.read_excel(excel_file)
-                        df["Citing_Description"] = df["Paper_Title"].str.strip().map(desc_map).fillna("")
                         citing_desc_excel = result_dir / f"{output_prefix}_results_with_citing_desc.xlsx"
-                        df.to_excel(citing_desc_excel, index=False)
-                        n_with = (df["Citing_Description"].str.strip() != "").sum()
+                        n_with, n_rows = await asyncio.to_thread(
+                            merge_citing_descriptions, excel_file, desc_map, citing_desc_excel,
+                        )
                         self.log_manager.success(
-                            f"Phase 4 完成: {n_with}/{len(df)} 篇有引文语境描述"
+                            f"Phase 4 完成: {n_with}/{n_rows} 篇有引文语境描述"
                         )
 
             # ── Phase 5: 生成 HTML 画像报告 ──
@@ -3132,7 +3136,7 @@ class TaskExecutor:
 
             # 保存主 Excel（Phase 5 输入）
             citing_desc_excel = result_dir / f"{output_prefix}_results_with_citing_desc.xlsx"
-            df.to_excel(citing_desc_excel, index=False)
+            await asyncio.to_thread(df.to_excel, citing_desc_excel, index=False)
             self.log_manager.info(f"已保存引用描述 Excel: {citing_desc_excel}")
 
             # 重建知名学者文件
@@ -3141,14 +3145,16 @@ class TaskExecutor:
             exporter = ResultExporter(log_callback=self.log_manager.info)
             flattened = df.to_dict("records")
             try:
-                exporter.highligh_renowned_scholar(flattened, [all_renowned, top_renowned])
+                await asyncio.to_thread(
+                    exporter.highligh_renowned_scholar, flattened, [all_renowned, top_renowned],
+                )
                 self.log_manager.info("已重建知名学者文件")
             except Exception as exc:
                 print(f"[citationclaw] scholar file rebuild failed: {exc}", flush=True)
                 self.log_manager.warning("学者名单没能写进表格，报告里这一部分会空着。")
                 empty = pd.DataFrame()
-                empty.to_excel(all_renowned, index=False)
-                empty.to_excel(top_renowned, index=False)
+                await asyncio.to_thread(empty.to_excel, all_renowned, index=False)
+                await asyncio.to_thread(empty.to_excel, top_renowned, index=False)
 
             # 运行 Phase 5
             self.log_manager.info("Phase 5 · 报告生成与导出")
