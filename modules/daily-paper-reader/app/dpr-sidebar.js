@@ -3641,6 +3641,9 @@
           loadSchedule();
           return;
         }
+        // 目录更新时留在原来的位置。第一次打开才把当前论文滚到中间。
+        var keepPlace = Boolean(force && state.bodyEl);
+        var previousScroll = keepPlace ? (state.bodyEl.scrollTop || 0) : 0;
         state.sidebarSource = text;
         state.model = parseSidebar(text);
         determineInitialExpansion();
@@ -3660,7 +3663,12 @@
         renderBody();
         updateReadStateMarks();
         applyFilterAndSearch();
-        syncActive(syncActiveOptionsForInitialLoad());
+        if (keepPlace) {
+          syncActive({ center: false, autoMark: false });
+          if (state.bodyEl) state.bodyEl.scrollTop = previousScroll;
+        } else {
+          syncActive(syncActiveOptionsForInitialLoad());
+        }
         dispatchSidebarUpdated();
         loadSchedule();
       })
