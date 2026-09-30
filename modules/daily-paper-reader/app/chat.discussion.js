@@ -14,6 +14,7 @@ window.PrivateDiscussionChat = (function () {
   const QUESTION_PINNED_KEY = 'dpr_chat_pinned_questions_v1';
   const MAX_RECENT_QUESTIONS = 10; // 展示与保存都只保留最近 10 个（用户诉求）
   const MAX_PINNED_QUESTIONS = 50; // 防止无限增长
+  const paperTextCache = new Map();
 
   const resizeChatInput = (input) => {
     if (!input) return;
@@ -825,7 +826,7 @@ window.PrivateDiscussionChat = (function () {
     }
 
     const question = input.value.trim();
-    let paperContent = '';
+    let paperContent = paperId ? paperTextCache.get(paperId) || '' : '';
 
     if (!question) {
       if (statusEl) {
@@ -835,8 +836,8 @@ window.PrivateDiscussionChat = (function () {
       return;
     }
 
-    // 优先使用与后端一致的 .txt 抽取全文作为上下文（不截断）
-    if (paperId && paperId.indexOf('..') < 0 && paperId.indexOf('\\') < 0) {
+    // 同一篇论文的正文只取一次。换一篇会用新的 paperId。
+    if (!paperContent && paperId && paperId.indexOf('..') < 0 && paperId.indexOf('\\') < 0) {
       try {
         const txtUrl = 'docs/' + paperId.split('/').filter(Boolean).map(encodeURIComponent).join('/') + '.txt';
         const resp = await fetch(txtUrl);
@@ -859,6 +860,7 @@ window.PrivateDiscussionChat = (function () {
         paperContent = String(clone.innerText || '').trim();
       }
     }
+    if (paperId && paperContent) paperTextCache.set(paperId, paperContent);
 
     if (!question) return;
 

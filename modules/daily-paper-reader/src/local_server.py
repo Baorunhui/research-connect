@@ -1949,6 +1949,22 @@ def build_chat_request_payload(model: str, messages: list[dict], *, max_tokens: 
     return payload
 
 
+_CHAT_PAPER_LIMIT = 60000
+_CHAT_PAPER_HEAD = 45000
+_CHAT_PAPER_TAIL = 12000
+
+
+def _shorten_chat_paper(text: str) -> str:
+    """太长的全文会让这一问变慢，也容易答不出来。留下开头和结尾。"""
+    if len(text) <= _CHAT_PAPER_LIMIT:
+        return text
+    return (
+        text[:_CHAT_PAPER_HEAD]
+        + "\n\n（中间有一段这次没有带上。）\n\n"
+        + text[-_CHAT_PAPER_TAIL:]
+    )
+
+
 def _trim_chat_messages(messages: list) -> list[dict]:
     """保留系统提示、论文正文，以及最近几轮。更早的来回不再每次重发。"""
     cleaned: list[dict] = []
@@ -1966,7 +1982,7 @@ def _trim_chat_messages(messages: list) -> list[dict]:
     if rest and rest[0]["role"] == "user":
         text = rest[0]["content"]
         if len(text) > 2000 or text.startswith("下面是当前论文的完整纯文本内容"):
-            paper = rest[0]
+            paper = {"role": "user", "content": _shorten_chat_paper(text)}
             rest = rest[1:]
     tail = rest[-8:]
     return system + ([paper] if paper else []) + tail
