@@ -1077,7 +1077,7 @@ window.PrivateDiscussionChat = (function () {
     const { renderMarkdownWithTables, renderMathInEl } =
       window.DPRMarkdown || {};
 
-    const applyThinkingView = () => {
+    const applyThinkingView = (withMath) => {
       if (!thinkingBuffer || !thinkingContent) return;
       const source = thinkingBuffer;
       const maxLines = 6;
@@ -1097,12 +1097,12 @@ window.PrivateDiscussionChat = (function () {
       } else {
         thinkingContent.textContent = toRender;
       }
-      if (renderMathInEl) {
+      if (withMath !== false && renderMathInEl) {
         renderMathInEl(thinkingContent);
       }
     };
 
-    const applyAnswerView = () => {
+    const applyAnswerView = (withMath) => {
       if (!aiAnswerDiv) return;
       const content = answerBuffer || '（空响应）';
       if (renderMarkdownWithTables) {
@@ -1110,7 +1110,7 @@ window.PrivateDiscussionChat = (function () {
       } else {
         aiAnswerDiv.textContent = content;
       }
-      if (renderMathInEl) {
+      if (withMath !== false && renderMathInEl) {
         renderMathInEl(aiAnswerDiv);
       }
     };
@@ -1123,19 +1123,30 @@ window.PrivateDiscussionChat = (function () {
       });
     }
 
+    const paintChat = (withMath) => {
+      if (thinkingBuffer && thinkingContainer) {
+        thinkingContainer.style.display = 'block';
+        applyThinkingView(withMath);
+      }
+      if (answerBuffer) applyAnswerView(withMath);
+      scrollToBottomIfNeeded();
+    };
+
     const scheduleRender = () => {
       if (renderTimer) return;
-      renderTimer = requestAnimationFrame(() => {
+      // 出字时先排文字。每个字都重排公式会把页面卡住。
+      renderTimer = setTimeout(() => {
         renderTimer = null;
-        if (thinkingBuffer && thinkingContainer) {
-          thinkingContainer.style.display = 'block';
-          applyThinkingView();
-        }
-        if (answerBuffer) {
-          applyAnswerView();
-        }
-        scrollToBottomIfNeeded();
-      });
+        paintChat(false);
+      }, 250);
+    };
+
+    const finishChatRender = () => {
+      if (renderTimer) {
+        clearTimeout(renderTimer);
+        renderTimer = null;
+      }
+      paintChat(true);
     };
 
     let stopChatTimers = function () {};
@@ -1291,7 +1302,7 @@ window.PrivateDiscussionChat = (function () {
             ? data.choices[0].message.content
             : '这次没有答上来，请稍后重试。';
         answerBuffer = answer;
-        scheduleRender();
+        finishChatRender();
       } else {
         const reader = resp.body.getReader();
         const decoder = new TextDecoder('utf-8');
@@ -1337,6 +1348,7 @@ window.PrivateDiscussionChat = (function () {
             }
           }
         }
+        finishChatRender();
       }
 
       // 回复完成，移除思考动画及其容器
@@ -1400,10 +1412,8 @@ window.PrivateDiscussionChat = (function () {
       if (isTimeout) {
         const kept = (answerBuffer || thinkingBuffer || '').trim();
         if (kept) {
-          if (!answerBuffer.trim()) {
-            answerBuffer = kept;
-            applyAnswerView();
-          }
+          if (!answerBuffer.trim()) answerBuffer = kept;
+          finishChatRender();
           if (statusEl) {
             statusEl.textContent = '后面的回答没有继续，已显示前面收到的部分。';
             statusEl.style.color = '#c90';
@@ -1430,6 +1440,10 @@ window.PrivateDiscussionChat = (function () {
       }
     } finally {
       stopChatTimers();
+      if (renderTimer) {
+        clearTimeout(renderTimer);
+        renderTimer = null;
+      }
       // 确保思考动画及其容器被移除
       const responseHeader = aiItem.querySelector('.ai-response-header');
       if (responseHeader) {
