@@ -54,6 +54,8 @@ window.PaperSummarizer = (function () {
     seenEventIds: {},  // 已展示过的事件 event_id 集合（去重）
     progressKey: '',
     pollFailures: 0,
+    pollGeneration: 0,
+    pollTimer: null,
   };
 
   function renderResult(summary, meta, figures) {
@@ -243,6 +245,12 @@ window.PaperSummarizer = (function () {
 
   function pollJob(jobId) {
     if (state.jobId !== jobId) return; // 已被新请求取代
+    state.pollGeneration += 1;
+    var generation = state.pollGeneration;
+    if (state.pollTimer) {
+      clearTimeout(state.pollTimer);
+      state.pollTimer = null;
+    }
     fetch(summarizeEndpoint() + '/' + encodeURIComponent(jobId), { cache: 'no-store' })
       .then(function (resp) {
         return resp.json().catch(function () { return {}; }).then(function (data) {
@@ -250,7 +258,7 @@ window.PaperSummarizer = (function () {
         });
       })
       .then(function (res) {
-        if (state.jobId !== jobId) return;
+        if (generation !== state.pollGeneration || state.jobId !== jobId) return;
         var data = res.data || {};
         if (!res.ok || !data.ok || !data.job) {
           if (res.status === 404) {
@@ -281,15 +289,15 @@ window.PaperSummarizer = (function () {
           state.busy = false;
           setStatus('这次已停下。');
         } else {
-          setTimeout(function () { pollJob(jobId); }, POLL_INTERVAL);
+          state.pollTimer = setTimeout(function () { pollJob(jobId); }, POLL_INTERVAL);
         }
       })
       .catch(function () {
-        if (state.jobId !== jobId) return;
+        if (generation !== state.pollGeneration || state.jobId !== jobId) return;
         state.pollFailures += 1;
         if (state.pollFailures < 5) {
           setStatus('进度暂时没刷新，正在重试。');
-          setTimeout(function () { pollJob(jobId); }, POLL_INTERVAL);
+          state.pollTimer = setTimeout(function () { pollJob(jobId); }, POLL_INTERVAL);
           return;
         }
         state.busy = false;
