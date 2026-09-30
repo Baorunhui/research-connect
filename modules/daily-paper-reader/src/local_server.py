@@ -201,6 +201,13 @@ def _mark_silent_job(job: dict[str, Any]) -> None:
         events.append(_job_event("job.failed", job_id, message=message))
 
 
+def _keep_recent_events(events: list, keep: int = 80) -> None:
+    """Keep the opening event and the newest lines. The page only shows the recent ones."""
+    extra = len(events) - (keep + 1)
+    if extra > 0:
+        del events[1:1 + extra]
+
+
 def _user_visible_error(exc: BaseException) -> str:
     """Keep short messages we wrote. Hide tracebacks, URLs, and library errors."""
     text = " ".join(str(exc).split())
@@ -1128,6 +1135,7 @@ class SummarizeJobStore:
             if not job:
                 return
             job["events"].append(event)
+            _keep_recent_events(job["events"])
             job["updated_at"] = utc_now()
 
     def _set_status(self, job_id: str, status: str, **extra: Any) -> None:
@@ -1458,6 +1466,7 @@ class SurveyJobStore:
             if not job:
                 return
             job["events"].append(event)
+            _keep_recent_events(job["events"])
             job["updated_at"] = utc_now()
 
     def _set_status(self, job_id: str, status: str, **extra: Any) -> None:
