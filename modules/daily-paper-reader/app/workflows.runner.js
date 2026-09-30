@@ -90,6 +90,7 @@ window.DPRWorkflowRunner = (function () {
   let liveProgressTimer = null;
   let liveProgressRunId = '';
   let liveProgressSignature = '';
+  let liveListStamp = '';
   let dismissedLiveRunId = '';
 
   const syncSidebarFromStep6 = (run) => {
@@ -396,21 +397,34 @@ window.DPRWorkflowRunner = (function () {
       if (!run) {
         liveProgressRunId = '';
         liveProgressSignature = '';
+        liveListStamp = '';
         if (liveProgressEl) liveProgressEl.hidden = true;
         return;
       }
-      let detailed = run;
-      if (run.id) {
-        try {
-          const one = await localApiFetch(`${LOCAL_RUNS_API}/${encodeURIComponent(run.id)}`);
-          if (one && one.run) detailed = one.run;
-        } catch (err) { /* 列表里的摘要够用来显示卡片 */ }
-      }
-      syncSidebarFromStep6(detailed);
-      const runId = String(detailed.id || run.id || '');
+      const runId = String(run.id || '');
       if (active && runId !== liveProgressRunId) dismissedLiveRunId = '';
       liveProgressRunId = runId;
       if (dismissedLiveRunId === runId) return;
+      const listStamp = [
+        runId,
+        String(run.updated_at || ''),
+        String(run.status || ''),
+        String(run.conclusion || ''),
+      ].join('\n');
+      if (listStamp === liveListStamp && liveProgressEl && !liveProgressEl.hidden) return;
+      let detailed = run;
+      let gotDetail = false;
+      if (run.id) {
+        try {
+          const one = await localApiFetch(`${LOCAL_RUNS_API}/${encodeURIComponent(run.id)}`);
+          if (one && one.run) {
+            detailed = one.run;
+            gotDetail = true;
+          }
+        } catch (err) { /* 列表里的摘要够用来显示卡片 */ }
+      }
+      if (gotDetail) liveListStamp = listStamp;
+      syncSidebarFromStep6(detailed);
       const events = Array.isArray(detailed.events) ? detailed.events : [];
       const signature = runId + '\n' + String(detailed.conclusion || detailed.status || '') + '\n' +
         events.map((ev) => (ev && ev.event_id) || '').join(',');
