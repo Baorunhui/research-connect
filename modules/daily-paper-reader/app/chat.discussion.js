@@ -1011,12 +1011,13 @@ window.PrivateDiscussionChat = (function () {
     window.addEventListener('scroll', onUserScroll, { passive: true });
 
     // 跟着最新一句走。不用平滑滚动，否则每个字都会排一次动画。
+    const onThisPage = () => aiItem.isConnected;
     const scrollToBottomIfNeeded = () => {
-      if (userAtBottom) window.scrollTo(0, document.documentElement.scrollHeight);
+      if (onThisPage() && userAtBottom) window.scrollTo(0, document.documentElement.scrollHeight);
     };
 
-    // 发送消息后立即滚动到底部
-    window.scrollTo(0, document.documentElement.scrollHeight);
+    // 发送消息后立即滚动到底部。已经换到别的论文时，不再带动当前页面。
+    if (onThisPage()) window.scrollTo(0, document.documentElement.scrollHeight);
 
     const thinkingContainer = aiItem.querySelector('.thinking-container');
     const thinkingContent = aiItem.querySelector('.thinking-content');
@@ -1069,7 +1070,7 @@ window.PrivateDiscussionChat = (function () {
       return;
     }
     const modelSelect = document.getElementById('chat-llm-model-select');
-    if (model && modelSelect) {
+    if (model && modelSelect && onThisPage()) {
       const known = Array.from(modelSelect.options).some((opt) => opt.value === model);
       if (!known) {
         const opt = document.createElement('option');
@@ -1156,6 +1157,7 @@ window.PrivateDiscussionChat = (function () {
     }
 
     const paintChat = (withMath) => {
+      if (!onThisPage()) return;
       if (thinkingBuffer && thinkingContainer) {
         thinkingContainer.style.display = 'block';
         applyThinkingView(withMath);
@@ -1482,10 +1484,14 @@ window.PrivateDiscussionChat = (function () {
         responseHeader.remove();
       }
       window.removeEventListener('scroll', onUserScroll);
-      input.disabled = false;
-      btn.disabled = false;
-      btn.innerText = '发送';
-      input.focus();
+      if (input.isConnected) {
+        input.disabled = false;
+        input.focus();
+      }
+      if (btn.isConnected) {
+        btn.disabled = false;
+        btn.innerText = '发送';
+      }
     }
   };
 
