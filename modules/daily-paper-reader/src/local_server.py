@@ -2780,6 +2780,17 @@ def _public_base_path() -> str:
     return value if value.startswith("/") else ""
 
 
+def _request_body_length(headers, limit: int) -> int:
+    """Refuse a body before it is read. A negative length would read until the connection closes."""
+    try:
+        length = int(headers.get("Content-Length") or "0")
+    except (TypeError, ValueError):
+        raise ValueError("这次提交读不懂，请再试一次。")
+    if length < 0 or length > limit:
+        raise ValueError("这次提交太大了，请缩小后再试。")
+    return length
+
+
 def _pdf_max_bytes() -> int:
     """PDF 上传/下载体积上限，默认 50MB，可用 DPR_PDF_MAX_MB（单位 MB）覆盖。"""
     try:
@@ -3173,7 +3184,7 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path != "/api/local/workflows/dispatch":
             return self._json({"ok": False, "error": "not found"}, status=404)
         try:
-            length = int(self.headers.get("Content-Length") or "0")
+            length = _request_body_length(self.headers, 1024 * 1024)
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
             workflow_key = str(payload.get("workflowKey") or "")
             workflow_file = str(payload.get("workflowFile") or "")
@@ -3209,7 +3220,7 @@ class Handler(SimpleHTTPRequestHandler):
         GET /api/paper/summarize/<job_id> 获取进度与结果。
         """
         try:
-            length = int(self.headers.get("Content-Length") or "0")
+            length = _request_body_length(self.headers, 80 * 1024 * 1024)
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
             source = str(payload.get("source") or "").strip()
             if source not in ("url", "pdf"):
@@ -3252,7 +3263,7 @@ class Handler(SimpleHTTPRequestHandler):
         综述含 PDF 深读与多轮 LLM 调用，耗时可达十几分钟，必须异步化。
         """
         try:
-            length = int(self.headers.get("Content-Length") or "0")
+            length = _request_body_length(self.headers, 80 * 1024 * 1024)
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
             runtime_credentials = payload.pop("_runtime_credentials", None)
             if not isinstance(runtime_credentials, dict):
@@ -3300,7 +3311,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _save_local_secret(self) -> None:
         try:
-            length = int(self.headers.get("Content-Length") or "0")
+            length = _request_body_length(self.headers, 1024 * 1024)
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
             secret_payload = payload.get("payload")
             if not isinstance(secret_payload, dict):
@@ -3331,7 +3342,7 @@ class Handler(SimpleHTTPRequestHandler):
     def _apply_runtime_env(self) -> None:
         """Receive an allowlisted runtime snapshot from local Connect Hub."""
         try:
-            length = int(self.headers.get("Content-Length") or "0")
+            length = _request_body_length(self.headers, 1024 * 1024)
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
             secret = payload.get("secret") if isinstance(payload.get("secret"), dict) else {}
             keys = apply_runtime_environment(secret)
@@ -3343,7 +3354,7 @@ class Handler(SimpleHTTPRequestHandler):
         if yaml is None:
             return self._json({"ok": False, "error": "设置没保存：服务器上缺少配置组件。"}, status=500)
         try:
-            length = int(self.headers.get("Content-Length") or "0")
+            length = _request_body_length(self.headers, 1024 * 1024)
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
             config = payload.get("config")
             if not isinstance(config, dict):
@@ -3366,7 +3377,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": "设置没保存：服务器上缺少配置组件。"}, status=500)
         try:
             import yaml as _yaml
-            length = int(self.headers.get("Content-Length") or "0")
+            length = _request_body_length(self.headers, 1024 * 1024)
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
             existing = _yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
             existing = existing if isinstance(existing, dict) else {}
@@ -3422,7 +3433,10 @@ class Handler(SimpleHTTPRequestHandler):
         同步调用 LLM（一次结构化生成，约几秒），不引入异步 Job。
         """
         try:
-            length = int(self.headers.get("Content-Length") or "0")
+            length = _request_body_length(self.headers, 1024 * 1024)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, status=400)
+        try:
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
         except Exception as exc:  # noqa: BLE001
             print(f"[papers] request body failed: {exc}", flush=True)
@@ -3438,8 +3452,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": "候选没有生成出来，请稍后重试。"}, status=502)
         return self._json({"ok": True, **result})
 
-    def _read_json_body(self) -> dict:
-        length = int(self.headers.get("Content-Length") or "0")
+    def _read_json_body(self, limit: int = 1024 * 1024) -> dict:
+        length = _request_body_length(self.headers, limit)
         payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
         return payload if isinstance(payload, dict) else {}
 
@@ -3503,7 +3517,10 @@ class Handler(SimpleHTTPRequestHandler):
     def _proxy_chat(self) -> None:
         import json, urllib.request, urllib.error
         try:
-            length = int(self.headers.get("Content-Length") or "0")
+            length = _request_body_length(self.headers, 2 * 1024 * 1024)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, status=400)
+        try:
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
         except Exception as exc:  # noqa: BLE001
             print(f"[papers] chat body failed: {exc}", flush=True)
