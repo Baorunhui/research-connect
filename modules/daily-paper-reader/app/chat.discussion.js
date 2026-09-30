@@ -199,8 +199,13 @@ window.PrivateDiscussionChat = (function () {
     });
   };
 
+  const CHAT_HISTORY_KEEP = 60;
+
   const saveChatHistory = async (paperId, list) => {
     if (!paperId) return;
+    if (Array.isArray(list) && list.length > CHAT_HISTORY_KEEP) {
+      list = list.slice(-CHAT_HISTORY_KEEP);
+    }
     const db = await openChatDB();
     if (!db) {
       try {
@@ -693,6 +698,85 @@ window.PrivateDiscussionChat = (function () {
     });
   };
 
+  const renderHistoryMessage = (msg, renderMarkdownWithTables, renderMathInEl) => {
+    const item = document.createElement('div');
+    item.className = 'msg-item';
+
+    const role = (msg.role || '').toLowerCase();
+    const isThinking = role === 'thinking';
+    const isAi = role === 'ai' || role === 'assistant' || isThinking;
+    const isUser = role === 'user';
+
+    if (!isThinking) {
+      if (isUser && msg.time) {
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'msg-time msg-time-user';
+        timeSpan.textContent = msg.time;
+        item.appendChild(timeSpan);
+      }
+
+      const contentDiv = document.createElement('div');
+      contentDiv.className =
+        'msg-content ' + (isAi ? 'msg-content-ai' : 'msg-content-user');
+      const markdown = msg.content || '';
+
+      if (isUser || !renderMarkdownWithTables) {
+        contentDiv.textContent = markdown;
+      } else {
+        contentDiv.innerHTML = renderMarkdownWithTables(markdown);
+        if (renderMathInEl) renderMathInEl(contentDiv);
+      }
+
+      item.appendChild(contentDiv);
+      return item;
+    }
+
+    if (msg.time) {
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'msg-time msg-time-ai';
+      timeSpan.textContent = msg.time;
+      item.appendChild(timeSpan);
+    }
+
+    const thinkingContainer = document.createElement('div');
+    thinkingContainer.className = 'thinking-history-container';
+
+    const thinkingHeader = document.createElement('div');
+    thinkingHeader.className = 'thinking-history-header';
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = '思考过程';
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'thinking-history-toggle';
+    toggleBtn.textContent = '展开';
+    thinkingHeader.appendChild(titleSpan);
+    thinkingHeader.appendChild(toggleBtn);
+
+    const thinkingContent = document.createElement('div');
+    thinkingContent.className =
+      'msg-content thinking-history-content thinking-collapsed';
+    const markdown = msg.content || '';
+    if (renderMarkdownWithTables) {
+      thinkingContent.innerHTML = renderMarkdownWithTables(markdown);
+    } else {
+      thinkingContent.textContent = markdown;
+    }
+
+    thinkingContainer.appendChild(thinkingHeader);
+    thinkingContainer.appendChild(thinkingContent);
+
+    toggleBtn.addEventListener('click', () => {
+      const collapsed = thinkingContent.classList.toggle('thinking-collapsed');
+      toggleBtn.textContent = collapsed ? '展开' : '折叠';
+      if (!collapsed && renderMathInEl && !thinkingContent.dataset.mathReady) {
+        thinkingContent.dataset.mathReady = '1';
+        renderMathInEl(thinkingContent);
+      }
+    });
+
+    item.appendChild(thinkingContainer);
+    return item;
+  };
+
   const renderHistory = async (paperId) => {
     const historyDiv = document.getElementById('chat-history');
     if (!historyDiv) return;
@@ -706,89 +790,37 @@ window.PrivateDiscussionChat = (function () {
 
     const { renderMarkdownWithTables, renderMathInEl } = window.DPRMarkdown || {};
     historyDiv.innerHTML = '';
-    data.forEach((msg) => {
-      const item = document.createElement('div');
-      item.className = 'msg-item';
-
-      const role = (msg.role || '').toLowerCase();
-      const isThinking = role === 'thinking';
-      const isAi = role === 'ai' || role === 'assistant' || isThinking;
-      const isUser = role === 'user';
-
-      if (!isThinking) {
-        // 用户消息：时间右对齐；AI 回答：不显示时间（只在思考过程显示）
-        if (isUser && msg.time) {
-          const timeSpan = document.createElement('span');
-          timeSpan.className = 'msg-time msg-time-user';
-          timeSpan.textContent = msg.time;
-          item.appendChild(timeSpan);
-        }
-
-        const contentDiv = document.createElement('div');
-        contentDiv.className =
-          'msg-content ' + (isAi ? 'msg-content-ai' : 'msg-content-user');
-        const markdown = msg.content || '';
-
-        if (isUser) {
-          contentDiv.textContent = markdown;
-        } else if (renderMarkdownWithTables) {
-          contentDiv.innerHTML = renderMarkdownWithTables(markdown);
-        } else {
-          contentDiv.textContent = markdown;
-        }
-        if (renderMathInEl) {
-          renderMathInEl(contentDiv);
-        }
-
-        item.appendChild(contentDiv);
-        historyDiv.appendChild(item);
-        return;
-      }
-
-      // 思考过程：时间显示在上方，左对齐
-      if (msg.time) {
-        const timeSpan = document.createElement('span');
-        timeSpan.className = 'msg-time msg-time-ai';
-        timeSpan.textContent = msg.time;
-        item.appendChild(timeSpan);
-      }
-
-      const thinkingContainer = document.createElement('div');
-      thinkingContainer.className = 'thinking-history-container';
-
-      const thinkingHeader = document.createElement('div');
-      thinkingHeader.className = 'thinking-history-header';
-      const titleSpan = document.createElement('span');
-      titleSpan.textContent = '思考过程';
-      const toggleBtn = document.createElement('button');
-      toggleBtn.className = 'thinking-history-toggle';
-      toggleBtn.textContent = '展开';
-      thinkingHeader.appendChild(titleSpan);
-      thinkingHeader.appendChild(toggleBtn);
-
-      const thinkingContent = document.createElement('div');
-      thinkingContent.className =
-        'msg-content thinking-history-content thinking-collapsed';
-      const markdown = msg.content || '';
-      if (renderMarkdownWithTables) {
-        thinkingContent.innerHTML = renderMarkdownWithTables(markdown);
-      } else {
-        thinkingContent.textContent = markdown;
-      }
-      if (renderMathInEl) {
-        renderMathInEl(thinkingContent);
-      }
-
-      thinkingContainer.appendChild(thinkingHeader);
-      thinkingContainer.appendChild(thinkingContent);
-
-      toggleBtn.addEventListener('click', () => {
-        const collapsed = thinkingContent.classList.toggle('thinking-collapsed');
-        toggleBtn.textContent = collapsed ? '展开' : '折叠';
+    const RECENT_MESSAGES = 12;
+    const older = data.length > RECENT_MESSAGES ? data.slice(0, -RECENT_MESSAGES) : [];
+    const visible = older.length ? data.slice(-RECENT_MESSAGES) : data;
+    if (older.length) {
+      const earlier = document.createElement('button');
+      earlier.type = 'button';
+      earlier.className = 'thinking-history-toggle';
+      earlier.textContent = `更早的 ${older.length} 条`;
+      earlier.addEventListener('click', () => {
+        const spot = document.createElement('div');
+        earlier.replaceWith(spot);
+        let index = 0;
+        const step = () => {
+          const end = Math.min(index + 4, older.length);
+          const fragment = document.createDocumentFragment();
+          for (; index < end; index += 1) {
+            fragment.appendChild(renderHistoryMessage(older[index], renderMarkdownWithTables, renderMathInEl));
+          }
+          spot.before(fragment);
+          if (index < older.length) {
+            setTimeout(step, 0);
+          } else {
+            spot.remove();
+          }
+        };
+        step();
       });
-
-      item.appendChild(thinkingContainer);
-      historyDiv.appendChild(item);
+      historyDiv.appendChild(earlier);
+    }
+    visible.forEach((msg) => {
+      historyDiv.appendChild(renderHistoryMessage(msg, renderMarkdownWithTables, renderMathInEl));
     });
 
     historyDiv.scrollTop = historyDiv.scrollHeight;
