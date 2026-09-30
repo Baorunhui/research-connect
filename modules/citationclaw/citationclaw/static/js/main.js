@@ -1,4 +1,13 @@
 // ==================== 论文列表管理 ====================
+function resultFileLabel(name) {
+    const lower = String(name || '').toLowerCase();
+    if (lower.endsWith('.html')) return '网页报告';
+    if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) return '表格';
+    if (lower.endsWith('.json')) return '数据';
+    if (lower.endsWith('.jsonl')) return '原始记录';
+    return name || '文件';
+}
+
 function inputIsComposing(el, event) {
     return !!(event.isComposing || event.keyCode === 229 || (el && el._imeLock));
 }
@@ -527,6 +536,7 @@ async function resultsOpenFolder(folderName, displayName) {
                          file.type === '.html' ? 'richtext' : 'code';
             const safePath = encodeResultPath(file.path);
             const safeName = escapeHtml(file.name);
+            const fileLabel = escapeHtml(resultFileLabel(file.name));
             const actionBtn = file.type === '.html'
                 ? `<a href="${publicApiHref('/api/results/view/' + safePath)}" target="_blank" class="btn btn-sm btn-primary">
                        <i class="bi bi-eye"></i> 查看报告
@@ -536,7 +546,7 @@ async function resultsOpenFolder(folderName, displayName) {
                    </a>`;
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td><i class="bi bi-file-earmark-${icon}"></i> ${safeName}</td>
+                <td title="${safeName}"><i class="bi bi-file-earmark-${icon}"></i> ${fileLabel}</td>
                 <td><span class="badge bg-${typeClass}">${escapeHtml(file.type)}</span></td>
                 <td>${size} KB</td>
                 <td>${date}</td>
