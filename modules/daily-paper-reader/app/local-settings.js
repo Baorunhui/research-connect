@@ -787,7 +787,7 @@
     } catch (err) {
       settingsReady = false;
       setSaveEnabled(false);
-      setStatus('读取配置失败：' + (err && err.message ? err.message : err), '#c00');
+      setStatus(plainSettingsError(err, '设置没有读出来，请稍后重试。'), '#c00');
     }
   }
 
@@ -877,7 +877,7 @@
     try {
       const runner = window.DPRWorkflowRunner;
       if (!runner || typeof runner.runQuickFetchByDays !== 'function') {
-        setStatus('未找到流水线触发器（workflows.runner.js 未加载），请刷新后重试。', '#c00');
+        setStatus('页面没有准备好，请刷新后再试。', '#c00');
         return;
       }
       const modeEl = document.getElementById('dpr-settings-fetch-mode');
@@ -892,7 +892,7 @@
       setStatus('已保存并触发日报生成 ✓，可在运行面板查看进度', '#080');
       setTimeout(close, 1200);
     } catch (err) {
-      setStatus('保存成功，但触发日报失败：' + (err && err.message ? err.message : err), '#c00');
+      setStatus(plainSettingsError(err, '已经保存，但这次日报没有开始。请到运行面板再试一次。'), '#c00');
     }
   }
 
