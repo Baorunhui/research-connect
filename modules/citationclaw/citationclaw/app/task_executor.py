@@ -2444,7 +2444,10 @@ class TaskExecutor:
                                   "route": fetcher.route, "new_records": fetcher.fetched_records}
             report["profile_url"] = profile_url
             report["elapsed_seconds"] = round(time.monotonic() - started, 2)
-            files = write_outputs(report, result_dir, output_prefix or "scholar_profile")
+            self.log_manager.info("正在写成报告")
+            files = await asyncio.to_thread(
+                write_outputs, report, result_dir, output_prefix or "scholar_profile",
+            )
             ScholarProfileCache().store(
                 scholar_cache_keys(profile_url, profile_html, name or scholar_name),
                 result={

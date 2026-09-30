@@ -236,7 +236,7 @@ def write_outputs(report: dict, result_dir: Path, prefix: str) -> dict:
     json_file = result_dir / f"{prefix}_fast_report.json"
     html_file = result_dir / f"{prefix}_fast_report.html"
     excel_file = result_dir / f"{prefix}_fast_report.xlsx"
-    json_file.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    json_file.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     html_file.write_text(render_html(report), encoding="utf-8")
     rows = [{
         "Target_Paper": t["title"], "Citing_Paper": h["citing_title"], "Citing_Year": h["citing_year"],
