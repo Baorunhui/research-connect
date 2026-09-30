@@ -1146,8 +1146,7 @@ def _result_folder_label(folder: Path) -> str:
     return title
 
 
-@app.get("/api/results/folders")
-async def list_result_folders():
+def _collect_result_folders() -> list:
     folders = []
     if DATA_DIR.exists():
         for sub in DATA_DIR.iterdir():
@@ -1193,6 +1192,11 @@ async def list_result_folders():
     return folders
 
 
+@app.get("/api/results/folders")
+async def list_result_folders():
+    return await asyncio.to_thread(_collect_result_folders)
+
+
 def _newest_result_dir() -> Path | None:
     if not DATA_DIR.exists():
         return None
@@ -1203,8 +1207,7 @@ def _newest_result_dir() -> Path | None:
     return max(dirs, key=lambda sub: sub.name) if dirs else None
 
 
-@app.get("/api/results/list")
-async def list_results(folder: str = None):
+def _collect_result_files(folder: str | None = None) -> list:
     results = []
 
     def data_relative_path(file: Path) -> str:
@@ -1246,6 +1249,11 @@ async def list_results(folder: str = None):
 
     results.sort(key=lambda x: x["modified"], reverse=True)
     return results
+
+
+@app.get("/api/results/list")
+async def list_results(folder: str = None):
+    return await asyncio.to_thread(_collect_result_files, folder)
 
 
 def _safe_data_path(filepath: str) -> Path:
