@@ -3075,11 +3075,23 @@ class Handler(SimpleHTTPRequestHandler):
             hostname = host.split(":", 1)[0]
         return hostname in _ALLOWED_HOSTS
 
+    def _cacheable_static(self) -> bool:
+        """Versioned scripts and images can be cached. Pages and APIs stay fresh."""
+        path = urlparse(self.path).path.lower()
+        if path.startswith("/api/"):
+            return False
+        return path.endswith((
+            ".js", ".css", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".woff2",
+        ))
+
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Cache-Control", "no-store")
+        if self._cacheable_static():
+            self.send_header("Cache-Control", "public, max-age=86400")
+        else:
+            self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
     def do_OPTIONS(self) -> None:
