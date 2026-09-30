@@ -416,7 +416,9 @@ def verify_with_kaggle(records: List[dict], kaggle) -> int:
         return 0
     hits = 0
     for r in records:
-        m = kaggle.lookup(title=r.get("title", ""), arxiv_id=r.get("arxiv_id", ""), doi=r.get("doi", ""))
+        m = kaggle.lookup(
+            title=r.get("title", ""), arxiv_id=r.get("arxiv_id", ""), doi=r.get("doi", ""), brief=True,
+        )
         if not m:
             continue
         hits += 1

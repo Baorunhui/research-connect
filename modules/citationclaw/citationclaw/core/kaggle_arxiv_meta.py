@@ -122,54 +122,60 @@ class KaggleArxivMeta:
 
     _COLS = ("arxiv_id, title, abstract, authors, categories, published, "
              "update_date, doi, journal_ref, authors_json")
+    # 核对施引时用不到摘要。摘要经常在溢出页里，不读它，大批量核对会快一截。
+    _BRIEF_COLS = ("arxiv_id, title, '' AS abstract, authors, categories, published, "
+                   "update_date, doi, journal_ref, authors_json")
 
-    def lookup_by_id(self, arxiv_id: str) -> Optional[dict]:
+    def _cols(self, brief: bool) -> str:
+        return self._BRIEF_COLS if brief else self._COLS
+
+    def lookup_by_id(self, arxiv_id: str, *, brief: bool = False) -> Optional[dict]:
         aid = normalize_arxiv_id(arxiv_id)
         if not aid:
             return None
-        return self._one(f"SELECT {self._COLS} FROM papers WHERE arxiv_id = ?", (aid,))
+        return self._one(f"SELECT {self._cols(brief)} FROM papers WHERE arxiv_id = ?", (aid,))
 
-    def lookup_by_doi(self, doi: str) -> Optional[dict]:
+    def lookup_by_doi(self, doi: str, *, brief: bool = False) -> Optional[dict]:
         d = str(doi or "").strip().lower()
         d = re.sub(r"^(?:https?://)?(?:dx\.)?doi\.org/", "", d)
         if not d:
             return None
         if d.startswith("10.48550/arxiv."):
-            return self.lookup_by_id(d.split("arxiv.", 1)[1])
+            return self.lookup_by_id(d.split("arxiv.", 1)[1], brief=brief)
         return self._one(
-            f"SELECT {self._COLS} FROM papers WHERE doi = ? AND doi <> '' LIMIT 1", (d,)
+            f"SELECT {self._cols(brief)} FROM papers WHERE doi = ? AND doi <> '' LIMIT 1", (d,)
         )
 
-    def lookup_by_title(self, title: str) -> Optional[dict]:
+    def lookup_by_title(self, title: str, *, brief: bool = False) -> Optional[dict]:
         norm = normalize_title(title)
         if len(norm) < 8:
             return None
         return self._one(
-            f"SELECT {self._COLS} FROM papers WHERE title_norm = ? "
+            f"SELECT {self._cols(brief)} FROM papers WHERE title_norm = ? "
             "ORDER BY published DESC LIMIT 1",
             (norm,),
         )
 
     def lookup(self, title: str = "", arxiv_id: str = "", doi: str = "",
-               url: str = "") -> Optional[dict]:
+               url: str = "", *, brief: bool = False) -> Optional[dict]:
         """Try arxiv_id → DOI → URL-derived ids → exact title. First hit wins."""
         if not self.available:
             return None
         rec = None
         if arxiv_id:
-            rec = self.lookup_by_id(arxiv_id)
+            rec = self.lookup_by_id(arxiv_id, brief=brief)
         if rec is None and doi:
-            rec = self.lookup_by_doi(doi)
+            rec = self.lookup_by_doi(doi, brief=brief)
         if rec is None and url:
             aid = arxiv_id_from_url(url)
             if aid:
-                rec = self.lookup_by_id(aid)
+                rec = self.lookup_by_id(aid, brief=brief)
             if rec is None:
                 d = doi_from_url(url)
                 if d:
-                    rec = self.lookup_by_doi(d)
+                    rec = self.lookup_by_doi(d, brief=brief)
         if rec is None and title:
-            rec = self.lookup_by_title(title)
+            rec = self.lookup_by_title(title, brief=brief)
         return rec
 
     def close(self):

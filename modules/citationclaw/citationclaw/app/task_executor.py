@@ -2378,7 +2378,7 @@ class TaskExecutor:
             if kaggle is None:
                 self.log_manager.warning("本地论文快照没加载，这次只对题名，不核对论文编号。")
             for tp in target_papers:
-                m = kaggle.lookup(title=tp.get("title", "")) if kaggle is not None else None
+                m = kaggle.lookup(title=tp.get("title", ""), brief=True) if kaggle is not None else None
                 for key in ("arxiv_id", "doi") if m else ():
                     tp[key] = tp.get(key) or m.get(key, "")
 

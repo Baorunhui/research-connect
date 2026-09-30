@@ -49,8 +49,10 @@ def build_fast_report(
     n_name_only = n_meta = n_resolved = n_fetched = n_kaggle = 0
     for tp in target_papers:
         title = tp.get("title", "")
-        meta = kaggle.lookup(title=title, arxiv_id=tp.get("arxiv_id", ""), doi=tp.get("doi", "")) \
+        meta = (
+            kaggle.lookup(title=title, arxiv_id=tp.get("arxiv_id", ""), doi=tp.get("doi", ""), brief=True)
             if kaggle is not None else None
+        )
         if meta:
             n_meta += 1
         entry = citing.get(normalize_title(title)) or {}
