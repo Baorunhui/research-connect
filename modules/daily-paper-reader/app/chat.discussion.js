@@ -940,16 +940,13 @@ window.PrivateDiscussionChat = (function () {
     const onUserScroll = () => {
       userAtBottom = checkIfAtBottom();
     };
-    window.addEventListener('scroll', onUserScroll);
+    if (window.__dprChatScroll) window.removeEventListener('scroll', window.__dprChatScroll);
+    window.__dprChatScroll = onUserScroll;
+    window.addEventListener('scroll', onUserScroll, { passive: true });
 
-    // 自动滚动到底部（仅当用户本来就在底部时）
+    // 跟着最新一句走。不用平滑滚动，否则每个字都会排一次动画。
     const scrollToBottomIfNeeded = () => {
-      if (userAtBottom) {
-        window.scrollTo({
-          top: document.documentElement.scrollHeight,
-          behavior: 'smooth'
-        });
-      }
+      if (userAtBottom) window.scrollTo(0, document.documentElement.scrollHeight);
     };
 
     // 发送消息后立即滚动到底部
