@@ -215,6 +215,7 @@ h2,h3{{margin:0 0 12px}}
 .wrap{{overflow-x:auto;background:#fff;border:1px solid #e3e7ef;border-radius:8px}}
 table{{border-collapse:collapse;width:100%;min-width:720px}}
 td,th{{border-bottom:1px solid #eef0f5;padding:8px 10px;font-size:13px;vertical-align:top;text-align:left}}
+tbody tr{{content-visibility:auto;contain-intrinsic-size:auto 52px}}
 th{{background:#f8fafc;position:sticky;top:0}}
 p{{line-height:1.6}}
 .find{{display:block;width:100%;max-width:420px;margin:8px 0 16px;padding:8px 10px;border:1px solid #cfd5e1;border-radius:8px;font:inherit}}
@@ -232,12 +233,19 @@ p{{line-height:1.6}}
 <div class="wrap"><table><thead><tr><th>论文</th><th>年份</th><th>主页上的引用数</th><th>论文编号</th><th>目录里的引用数</th><th>已查到的施引</th><th>对上几位</th></tr></thead><tbody>{trows}</tbody></table></div>
 <p style="color:#888">生成于 {e(report['generated_at'])}</p>
 <script>
-document.getElementById('report-find').addEventListener('input', function () {{
-  var q = this.value.trim().toLowerCase();
-  document.querySelectorAll('tbody tr').forEach(function (row) {{
-    row.hidden = !!(q && row.textContent.toLowerCase().indexOf(q) < 0);
+(function () {{
+  var box = document.getElementById('report-find');
+  if (!box) return;
+  var rows = null;
+  box.addEventListener('input', function () {{
+    if (!rows) {{
+      rows = Array.prototype.slice.call(document.querySelectorAll('tbody tr'));
+      for (var i = 0; i < rows.length; i++) rows[i]._find = (rows[i].textContent || '').toLowerCase();
+    }}
+    var q = this.value.trim().toLowerCase();
+    for (var j = 0; j < rows.length; j++) rows[j].hidden = !!(q && rows[j]._find.indexOf(q) < 0);
   }});
-}});
+}})();
 </script>
 </main></body></html>"""
 
