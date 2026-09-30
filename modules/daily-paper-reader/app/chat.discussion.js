@@ -1565,8 +1565,14 @@ window.PrivateDiscussionChat = (function () {
         input.addEventListener('input', () => {
           resizeChatInput(input);
         });
+        input.addEventListener('compositionstart', () => { input._imeLock = true; });
+        input.addEventListener('compositionend', () => {
+          input._imeLock = true;
+          setTimeout(() => { input._imeLock = false; }, 0);
+        });
         input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+          if (e.isComposing || e.keyCode === 229 || input._imeLock) return;
+          if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage(paperId);
           }
