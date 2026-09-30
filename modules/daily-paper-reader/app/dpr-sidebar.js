@@ -3519,7 +3519,7 @@
       if (document.visibilityState !== 'visible') return;
       if (!state.lastFetchAt) return;
       if (Date.now() - state.lastFetchAt < REFRESH_AFTER_HIDDEN_MS) return;
-      loadAndRender();
+      loadAndRender(true);
     });
   }
 
@@ -3540,8 +3540,9 @@
     syncResolvedAxisState();
   }
 
-  function loadAndRender() {
-    return fetch(SIDEBAR_URL, { cache: 'no-store' })
+  function loadAndRender(force) {
+    // 第一次打开沿用页面已经预取的目录；隔一段时间回来再强制要一份新的。
+    return fetch(SIDEBAR_URL, force ? { cache: 'no-store' } : {})
       .then(function (r) {
         if (!r.ok) throw new Error('sidebar HTTP ' + r.status);
         return r.text();
@@ -3692,7 +3693,7 @@
   }
 
   var DPRSidebarApi = {
-    refresh: function () { return loadAndRender(); },
+    refresh: function () { return loadAndRender(true); },
     syncLivePapers: syncLivePapers,
     syncActive: syncActive,
     notifyReadStateChanged: function () { rerenderSidebarBody(rerenderOptionsForReadStateEvent()); },
