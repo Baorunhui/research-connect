@@ -888,11 +888,25 @@ window.PrivateDiscussionChat = (function () {
       renderQuestionsPanel(null);
     }
 
+    const stopSending = (message) => {
+      if (statusEl && message) {
+        statusEl.textContent = message;
+        statusEl.style.color = '#c00';
+      }
+      input.disabled = false;
+      btn.disabled = false;
+      btn.innerText = '发送';
+    };
+
     input.disabled = true;
     btn.disabled = true;
     btn.innerText = '思考中...';
 
     const historyDiv = document.getElementById('chat-history');
+    if (!historyDiv) {
+      stopSending('这次没有发出去，请稍后重试。');
+      return;
+    }
     const nowStr = new Date().toLocaleString();
     // 立刻用“气泡样式”渲染用户消息（避免等刷新后才套上 msg-content-user）
     try {
@@ -979,13 +993,20 @@ window.PrivateDiscussionChat = (function () {
     const toggleBtn = aiItem.querySelector('.thinking-toggle');
     const aiAnswerDiv = aiItem.querySelector('.msg-content');
 
-    const history = await loadChatHistory(paperId);
-    history.push({
-      role: 'user',
-      content: question,
-      time: nowStr,
-    });
-    await saveChatHistory(paperId, history);
+    let history;
+    try {
+      history = await loadChatHistory(paperId);
+      history.push({
+        role: 'user',
+        content: question,
+        time: nowStr,
+      });
+      await saveChatHistory(paperId, history);
+    } catch (sendErr) {
+      console.error(sendErr);
+      stopSending('这次没有发出去，请稍后重试。');
+      return;
+    }
 
     // 更新问题导航（新增了用户提问）
     renderQuestionNav(paperId);
@@ -1009,7 +1030,14 @@ window.PrivateDiscussionChat = (function () {
       // 忽略刷新失败
     }
 
-    const model = await resolveChatConfig();
+    let model;
+    try {
+      model = await resolveChatConfig();
+    } catch (sendErr) {
+      console.error(sendErr);
+      stopSending('这次没有发出去，请稍后重试。');
+      return;
+    }
     const modelSelect = document.getElementById('chat-llm-model-select');
     if (model && modelSelect) {
       const known = Array.from(modelSelect.options).some((opt) => opt.value === model);
@@ -1031,14 +1059,12 @@ window.PrivateDiscussionChat = (function () {
           '还没有可用的对话模型。';
         statusEl.style.color = '#c00';
       }
-      input.disabled = false;
-      btn.disabled = false;
-      btn.innerText = '发送';
+      stopSending();
       return;
     }
 
     // 记录当前使用的模型为用户偏好，供后续页面复用
-    savePreferredModelName(model);
+    try { savePreferredModelName(model); } catch (prefErr) { console.error(prefErr); }
 
     if (statusEl) {
       statusEl.textContent = `正在用 ${model} 回答`;
