@@ -3529,6 +3529,11 @@ window.$docsify = {
       // --- Docsify beforeEach 钩子：解析 front matter ---
       hook.beforeEach(function (content) {
         const file = vm && vm.route ? vm.route.file : '';
+        // 综述正文前有一段给侧栏用的字段。直接交给排版会显示在报告开头。
+        if (/^\/?survey\/.+\.md$/i.test(String(file || ''))) {
+          const parsed = parseFrontMatter(content || '');
+          return (parsed && parsed.body) || content;
+        }
         // 只对论文页面处理
         if (!isPaperRouteFile(file)) {
           latestPaperRawMarkdown = '';
