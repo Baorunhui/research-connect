@@ -7897,7 +7897,6 @@ body.dpr-sidebar-resizing {
   overflow: auto;
   padding: 8px 0 16px;
   font-size: 13px;
-  scroll-behavior: smooth;
   display: block !important;
 }
 /* docsify 会给 <nav> 自动加 .app-nav，触发 vue.css 的
