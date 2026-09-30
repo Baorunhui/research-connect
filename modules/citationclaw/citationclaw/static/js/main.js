@@ -1,4 +1,18 @@
 // ==================== 论文列表管理 ====================
+function inputIsComposing(el, event) {
+    return !!(event.isComposing || event.keyCode === 229 || (el && el._imeLock));
+}
+
+function watchIme(el) {
+    if (!el || el._imeWatch) return;
+    el._imeWatch = true;
+    el.addEventListener('compositionstart', () => { el._imeLock = true; });
+    el.addEventListener('compositionend', () => {
+        el._imeLock = true;
+        setTimeout(() => { el._imeLock = false; }, 0);
+    });
+}
+
 (function () {
     let _idCounter = 0;
     const STORAGE_KEY = 'citation_claw_papers';
@@ -24,8 +38,9 @@
         alias.contentEditable = 'true';
         if (initialText) alias.textContent = initialText;
 
+        watchIme(alias);
         alias.addEventListener('keydown', e => {
-            if (e.key === 'Enter') { e.preventDefault(); alias.blur(); }
+            if (e.key === 'Enter' && !inputIsComposing(alias, e)) { e.preventDefault(); alias.blur(); }
         });
         alias.addEventListener('blur', () => {
             if (!alias.textContent.trim()) row.remove();
@@ -57,8 +72,9 @@
         titleEl.className = 'paper-item-title';
         titleEl.contentEditable = 'true';
         titleEl.textContent = title;
+        watchIme(titleEl);
         titleEl.addEventListener('keydown', e => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !inputIsComposing(titleEl, e)) {
                 e.preventDefault();
                 document.getElementById('paper-input').focus();
             }
@@ -595,8 +611,9 @@ function initIndexPage() {
     // 论文输入框：按 Enter 添加条目
     const paperInput = document.getElementById('paper-input');
     if (paperInput) {
+        watchIme(paperInput);
         paperInput.addEventListener('keydown', e => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !inputIsComposing(paperInput, e)) {
                 e.preventDefault();
                 const title = paperInput.value.trim();
                 if (title) {
