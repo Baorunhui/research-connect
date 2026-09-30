@@ -910,6 +910,10 @@ class RunStore:
                         and old_step == step
                         and old_state == "running"
                     ):
+                        old_paper = str(old_payload.get("paper_id") or "")
+                        old_done = str(old_payload.get("paper_status") or "").lower() == "completed"
+                        if old_paper and old_done:
+                            continue
                         events[index] = event
                         replaced = True
                         break
