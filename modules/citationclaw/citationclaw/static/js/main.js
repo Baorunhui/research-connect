@@ -1102,16 +1102,19 @@ function initIndexPage() {
             var quotaResp = await safeFetch('/api/quota/check');
             var quotaData = await quotaResp.json();
             if (quotaData.configured && quotaData.remaining !== undefined) {
+                const yuan = quotaData.remaining_rmb;
                 appendIndexLog({
                     timestamp: new Date().toISOString(),
                     level: 'INFO',
-                    message: '📊 LLM 当前余额: ' + quotaData.remaining + ' 实际额度 (≈ ¥' + quotaData.remaining_rmb + ')'
+                    message: yuan !== undefined && yuan !== null
+                        ? '模型余额大约还有 ' + yuan + ' 元。'
+                        : '模型余额已经查过。'
                 });
             } else if (quotaData.configured && quotaData.error) {
                 appendIndexLog({
                     timestamp: new Date().toISOString(),
                     level: 'WARNING',
-                    message: '📊 LLM 余额查询失败: ' + quotaData.error
+                    message: '这次没有查到模型余额，不影响继续。'
                 });
             }
         } catch (e) {}
@@ -1424,14 +1427,14 @@ function initIndexPage() {
         let levelClass = 're-badge-info';
         let dotClass   = 're-dot-info';
         let msgClass   = 're-msg-info';
-        let badge      = 'INFO';
+        let badge      = '提示';
 
         if (level === 'SUCCESS') {
-            levelClass = 're-badge-success'; dotClass = 're-dot-success'; msgClass = 're-msg-success'; badge = 'DONE';
+            levelClass = 're-badge-success'; dotClass = 're-dot-success'; msgClass = 're-msg-success'; badge = '完成';
         } else if (level === 'WARNING') {
-            levelClass = 're-badge-warning'; dotClass = 're-dot-warning'; msgClass = 're-msg-warning'; badge = 'WARN';
+            levelClass = 're-badge-warning'; dotClass = 're-dot-warning'; msgClass = 're-msg-warning'; badge = '注意';
         } else if (level === 'ERROR') {
-            levelClass = 're-badge-error'; dotClass = 're-dot-error'; msgClass = 're-msg-error'; badge = 'ERR';
+            levelClass = 're-badge-error'; dotClass = 're-dot-error'; msgClass = 're-msg-error'; badge = '出错';
         }
 
         entry.innerHTML =
