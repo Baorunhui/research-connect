@@ -412,13 +412,22 @@ def verify_with_kaggle(records: List[dict], kaggle) -> int:
 
     Hit → arxiv_id/title/year filled, authors filled only if OpenAlex had none
     (OpenAlex affiliations are kept). Returns the hit count."""
-    if kaggle is None:
+    if kaggle is None or not records:
         return 0
+    many = getattr(kaggle, "lookup_many", None)
+    if many is not None:
+        matches = many(records)
+    else:
+        matches = [
+            kaggle.lookup(
+                title=r.get("title", "") if isinstance(r, dict) else "",
+                arxiv_id=r.get("arxiv_id", "") if isinstance(r, dict) else "",
+                doi=r.get("doi", "") if isinstance(r, dict) else "",
+            )
+            for r in records
+        ]
     hits = 0
-    for r in records:
-        m = kaggle.lookup(
-            title=r.get("title", ""), arxiv_id=r.get("arxiv_id", ""), doi=r.get("doi", ""), brief=True,
-        )
+    for r, m in zip(records, matches):
         if not m:
             continue
         hits += 1

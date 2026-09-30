@@ -178,6 +178,104 @@ class KaggleArxivMeta:
             rec = self.lookup_by_title(title, brief=brief)
         return rec
 
+    def lookup_many(self, records: list) -> list:
+        """核对一批施引。命中顺序与 lookup(brief=True) 相同，不读摘要。"""
+        if not records:
+            return []
+        if not self.available:
+            return [None] * len(records)
+        found: dict[int, dict] = {}
+        pending = list(range(len(records)))
+
+        def claim(key_of, column: str) -> None:
+            groups: dict[str, list[int]] = {}
+            rest: list[int] = []
+            for index in pending:
+                key = key_of(index)
+                if key:
+                    groups.setdefault(key, []).append(index)
+                else:
+                    rest.append(index)
+            hits: dict[str, tuple[str, dict]] = {}
+            if groups:
+                for row in self._select_in(column, list(groups)):
+                    rec = self._row_to_dict(row[:10] if column == "title_norm" else row)
+                    if column == "arxiv_id":
+                        key = rec.get("arxiv_id") or ""
+                    elif column == "doi":
+                        key = str(rec.get("doi") or "").lower()
+                    else:
+                        key = row[10] or ""
+                    published = row[5] or ""
+                    prev = hits.get(key)
+                    if prev is None or published > prev[0]:
+                        hits[key] = (published, rec)
+            for key, indexes in groups.items():
+                hit = hits.get(key)
+                if hit is None:
+                    rest.extend(indexes)
+                else:
+                    for index in indexes:
+                        found[index] = hit[1]
+            pending[:] = rest
+
+        claim(self._record_arxiv_id(records), "arxiv_id")
+        claim(self._record_arxiv_doi(records), "arxiv_id")
+        claim(self._record_doi(records), "doi")
+        claim(self._record_title(records), "title_norm")
+        return [found.get(index) for index in range(len(records))]
+
+    def _select_in(self, column: str, values: list[str]) -> list:
+        extra = ", title_norm" if column == "title_norm" else ""
+        rows: list = []
+        for start in range(0, len(values), 400):
+            chunk = values[start:start + 400]
+            marks = ",".join("?" * len(chunk))
+            where = f"{column} IN ({marks})"
+            if column == "doi":
+                where += " AND doi <> ''"
+            sql = f"SELECT {self._BRIEF_COLS}{extra} FROM papers WHERE {where}"
+            with self._lock:
+                rows.extend(self._conn.execute(sql, tuple(chunk)).fetchall())
+        return rows
+
+    @staticmethod
+    def _paper(records: list, index: int) -> dict:
+        item = records[index]
+        return item if isinstance(item, dict) else {}
+
+    def _record_arxiv_id(self, records: list):
+        def key_of(index: int) -> str:
+            return normalize_arxiv_id(self._paper(records, index).get("arxiv_id", ""))
+        return key_of
+
+    def _record_arxiv_doi(self, records: list):
+        def key_of(index: int) -> str:
+            doi = self._plain_doi(self._paper(records, index).get("doi", ""))
+            if doi.startswith("10.48550/arxiv."):
+                return normalize_arxiv_id(doi.split("arxiv.", 1)[1])
+            return ""
+        return key_of
+
+    def _record_doi(self, records: list):
+        def key_of(index: int) -> str:
+            doi = self._plain_doi(self._paper(records, index).get("doi", ""))
+            if not doi or doi.startswith("10.48550/arxiv."):
+                return ""
+            return doi
+        return key_of
+
+    def _record_title(self, records: list):
+        def key_of(index: int) -> str:
+            norm = normalize_title(self._paper(records, index).get("title", ""))
+            return norm if len(norm) >= 8 else ""
+        return key_of
+
+    @staticmethod
+    def _plain_doi(doi: str) -> str:
+        text = str(doi or "").strip().lower()
+        return re.sub(r"^(?:https?://)?(?:dx\.)?doi\.org/", "", text)
+
     def close(self):
         if self._conn is not None:
             self._conn.close()
