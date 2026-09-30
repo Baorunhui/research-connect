@@ -1130,7 +1130,8 @@ def _result_folder_label(folder: Path) -> str:
         return cached[2]
     title = folder.name
     try:
-        head = html.read_text(encoding="utf-8", errors="ignore")[:4000]
+        with html.open("rb") as handle:
+            head = handle.read(16384).decode("utf-8", errors="ignore")
     except OSError:
         head = ""
     match = re.search(r"<title>(.*?)</title>", head, re.I | re.S)
