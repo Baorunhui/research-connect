@@ -2373,20 +2373,26 @@ class TaskExecutor:
             else:
                 self.log_manager.info(f"按引用从高到低，这次查 {checked} 篇（一共 {fetched} 篇）")
 
-            honor = get_honor_list()
-            stats = honor.stats()
+            def _open_local_lists(papers):
+                honor_list = get_honor_list()
+                honor_stats = honor_list.stats()
+                snapshot = get_kaggle_meta()
+                snapshot = snapshot if snapshot.available else None
+                if snapshot is not None:
+                    for paper, match in zip(papers, snapshot.lookup_many(papers)):
+                        if not match:
+                            continue
+                        for key in ("arxiv_id", "doi"):
+                            paper[key] = paper.get(key) or match.get(key, "")
+                return honor_list, honor_stats, snapshot
+
+            honor, stats, kaggle = await asyncio.to_thread(_open_local_lists, target_papers)
             if not stats["available"]:
                 self.log_manager.warning("荣誉名单没加载，这次对不上名单里的学者。")
             else:
                 self.log_manager.info(f"  名单里有 {stats['total']} 人")
-            kaggle = get_kaggle_meta()
-            kaggle = kaggle if kaggle.available else None
             if kaggle is None:
                 self.log_manager.warning("本地论文快照没加载，这次只对题名，不核对论文编号。")
-            for tp in target_papers:
-                m = kaggle.lookup(title=tp.get("title", ""), brief=True) if kaggle is not None else None
-                for key in ("arxiv_id", "doi") if m else ():
-                    tp[key] = tp.get(key) or m.get(key, "")
 
             # Step 3: OpenAlex 找 work，cites: 分页拉全部施引（仅 id/题名/年份/doi/ids/作者单位）
             fetcher = OpenAlexCitingFetcher(
