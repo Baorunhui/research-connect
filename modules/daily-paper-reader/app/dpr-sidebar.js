@@ -3081,6 +3081,36 @@
     state.rootEl.classList.toggle('is-filter-unread', state.filter === 'unread');
   }
 
+  function revealActivePaper(li) {
+    if (!li || !li.closest) return;
+    var changed = false;
+    var section = li.closest('.dpr-sidebar-axis-section');
+    if (section && section.classList && !section.classList.contains('is-expanded')) {
+      section.classList.add('is-expanded');
+      var sectionKey = section.getAttribute('data-axis-section-key') || '';
+      if (sectionKey) {
+        if (!state.expandedAxisSections) state.expandedAxisSections = new Set();
+        state.expandedAxisSections.add(sectionKey);
+      }
+      var sectionHeader = $('.dpr-sidebar-axis-section-header', section);
+      if (sectionHeader) sectionHeader.setAttribute('aria-expanded', 'true');
+      changed = true;
+    }
+    var panel = li.closest('.dpr-sidebar-panel');
+    if (panel && panel.classList && !panel.classList.contains('is-expanded')) {
+      panel.classList.add('is-expanded');
+      var panelKey = panel.getAttribute('data-panel') || '';
+      if (panelKey) {
+        if (!state.expandedGroups) state.expandedGroups = defaultExpandedGroups();
+        state.expandedGroups[panelKey] = true;
+      }
+      var toggle = $('[data-panel-toggle]', panel);
+      if (toggle) toggle.setAttribute('aria-expanded', 'true');
+      changed = true;
+    }
+    if (changed) persistCollapse();
+  }
+
   function syncActive(options) {
     var opts = options || {};
     var shouldCenter = opts.center !== false;
@@ -3110,6 +3140,7 @@
       );
     }
     if (!li) return;
+    revealActivePaper(li);
     li.classList.add('is-active');
     var activeSection = li.closest && li.closest('.dpr-sidebar-axis-section');
     if (activeSection) activeSection.classList.add('has-active-paper');
