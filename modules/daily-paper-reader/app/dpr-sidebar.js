@@ -1213,12 +1213,21 @@
     return records;
   }
 
+  var paperSearchTextCache = typeof WeakMap === 'function' ? new WeakMap() : null;
+
   function paperSearchText(paper) {
-    return [
-      paper && paper.title || '',
-      paper && paper.evidence || '',
-      (paper && paper.tags || []).map(function (t) { return (t && t.label) || ''; }).join(' '),
+    if (!paper) return '';
+    if (paperSearchTextCache) {
+      var cached = paperSearchTextCache.get(paper);
+      if (cached != null) return cached;
+    }
+    var text = [
+      paper.title || '',
+      paper.evidence || '',
+      (paper.tags || []).map(function (t) { return (t && t.label) || ''; }).join(' '),
     ].join(' ').toLowerCase();
+    if (paperSearchTextCache) paperSearchTextCache.set(paper, text);
+    return text;
   }
 
   function paperReadStatus(paper, readMap) {
@@ -2922,7 +2931,6 @@
       'data-paper-id="' + safeAttr(paperId) + '"',
       'data-href="' + safeAttr(p.href) + '"',
       'data-section="' + safeAttr(p.section || '') + '"',
-      'data-search="' + safeAttr(paperSearchText(p)) + '"',
       'data-read="' + (status ? '1' : '0') + '"',
       'data-read-status="' + safeAttr(status) + '"',
     ].join(' ');
