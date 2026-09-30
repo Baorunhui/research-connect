@@ -80,7 +80,7 @@
       : failed
       ? (opts.failedTitle || '❌ 任务失败')
       : cancelled
-        ? (opts.cancelledTitle || '⏹ 任务已取消')
+        ? (opts.cancelledTitle || '这次已停下。')
         : completed
           ? (opts.doneTitle || '✅ 任务完成')
           : (opts.title || '⏳ 任务正在执行');

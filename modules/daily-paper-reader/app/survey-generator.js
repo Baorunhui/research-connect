@@ -250,7 +250,7 @@ window.SurveyGenerator = (function () {
 
     var actions = el('div', 'survey-progress-actions');
     if (status === 'running' || status === 'queued') {
-      var cancelBtn = el('button', 'survey-btn survey-btn-ghost', '取消任务');
+      var cancelBtn = el('button', 'survey-btn survey-btn-ghost', '停下这次');
       cancelBtn.id = 'survey-cancel';
       cancelBtn.type = 'button';
       cancelBtn.addEventListener('click', function () { requestCancel(job.job_id); });
@@ -268,8 +268,11 @@ window.SurveyGenerator = (function () {
 
   function requestCancel(jobId) {
     fetch(surveyEndpoint() + '/' + encodeURIComponent(jobId) + '/cancel', { method: 'POST' })
-      .then(function () { setStatus('已请求取消，这一步做完就会停。'); })
-      .catch(function () { setStatus('取消请求发送失败', true); });
+      .then(function (r) {
+        if (!r.ok) throw new Error('status');
+        setStatus('正在停下，这一步做完就会停。');
+      })
+      .catch(function () { setStatus('这次没能停下，请稍后重试。', true); });
   }
 
   function loadLog(jobId) {
