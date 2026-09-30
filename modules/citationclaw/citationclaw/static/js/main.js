@@ -1150,6 +1150,37 @@ function initIndexPage() {
             alert('有一篇论文题目或其他题名太长了，请缩短后再查。');
             return;
         }
+
+        runBtn.disabled = true;
+        runBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="animation:spin .8s linear infinite"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="40" stroke-dashoffset="10"/></svg>&nbsp; 运行中...';
+        var cancelBtn = document.getElementById('idx-cancel-btn');
+        if (cancelBtn) {
+            cancelBtn.disabled = false;
+            cancelBtn.innerHTML = '<i class="bi bi-x-circle"></i> 取消';
+            cancelBtn.style.display = 'inline-flex';
+        }
+        var progressSection = document.getElementById('idx-progress-section');
+        if (progressSection) progressSection.style.display = 'block';
+        var logSection = document.getElementById('idx-log-section');
+        if (logSection) logSection.style.display = 'block';
+        var resultsSection = document.getElementById('idx-results-section');
+        if (resultsSection) resultsSection.style.display = 'none';
+        var pipe = document.getElementById('idx-pipeline-info');
+        if (pipe) pipe.style.display = '';
+        document.querySelectorAll('.pipeline-phase').forEach(el => {
+            el.classList.remove('active', 'done');
+        });
+        startRunTimer();
+        resetStuckTimer();
+        var logContainer = document.getElementById('idx-log-container');
+        if (logContainer) logContainer.innerHTML =
+            '<div class="reasoning-empty"><div class="reasoning-empty-text">正在开始，请稍候。</div></div>';
+        updateIndexProgress({ percentage: 0, current: 0, total: 0 });
+        currentPhase = '正在开始';
+        var phaseLbl = document.getElementById('idx-phase-label');
+        if (phaseLbl) phaseLbl.textContent = currentPhase;
+        GlobalProgress.show('正在开始', 0);
+
         await saveIndexConfig();
 
         // 预检查 LLM 余额
@@ -1176,34 +1207,6 @@ function initIndexPage() {
 
         const outputPrefix = document.getElementById('idx-output-prefix')?.value || 'paper';
 
-        runBtn.disabled = true;
-        runBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="animation:spin .8s linear infinite"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="40" stroke-dashoffset="10"/></svg>&nbsp; 运行中...';
-
-        var cancelBtn = document.getElementById('idx-cancel-btn');
-        if (cancelBtn) {
-            cancelBtn.disabled = false;
-            cancelBtn.innerHTML = '<i class="bi bi-x-circle"></i> 取消';
-            cancelBtn.style.display = 'inline-flex';
-        }
-        var progressSection = document.getElementById('idx-progress-section');
-        if (progressSection) progressSection.style.display = 'block';
-        var logSection = document.getElementById('idx-log-section');
-        if (logSection) logSection.style.display = 'block';
-        var resultsSection = document.getElementById('idx-results-section');
-        if (resultsSection) resultsSection.style.display = 'none';
-        // Show and reset pipeline indicator
-        document.getElementById('idx-pipeline-info').style.display = '';
-        document.querySelectorAll('.pipeline-phase').forEach(el => {
-            el.classList.remove('active', 'done');
-        });
-        startRunTimer();
-        resetStuckTimer();
-
-        // 清空日志，显示 empty placeholder
-        var logContainer = document.getElementById('idx-log-container');
-        if (logContainer) logContainer.innerHTML =
-            '<div class="reasoning-empty"><div class="reasoning-empty-text">正在开始，请稍候。</div></div>';
-
         const _modelEl = document.getElementById('idx-openai-model');
         if (_modelEl && _modelEl.value) {
             appendIndexLog({
@@ -1216,15 +1219,6 @@ function initIndexPage() {
         // 显示 thinking indicator
         const thinking = document.getElementById('rp-thinking-indicator');
         if (thinking) thinking.classList.add('active');
-
-        // 重置进度
-        updateIndexProgress({ percentage: 0, current: 0, total: 0 });
-        currentPhase = '正在开始';
-        var phaseLbl = document.getElementById('idx-phase-label');
-        if (phaseLbl) phaseLbl.textContent = currentPhase;
-
-        // Show global progress bar
-        GlobalProgress.show('正在开始', 0);
 
         try {
             const resp = await safeFetch('/api/run', {

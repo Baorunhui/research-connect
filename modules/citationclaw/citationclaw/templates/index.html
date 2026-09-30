@@ -446,7 +446,7 @@
 
 {% block scripts %}
 <script src="/static/js/websocket.js?v=2.3"></script>
-<script src="/static/js/main.js?v=2.25"></script>
+<script src="/static/js/main.js?v=2.26"></script>
 <script>
 // ── API Key 检查 ────────────────────────────────────────────────
 function checkApiKeysAndAlert() {
@@ -618,7 +618,9 @@ async function _launchProfilePipeline(endpoint, body, isForm) {
     let started = false;
     if (runBtn) { runBtn.disabled = true; runBtn.textContent = '运行中…'; }
     if (upBtn) { upBtn.disabled = true; }
-    try { await saveIndexConfig(); } catch(e) { console.error('自动保存配置失败:', e); }
+    if (window.saveIndexConfig) {
+        window.saveIndexConfig().catch(function (e) { console.error('自动保存配置失败:', e); });
+    }
     try {
         const opts = isForm ? { method: 'POST', body } : { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) };
         const res = await fetch(citationPublicApiUrl(endpoint), opts);
