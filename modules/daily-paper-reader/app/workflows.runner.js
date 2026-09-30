@@ -92,6 +92,7 @@ window.DPRWorkflowRunner = (function () {
   let liveProgressSignature = '';
   let liveListStamp = '';
   let dismissedLiveRunId = '';
+  let liveProgressGeneration = 0;
 
   const syncSidebarFromStep6 = (run) => {
     const hasCompletedPaper = (run && Array.isArray(run.events) ? run.events : []).some((ev) => {
@@ -375,16 +376,17 @@ window.DPRWorkflowRunner = (function () {
       open();
       selectedRun = { local: true, runId: liveProgressRunId };
       await refreshLocalRun(liveProgressRunId);
-      stopPolling();
-      refreshTimer = setInterval(() => refreshLocalRun(liveProgressRunId), 5000);
+      startRunPolling(() => refreshLocalRun(liveProgressRunId));
     });
     return liveProgressEl;
   };
 
   const refreshLiveProgress = async () => {
     if (!isLocalDebugPage() || !window.DPRTaskProgress) return;
+    const generation = ++liveProgressGeneration;
     try {
       const data = await localApiFetch(LOCAL_RUNS_API);
+      if (generation !== liveProgressGeneration) return;
       const runs = Array.isArray(data.runs) ? data.runs : [];
       const active = runs.find((run) => {
         const status = String(run && run.status || '').toLowerCase();
@@ -423,6 +425,7 @@ window.DPRWorkflowRunner = (function () {
           }
         } catch (err) { /* 列表里的摘要够用来显示卡片 */ }
       }
+      if (generation !== liveProgressGeneration) return;
       if (gotDetail) liveListStamp = listStamp;
       syncSidebarFromStep6(detailed);
       const events = Array.isArray(detailed.events) ? detailed.events : [];
@@ -588,11 +591,11 @@ window.DPRWorkflowRunner = (function () {
     selectedRun = activeRun;
     setStatus(data.already_running ? '上一次还在生成，接着看这一次。' : '已开始。', '#080', { waiting: true });
     await refreshLocalRun(run.id);
-    refreshTimer = setInterval(() => {
+    startRunPolling(() => {
       const r = selectedRun || activeRun;
       if (!r || !r.local) return;
       refreshLocalRun(r.runId);
-    }, 5000);
+    });
   };
 
   const resolveWorkflowRunInputs = async (owner, repo, token, runId) => {
@@ -719,6 +722,11 @@ window.DPRWorkflowRunner = (function () {
     }
   };
 
+  const startRunPolling = (tick) => {
+    stopPolling();
+    refreshTimer = setInterval(tick, 5000);
+  };
+
   const badgeColorFor = (status, conclusion) => {
     if (conclusion === 'success') return '#2e7d32';
     if (conclusion === 'failure') return '#c00';
@@ -830,10 +838,10 @@ window.DPRWorkflowRunner = (function () {
         selectedRun = { owner, repo, runId, token: loadGithubToken() };
         setStatus(`正在加载运行详情：run_id=${runId}`, '#666', { waiting: true });
         await refreshRun(owner, repo, runId);
-        refreshTimer = setInterval(() => {
+        startRunPolling(() => {
           if (!selectedRun) return;
           refreshRun(selectedRun.owner, selectedRun.repo, selectedRun.runId);
-        }, 5000);
+        });
       });
     });
   };
@@ -870,7 +878,7 @@ window.DPRWorkflowRunner = (function () {
             stopPolling();
             selectedRun = { local: true, runId };
             await refreshLocalRun(runId);
-            refreshTimer = setInterval(() => refreshLocalRun(runId), 5000);
+            startRunPolling(() => refreshLocalRun(runId));
           });
         });
         recentEl.querySelectorAll('[data-run-delete]').forEach((button) => {
@@ -1165,11 +1173,11 @@ window.DPRWorkflowRunner = (function () {
       setStatus(`运行已创建：run_id=${run.id}，开始拉取进度...`, '#080', { waiting: true });
       await refreshRun(owner, repo, run.id);
 
-      refreshTimer = setInterval(() => {
+      startRunPolling(() => {
         const r = selectedRun || activeRun;
         if (!r) return;
         refreshRun(r.owner, r.repo, r.runId);
-      }, 5000);
+      });
 
       // 触发后刷新最近运行列表
       loadRecentRuns();
