@@ -1192,15 +1192,16 @@ function initIndexPage() {
         // 清空日志，显示 empty placeholder
         var logContainer = document.getElementById('idx-log-container');
         if (logContainer) logContainer.innerHTML =
-            '<div class="reasoning-empty"><div class="reasoning-empty-icon">🤖</div><div class="reasoning-empty-text">智能体正在初始化...</div></div>';
+            '<div class="reasoning-empty"><div class="reasoning-empty-text">正在开始，请稍候。</div></div>';
 
-        // 立即显示当前搜索模型
         const _modelEl = document.getElementById('idx-openai-model');
-        appendIndexLog({
-            timestamp: new Date().toLocaleString('zh-CN'),
-            level: 'INFO',
-            message: '查找时使用的模型：' + (_modelEl ? _modelEl.value || '还没选' : '还没选')
-        });
+        if (_modelEl && _modelEl.value) {
+            appendIndexLog({
+                timestamp: new Date().toLocaleString('zh-CN'),
+                level: 'INFO',
+                message: '查找时使用的模型：' + _modelEl.value
+            });
+        }
 
         // 显示 thinking indicator
         const thinking = document.getElementById('rp-thinking-indicator');
