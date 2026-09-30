@@ -908,6 +908,31 @@ window.$docsify = {
         return text;
       };
 
+      const hasRawMathDelimiter = (el) => {
+        if (!el || typeof document === 'undefined' || !document.createTreeWalker || !window.NodeFilter) return true;
+        const reject = window.NodeFilter.FILTER_REJECT;
+        const accept = window.NodeFilter.FILTER_ACCEPT;
+        let walker;
+        try {
+          walker = document.createTreeWalker(el, window.NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+              const parent = node.parentElement;
+              if (parent && parent.closest && parent.closest('.dpr-math, .katex')) return reject;
+              return accept;
+            },
+          });
+        } catch (e) {
+          return true;
+        }
+        let node = walker.nextNode();
+        while (node) {
+          const value = node.nodeValue || '';
+          if (value.indexOf('$') !== -1 || value.indexOf('\\(') !== -1 || value.indexOf('\\[') !== -1) return true;
+          node = walker.nextNode();
+        }
+        return false;
+      };
+
       // 公共工具：在指定元素上渲染公式
       const renderMathInEl = (el) => {
         if (!el) return;
@@ -926,8 +951,8 @@ window.$docsify = {
             }
           });
         }
-        // 兜底：对纯文本中残留的 $...$ / $$...$$ 用 auto-render 处理
-        if (window.renderMathInElement) {
+        // 兜底：正文里还留着 $...$ 时才再扫一遍。公式已经放进 .dpr-math 时，整页再扫会明显变慢。
+        if (window.renderMathInElement && hasRawMathDelimiter(el)) {
           window.renderMathInElement(el, {
             delimiters: [
               { left: '$$', right: '$$', display: true },
