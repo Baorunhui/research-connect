@@ -1153,13 +1153,26 @@ async def list_result_folders():
         for sub in DATA_DIR.iterdir():
             if not (sub.is_dir() and sub.name.startswith("result-")):
                 continue
-            files = [f for f in sub.iterdir() if f.is_file()]
+            modified = sub.stat().st_mtime
+            size = 0
+            file_count = 0
+            for item in sub.iterdir():
+                if not item.is_file():
+                    continue
+                try:
+                    stat = item.stat()
+                except OSError:
+                    continue
+                file_count += 1
+                size += stat.st_size
+                if stat.st_mtime > modified:
+                    modified = stat.st_mtime
             folders.append({
                 "name": sub.name,
                 "display_name": _result_folder_label(sub),
-                "file_count": len(files),
-                "modified": max((f.stat().st_mtime for f in files), default=sub.stat().st_mtime),
-                "size": sum(f.stat().st_size for f in files),
+                "file_count": file_count,
+                "modified": modified,
+                "size": size,
             })
 
     # 旧版扁平目录
@@ -1180,6 +1193,16 @@ async def list_result_folders():
     return folders
 
 
+def _newest_result_dir() -> Path | None:
+    if not DATA_DIR.exists():
+        return None
+    dirs = [
+        sub for sub in DATA_DIR.iterdir()
+        if sub.is_dir() and sub.name.startswith("result-")
+    ]
+    return max(dirs, key=lambda sub: sub.name) if dirs else None
+
+
 @app.get("/api/results/list")
 async def list_results(folder: str = None):
     results = []
@@ -1188,29 +1211,38 @@ async def list_results(folder: str = None):
         return file.resolve().relative_to(DATA_DIR.resolve()).as_posix()
 
     def add_file(file: Path):
+        try:
+            stat = file.stat()
+        except OSError:
+            return
         results.append({
             "name": file.name,
-            "size": file.stat().st_size,
+            "size": stat.st_size,
             "type": file.suffix,
             "path": data_relative_path(file),
-            "modified": file.stat().st_mtime
+            "modified": stat.st_mtime,
         })
 
-    if folder == "__legacy__" or (folder is None):
-        for dir_path in [DATA_DIR / "excel", DATA_DIR / "json", DATA_DIR / "jsonl"]:
-            if dir_path.exists():
-                for file in dir_path.iterdir():
-                    if file.is_file():
-                        add_file(file)
+    def add_dir(dir_path: Path):
+        if not dir_path.is_dir():
+            return
+        for file in dir_path.iterdir():
+            if file.is_file():
+                add_file(file)
 
-    if folder != "__legacy__":
-        if DATA_DIR.exists():
-            for sub in DATA_DIR.iterdir():
-                if sub.is_dir() and sub.name.startswith("result-"):
-                    if folder is None or sub.name == folder:
-                        for file in sub.iterdir():
-                            if file.is_file():
-                                add_file(file)
+    # No folder means "the report just finished", not every past file.
+    if folder is None:
+        newest = _newest_result_dir()
+        if newest is not None:
+            add_dir(newest)
+        else:
+            for name in ("excel", "json", "jsonl"):
+                add_dir(DATA_DIR / name)
+    elif folder == "__legacy__":
+        for name in ("excel", "json", "jsonl"):
+            add_dir(DATA_DIR / name)
+    elif "/" not in folder and "\\" not in folder and folder.startswith("result-"):
+        add_dir(DATA_DIR / folder)
 
     results.sort(key=lambda x: x["modified"], reverse=True)
     return results
