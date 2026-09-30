@@ -198,7 +198,10 @@ $('xhs-form').addEventListener('submit', async (ev) => {
     mode: 'generate_package',
     source: { kind: $('intent').value === 'paper_promo' || $('intent').value === 'daily_paper' ? 'paper' : 'project',
               title: title, summary: summary, materials, links, entities: {} },
-    requirements: { card_count: Math.max(1, Math.min(8, parseInt($('cards').value || '5', 10))) },
+    requirements: { card_count: (function () {
+      var n = parseInt($('cards').value || '5', 10);
+      return Number.isFinite(n) ? Math.max(1, Math.min(8, n)) : 5;
+    })() },
   };
   if (audience) body.audience = { who: audience };
   $('submit').disabled = true;
