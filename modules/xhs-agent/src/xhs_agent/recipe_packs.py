@@ -74,7 +74,7 @@ def base_css() -> str:
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 1080px; height: 1440px; background: #111; }
     body {
-      font-family: "Inter", "Noto Sans CJK SC", "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
+      font-family: "Inter", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: geometricPrecision;
     }
@@ -82,7 +82,7 @@ def base_css() -> str:
     .meta {
       position: absolute; z-index: 5; left: var(--x); right: var(--x); top: var(--top);
       display: flex; justify-content: space-between; align-items: center;
-      color: var(--muted); font: 22px "Noto Sans Mono CJK SC", ui-monospace, monospace;
+      color: var(--muted); font: 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei", ui-monospace, monospace;
     }
     .footer {
       position: absolute; z-index: 5; left: var(--x); right: var(--x); bottom: 48px;
@@ -120,7 +120,7 @@ def base_css() -> str:
       border:var(--image-hair, 1px solid rgba(0,0,0,.1));
     }
     .media-main .asset-points span {
-      display:block; color:var(--image-accent, #222); font:800 20px "Noto Sans Mono CJK SC", monospace;
+      display:block; color:var(--image-accent, #222); font:800 20px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei", monospace;
       margin-bottom:18px;
     }
     .media-main .asset-points p { font-size:25px; line-height:1.28; font-weight:800; }
@@ -131,7 +131,7 @@ def base_css() -> str:
       display:grid; grid-template-columns:58px 1fr; align-items:start; min-height:72px;
       border-top:var(--image-hair, 1px solid rgba(0,0,0,.1)); padding-top:16px;
     }
-    .evidence-main .evidence-row span { color:var(--image-accent, #222); font:800 20px "Noto Sans Mono CJK SC", monospace; }
+    .evidence-main .evidence-row span { color:var(--image-accent, #222); font:800 20px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei", monospace; }
     .evidence-main .evidence-row p { font-size:26px; line-height:1.32; font-weight:800; }
     .image-cover-main { position:absolute; inset:0; z-index:2; color:var(--image-cover-text, inherit); }
     .cover-asset { position:absolute; inset:0; width:100%; height:100%; border:0; padding:0; background:#111; }
@@ -148,7 +148,7 @@ def base_css() -> str:
       color:white; text-shadow:0 2px 24px rgba(0,0,0,.48);
     }
     .image-cover-main .copy .kicker {
-      color:rgba(255,255,255,.78); font:800 22px "Noto Sans Mono CJK SC", monospace; margin-bottom:26px;
+      color:rgba(255,255,255,.78); font:800 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei", monospace; margin-bottom:26px;
     }
     .image-cover-main h1 { font-size:86px; line-height:1.08; font-weight:950; letter-spacing:0; max-width:900px; }
     .image-cover-main .copy p:not(.kicker) { margin-top:24px; max-width:820px; font-size:32px; line-height:1.36; }
@@ -709,14 +709,14 @@ PACK_CSS = {
     .pack-research-editorial .meta { border-bottom:2px solid #c8bfb1; padding-bottom:28px; }
     .pack-research-editorial .footer { border-top:2px solid #c8bfb1; padding-top:24px; }
     .ed { position:absolute; z-index:2; left:72px; right:72px; top:176px; bottom:126px; }
-    .ed .kicker { color:#6b6257; font:22px "Noto Sans Mono CJK SC",monospace; margin-bottom:26px; }
-    .ed h1 { font-family:"Noto Serif CJK SC",serif; font-weight:700; letter-spacing:0; color:#111; }
-    .pack-research-editorial .image-recipe h1 { font-family:"Noto Serif CJK SC",serif; font-weight:700; }
+    .ed .kicker { color:#6b6257; font:22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; margin-bottom:26px; }
+    .ed h1 { font-family:"Noto Serif CJK SC", "WenQuanYi Zen Hei",serif; font-weight:700; letter-spacing:0; color:#111; }
+    .pack-research-editorial .image-recipe h1 { font-family:"Noto Serif CJK SC", "WenQuanYi Zen Hei",serif; font-weight:700; }
     .ed .lead { color:#2e5e51; font-size:34px; line-height:1.38; margin-top:18px; }
     .ed-cover h1 { font-size:88px; line-height:1.1; max-width:900px; margin-top:72px; }
     .issue-strip { position:absolute; left:0; right:0; bottom:116px; display:grid; gap:14px; }
     .issue-item { display:grid; grid-template-columns:62px 1fr; align-items:center; min-height:66px; border-top:1.5px solid #c8bfb1; }
-    .issue-item span { color:#6b6257; font:22px "Noto Sans Mono CJK SC",monospace; }
+    .issue-item span { color:#6b6257; font:22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .issue-item p { font-size:28px; font-weight:700; line-height:1.28; }
     .ed-thesis { display:flex; flex-direction:column; justify-content:center; }
     .ed-thesis h1,.ed-quote h1 { font-size:104px; line-height:1.08; max-width:900px; }
@@ -724,11 +724,11 @@ PACK_CSS = {
     .ed-list h1,.ed-pipeline h1,.ed-body h1,.ed-ending h1 { font-size:68px; line-height:1.12; }
     .ledger { margin-top:64px; border-top:2px solid #c8bfb1; }
     .ledger-row { min-height:112px; display:grid; grid-template-columns:72px 1fr; align-items:center; border-bottom:2px solid #c8bfb1; padding:20px 0; }
-    .ledger-row span,.step span { color:#2e5e51; font:700 23px "Noto Sans Mono CJK SC",monospace; }
+    .ledger-row span,.step span { color:#2e5e51; font:700 23px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .ledger-row p { font-size:34px; line-height:1.3; font-weight:700; }
     .ed-body { display:grid; grid-template-columns:1fr 1fr; gap:54px; align-content:start; padding-top:54px; }
     .ed-body article { border-left:2px solid #c8bfb1; padding-left:42px; display:grid; gap:28px; }
-    .ed-body article p { font:34px/1.5 "Noto Serif CJK SC",serif; }
+    .ed-body article p { font:34px/1.5 "Noto Serif CJK SC", "WenQuanYi Zen Hei",serif; }
     .ed-body aside { grid-column:1/3; align-self:end; color:#6b6257; border-top:2px solid #c8bfb1; padding-top:26px; font-size:28px; }
     .pipeline-v { margin-top:62px; display:grid; gap:18px; }
     .step { display:grid; grid-template-columns:74px 1fr; min-height:112px; border-bottom:2px solid #c8bfb1; padding:18px 0; }
@@ -738,7 +738,7 @@ PACK_CSS = {
     .ed-quote { display:flex; flex-direction:column; justify-content:center; }
     .ed-quote .mark { height:90px; color:#2e5e51; font:180px Georgia,serif; line-height:.7; }
     .ed-quote p:not(.mark) { margin-top:42px; color:#6b6257; font-size:38px; line-height:1.45; }
-    .ed-quote small { margin-top:70px; color:#2e5e51; font:700 22px "Noto Sans Mono CJK SC",monospace; }
+    .ed-quote small { margin-top:70px; color:#2e5e51; font:700 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .ed-ending .confirm { position:absolute; left:0; right:0; bottom:84px; padding:28px 34px; background:#111; color:white; font-size:30px; font-weight:800; }
     """,
     "research-swiss": """
@@ -754,13 +754,13 @@ PACK_CSS = {
     .sw-cover section { position:absolute; left:0; right:0; bottom:108px; display:grid; grid-template-columns:1fr 1fr; gap:24px; }
     .sw-cover b { background:#f0f0ee; border-left:8px solid #002fa7; padding:28px; font-size:28px; line-height:1.3; }
     .sw-thesis { display:flex; flex-direction:column; justify-content:center; }
-    .sw-thesis p,.sw-quote p { color:#002fa7; font:700 22px "Noto Sans Mono CJK SC",monospace; }
+    .sw-thesis p,.sw-quote p { color:#002fa7; font:700 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .sw-thesis h1,.sw-quote h1 { font-size:118px; line-height:1.04; font-weight:300; max-width:930px; }
     .sw-thesis h2,.sw-quote h2 { max-width:780px; font-size:34px; color:#737373; }
     .sw-list h1,.sw-pipeline h1,.sw-body h1,.sw-ending h1 { font-size:72px; line-height:1.1; }
     .sw-list section { margin-top:58px; display:grid; grid-template-columns:1fr 1fr; gap:24px; }
     .cell { min-height:168px; background:#f0f0ee; padding:26px 28px; display:block; }
-    .cell span { color:#002fa7; font:700 22px "Noto Sans Mono CJK SC",monospace; }
+    .cell span { color:#002fa7; font:700 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .cell p { margin-top:28px; color:#0a0a0a; font-size:32px; line-height:1.28; font-weight:800; }
     .sw-body { display:grid; grid-template-columns:320px 1fr; gap:52px; align-content:start; }
     .sw-body article { display:grid; gap:26px; }
@@ -768,13 +768,13 @@ PACK_CSS = {
     .sw-body aside { grid-column:1/3; border-left:8px solid #002fa7; padding:24px 30px; background:#f0f0ee; color:#737373; font-size:28px; }
     .sw-pipeline section { margin-top:54px; display:grid; gap:18px; border-left:8px solid #002fa7; padding-left:28px; }
     .tower-step { min-height:106px; display:grid; grid-template-columns:68px 1fr; background:#f0f0ee; padding:24px 28px; }
-    .tower-step span { color:#002fa7; font:700 22px "Noto Sans Mono CJK SC",monospace; }
+    .tower-step span { color:#002fa7; font:700 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .tower-step h2 { font-size:32px; line-height:1.24; }
     .tower-step p { color:#737373; font-size:24px; margin-top:8px; }
     .sw-quote { display:flex; flex-direction:column; justify-content:center; }
     .sw-ending section { margin-top:54px; border-top:2px solid #d4d4d2; }
     .release-row { display:grid; grid-template-columns:68px 1fr; min-height:92px; align-items:center; border-bottom:2px solid #d4d4d2; }
-    .release-row span { color:#002fa7; font:700 22px "Noto Sans Mono CJK SC",monospace; }
+    .release-row span { color:#002fa7; font:700 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .release-row p { font-size:30px; font-weight:800; }
     .sw-ending div { position:absolute; left:0; right:0; bottom:92px; background:#002fa7; color:#fff; padding:28px 32px; font-size:30px; font-weight:800; }
     """,
@@ -797,7 +797,7 @@ PACK_CSS = {
     .soft-thesis p,.soft-quote p { max-width:820px; color:#647872; font-size:38px; line-height:1.42; }
     .soft-list section,.soft-pipeline section { margin-top:54px; display:grid; gap:18px; }
     .soft-row { min-height:92px; display:grid; grid-template-columns:58px 1fr; align-items:center; padding:22px 30px; }
-    .soft-row span,.soft-step span { color:#45675c; font:800 22px "Noto Sans Mono CJK SC",monospace; }
+    .soft-row span,.soft-step span { color:#45675c; font:800 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .soft-row p { font-size:30px; line-height:1.3; font-weight:800; }
     .soft-step { min-height:108px; display:grid; grid-template-columns:58px 1fr; padding:24px 28px; }
     .soft-step h2 { font-size:32px; line-height:1.25; }
@@ -816,18 +816,18 @@ PACK_CSS = {
     .pack-pro-doc .meta { color:#6b7280; text-transform:uppercase; }
     .pack-pro-doc .footer { border-top:2px solid #e5e7eb; padding-top:24px; }
     .doc { position:absolute; z-index:2; left:76px; right:76px; top:176px; bottom:126px; }
-    .doc code { display:inline-block; background:#0066ff; color:white; border-radius:999px; padding:10px 20px; font:800 20px "Noto Sans Mono CJK SC",monospace; }
+    .doc code { display:inline-block; background:#0066ff; color:white; border-radius:999px; padding:10px 20px; font:800 20px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .doc h1 { color:#111827; font-size:72px; line-height:1.12; font-weight:900; }
     .pack-pro-doc .asset-frame,.pack-pro-doc .asset-points article { border-radius:10px; }
     .doc-cover h1 { margin-top:54px; font-size:78px; max-width:900px; }
     .doc-cover p,.doc > p { color:#4b5563; font-size:32px; line-height:1.38; margin-top:22px; }
     .doc-cover section,.doc-list section { margin-top:62px; display:grid; gap:16px; }
     .doc-row { display:grid; grid-template-columns:64px 1fr; align-items:center; min-height:88px; padding:20px 24px; background:white; border:1px solid #e5e7eb; border-radius:10px; }
-    .doc-row span,.doc-step span,.doc-check span { color:#0066ff; font:800 22px "Noto Sans Mono CJK SC",monospace; }
+    .doc-row span,.doc-step span,.doc-check span { color:#0066ff; font:800 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .doc-row p { font-size:30px; font-weight:850; line-height:1.3; }
     .doc-thesis { display:flex; flex-direction:column; justify-content:center; }
     .doc-thesis h1,.doc-quote h1 { margin-top:42px; font-size:94px; line-height:1.08; }
-    .doc-thesis pre { white-space:pre-wrap; margin-top:44px; padding:28px; border-left:8px solid #0066ff; background:white; color:#4b5563; font:32px/1.45 "Noto Sans CJK SC",sans-serif; }
+    .doc-thesis pre { white-space:pre-wrap; margin-top:44px; padding:28px; border-left:8px solid #0066ff; background:white; color:#4b5563; font:32px/1.45 "Noto Sans CJK SC", "WenQuanYi Zen Hei",sans-serif; }
     .doc-body article { margin-top:46px; display:grid; gap:18px; }
     .doc-body article p { background:white; border:1px solid #e5e7eb; border-radius:10px; padding:26px; font-size:32px; line-height:1.45; }
     .doc-body aside { position:absolute; left:0; right:0; bottom:110px; color:#4b5563; font-size:28px; }
@@ -849,7 +849,7 @@ PACK_CSS = {
     .pack-rednote-tech .meta { color:rgba(240,244,255,.62); border-bottom:1px solid rgba(0,212,255,.25); padding-bottom:28px; }
     .pack-rednote-tech .footer { color:rgba(240,244,255,.62); border-top:1px solid rgba(0,212,255,.25); padding-top:24px; }
     .tech { position:absolute; z-index:2; left:72px; right:72px; top:176px; bottom:126px; }
-    .tech code { color:#00d4ff; font:800 20px "Noto Sans Mono CJK SC",monospace; }
+    .tech code { color:#00d4ff; font:800 20px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .tech h1 { color:#f0f4ff; font-size:72px; line-height:1.12; font-weight:900; }
     .pack-rednote-tech .asset-frame,.pack-rednote-tech .asset-points article { border-radius:18px; }
     .tech-cover h1 { margin-top:58px; font-size:78px; max-width:900px; }
@@ -862,7 +862,7 @@ PACK_CSS = {
     .tech-thesis p,.tech-quote p { max-width:820px; color:#00d4ff; font-size:36px; line-height:1.42; }
     .tech-list section,.tech-pipeline section { margin-top:52px; display:grid; gap:18px; }
     .node { min-height:88px; display:grid; grid-template-columns:58px 1fr; align-items:center; padding:20px 28px; }
-    .node span,.node-step span { color:#00d4ff; font:800 22px "Noto Sans Mono CJK SC",monospace; }
+    .node span,.node-step span { color:#00d4ff; font:800 22px "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei",monospace; }
     .node p { color:#f0f4ff; font-size:30px; line-height:1.3; font-weight:850; }
     .node-step { min-height:108px; display:grid; grid-template-columns:64px 1fr; padding:22px 28px; box-shadow:0 0 28px rgba(0,212,255,.07); }
     .node-step h2 { color:#f0f4ff; font-size:32px; line-height:1.25; }

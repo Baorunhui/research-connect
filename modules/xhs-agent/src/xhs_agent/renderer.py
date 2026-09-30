@@ -22,9 +22,18 @@ SC_FACE_INDEX = 2
 
 FONT_FILES = {
     "sans": {
-        "regular": [("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", SC_FACE_INDEX)],
-        "medium": [("/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc", SC_FACE_INDEX)],
-        "bold": [("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", SC_FACE_INDEX)],
+        "regular": [
+            ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", SC_FACE_INDEX),
+            ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", 0),
+        ],
+        "medium": [
+            ("/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc", SC_FACE_INDEX),
+            ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", 0),
+        ],
+        "bold": [
+            ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", SC_FACE_INDEX),
+            ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", 0),
+        ],
     },
     "serif": {
         "regular": [("/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc", SC_FACE_INDEX)],
@@ -445,7 +454,7 @@ def base_css(theme: dict[str, str]) -> str:
     * {{ box-sizing: border-box; }}
     html, body {{ margin: 0; width: 1080px; height: 1440px; background: #111; }}
     body {{
-      font-family: "Inter", "Noto Sans CJK SC", "Noto Sans SC", -apple-system, "PingFang SC", "Microsoft YaHei UI", sans-serif;
+      font-family: "Inter", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "Noto Sans SC", -apple-system, "PingFang SC", "Microsoft YaHei UI", sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: geometricPrecision;
     }}
@@ -476,7 +485,7 @@ def base_css(theme: dict[str, str]) -> str:
       justify-content: space-between;
       border-bottom: 2px solid {theme["line"]};
       padding-bottom: 28px;
-      font-family: "Noto Sans Mono CJK SC", "IBM Plex Mono", monospace;
+      font-family: "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei", "IBM Plex Mono", monospace;
       font-size: 22px;
       color: {theme["muted"]};
       letter-spacing: .02em;
@@ -498,7 +507,7 @@ def base_css(theme: dict[str, str]) -> str:
     }}
     h1 {{
       margin: 0;
-      font-family: "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", serif;
+      font-family: "Noto Serif CJK SC", "WenQuanYi Zen Hei", "Noto Serif SC", "Songti SC", serif;
       font-weight: 700;
       letter-spacing: 0;
       color: {theme["ink"]};
@@ -511,7 +520,7 @@ def base_css(theme: dict[str, str]) -> str:
     }}
     .kicker {{
       margin: 0 0 26px;
-      font-family: "Noto Sans Mono CJK SC", "IBM Plex Mono", monospace;
+      font-family: "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei", "IBM Plex Mono", monospace;
       font-size: 22px;
       color: {theme["muted"]};
     }}
@@ -521,7 +530,7 @@ def base_css(theme: dict[str, str]) -> str:
     .teasers {{ list-style: none; margin: 0; padding: 0; display: grid; gap: 26px; }}
     .teasers li {{ display: grid; grid-template-columns: 76px 1fr; align-items: baseline; }}
     .teasers span {{
-      font-family: "Noto Sans Mono CJK SC", monospace;
+      font-family: "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei", monospace;
       font-size: 24px;
       color: {theme["muted"]};
     }}
@@ -537,7 +546,7 @@ def base_css(theme: dict[str, str]) -> str:
       padding: 24px 8px;
     }}
     .ledger-row span {{
-      font-family: "Noto Sans Mono CJK SC", monospace;
+      font-family: "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei", monospace;
       font-size: 24px;
       color: {theme["accent"]};
     }}
@@ -560,7 +569,7 @@ def base_css(theme: dict[str, str]) -> str:
       background: {theme["paper2"]};
     }}
     .bento-item:nth-child(even) {{ background: {theme["soft"]}; }}
-    .bento-item span {{ font-family: "Noto Sans Mono CJK SC", monospace; font-size: 22px; color: {theme["accent"]}; }}
+    .bento-item span {{ font-family: "Noto Sans Mono CJK SC", "WenQuanYi Zen Hei", monospace; font-size: 22px; color: {theme["accent"]}; }}
     .bento-item h2 {{ margin: 36px 0 16px; font-size: 38px; line-height: 1.2; }}
     .bento-item p {{ margin: 0; font-size: 28px; line-height: 1.42; color: {theme["muted"]}; }}
     .closing-content h1 {{ margin-top: 72px; font-size: 82px; }}
