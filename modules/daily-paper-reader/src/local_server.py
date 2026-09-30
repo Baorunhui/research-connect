@@ -2261,6 +2261,32 @@ def _http_get_with_retry(
     raise last_exc  # type: ignore[misc]
 
 
+def _summarize_request_error(payload: dict[str, Any]) -> str:
+    """Stop a paper summary that cannot be read, before a job is started."""
+    source = str(payload.get("source") or "").strip()
+    if source == "url":
+        url = str(payload.get("url") or "").strip()
+        if not url:
+            return "请先填写论文链接。"
+        if len(url) > 2000:
+            return "这个链接太长了，请换一篇论文的链接。"
+        if _extract_arxiv_id(url):
+            return ""
+        try:
+            _require_public_http_url(url)
+        except ValueError as exc:
+            return str(exc)
+        return ""
+    if source == "pdf":
+        data_b64 = str(payload.get("data_b64") or "")
+        if not data_b64:
+            return "没有读到上传的 PDF，请重新选择文件。"
+        limit = _pdf_max_bytes()
+        if len(data_b64) > limit * 4 // 3 + 8:
+            return f"PDF 不能超过 {limit // (1024 * 1024)}MB，请换一个小一点的文件。"
+    return ""
+
+
 def _survey_seed_error(payload: dict[str, Any]) -> str:
     """Reject a seed the survey cannot read, before a job is started."""
     seed = payload.get("seed")
@@ -3188,6 +3214,9 @@ class Handler(SimpleHTTPRequestHandler):
             source = str(payload.get("source") or "").strip()
             if source not in ("url", "pdf"):
                 return self._json({"ok": False, "error": "请用论文链接或上传 PDF。"}, status=400)
+            request_error = _summarize_request_error(payload)
+            if request_error:
+                return self._json({"ok": False, "error": request_error}, status=400)
             job = SUMMARIZE_JOB_STORE.create(payload, reuse_active=True)
             if job.get("already_running"):
                 return self._json({

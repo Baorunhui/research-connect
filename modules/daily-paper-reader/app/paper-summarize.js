@@ -416,11 +416,36 @@ window.PaperSummarizer = (function () {
     setStatus('✅ 完成');
   }
 
+  function looksLikeArxiv(text) {
+    var value = String(text || '').trim();
+    if (!value || value.length > 2000) return false;
+    if (/arxiv\.org\/(?:abs|pdf)\//i.test(value)) return true;
+    if (/(?:^|\s)arXiv:\s*\S+/i.test(value)) return true;
+    return /^\d{4}\.\d{4,5}(v\d+)?$/.test(value);
+  }
+
+  function paperLinkProblem(url) {
+    if (!url) return '请先填写论文链接。';
+    if (url.length > 2000) return '这个链接太长了，请换一篇论文的链接。';
+    if (looksLikeArxiv(url)) return '';
+    var blocked = '这个链接不能打开。请换一篇论文的网页链接。';
+    if (!/^https?:\/\//i.test(url)) return blocked;
+    var host = '';
+    try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return blocked; }
+    if (!host || host === 'localhost' || host === '::1' ||
+        host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal') ||
+        /^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host)) {
+      return blocked;
+    }
+    return '';
+  }
+
   function handleUrl() {
     var inp = document.querySelector('#paper-summarize-url');
     var url = (inp && inp.value || '').trim();
-    if (!url) {
-      renderError('请先填写论文链接。');
+    var problem = paperLinkProblem(url);
+    if (problem) {
+      renderError(problem);
       return;
     }
     return doSummarize({ source: 'url', url: url });
