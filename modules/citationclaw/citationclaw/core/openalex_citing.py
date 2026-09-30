@@ -348,7 +348,7 @@ class OpenAlexCitingFetcher:
         key = "|".join(ids)
         cites = f"cites:{key}"
         base = self.cache_dir / "citing" / hashlib.sha1(key.encode()).hexdigest()[:20]
-        manifest = self._read(base / "manifest.json.gz")
+        manifest = await asyncio.to_thread(self._read, base / "manifest.json.gz")
         parts = [("all", cites)]
         if manifest and all((base / f"{n}.json.gz").is_file() for n, _ in manifest["parts"]):
             parts = [tuple(x) for x in manifest["parts"]]
@@ -372,7 +372,7 @@ class OpenAlexCitingFetcher:
         out: List[dict] = []
         todo = []
         for name, filt in parts:
-            hit = self._read(base / f"{name}.json.gz")
+            hit = await asyncio.to_thread(self._read, base / f"{name}.json.gz")
             if hit is not None and hit.get("filter") == filt:
                 out.extend(hit["records"])
                 progress["done"] += len(hit["records"])
@@ -385,14 +385,17 @@ class OpenAlexCitingFetcher:
         async def run(name, filt):
             recs = await self._chain(filt, f"{progress['label']}/{name}", expected, progress)
             if recs is not None:
-                self._write(base / f"{name}.json.gz", {"filter": filt, "fetched_at": time.time(),
-                                                        "records": recs})
+                await asyncio.to_thread(
+                    self._write,
+                    base / f"{name}.json.gz",
+                    {"filter": filt, "fetched_at": time.time(), "records": recs},
+                )
             return recs
 
         results = await asyncio.gather(*(run(n, f) for n, f in todo))
         complete = all(r is not None for r in results)
         if complete and len(parts) > 1:
-            self._write(base / "manifest.json.gz", {"parts": parts})
+            await asyncio.to_thread(self._write, base / "manifest.json.gz", {"parts": parts})
         for r in results:
             out.extend(r or [])
         seen, uniq = set(), []
