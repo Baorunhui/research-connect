@@ -3705,7 +3705,8 @@
         return state.schedule;
       })
       .catch(function (err) {
-        // 日程数据缺失或接口异常时静默降级，不影响主侧边栏。
+        // 已经显示过的日程不要因为一次刷新失败被清掉。
+        if (state.schedule) return state.schedule;
         state.schedule = null;
         state.scheduleRaw = '';
         state.scheduleLastFetchAt = 0;
