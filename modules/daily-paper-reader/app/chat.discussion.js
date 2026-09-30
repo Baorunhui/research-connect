@@ -1113,16 +1113,19 @@ window.PrivateDiscussionChat = (function () {
       }
 
       const prev = await loadChatHistory(paperId);
-      let includedQuestion = false;
+      const conversational = [];
       prev.forEach((m) => {
         if (m.role === 'user' || m.role === 'ai') {
-          messages.push({
+          conversational.push({
             role: m.role === 'ai' ? 'assistant' : 'user',
             content: m.content || '',
           });
-          if (m.role === 'user' && m.content === question) includedQuestion = true;
         }
       });
+      // 页面上仍保留更早的问答。发给模型的只留最近几轮，和服务器一致。
+      const recent = conversational.slice(-8);
+      const includedQuestion = recent.some((m) => m.role === 'user' && m.content === question);
+      recent.forEach((m) => messages.push(m));
       if (!includedQuestion) {
         messages.push({
           role: 'user',
