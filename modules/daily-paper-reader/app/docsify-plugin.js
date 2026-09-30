@@ -1742,7 +1742,7 @@ window.$docsify = {
         const paperList = DPR_NAV_STATE.paperHrefs || [];
         const reportList = DPR_NAV_STATE.reportHrefs || [];
         const now = Date.now();
-        if (now - (DPR_NAV_STATE.lastNavTs || 0) < 450) return;
+        if (now - (DPR_NAV_STATE.lastNavTs || 0) < 200) return;
         DPR_NAV_STATE.lastNavTs = now;
 
         const current = DPR_NAV_STATE.currentHref;
@@ -1843,38 +1843,16 @@ window.$docsify = {
         const target = normalizeHref(href);
         if (!target) return;
 
-        // 先把 sidebar 的“选中高亮层”滑动到目标条目，和页面切换同步
-        moveSidebarActiveIndicatorToHref(target, { animate: true });
+        moveSidebarActiveIndicatorToHref(target, { animate: false });
         DPR_SIDEBAR_ACTIVE_INDICATOR.justMoved = true;
 
-        // 通过左右键/滑动切换时：提前把 sidebar 滚到目标项附近，提升“跟手”观感
         if (DPR_NAV_STATE.lastNavSource !== 'click') {
           centerSidebarOnHref(target);
         }
 
-        // 决定入场方向：forward => 新页从右进；backward => 新页从左进
-        DPR_TRANSITION.pendingEnter =
-          direction === 'backward' ? 'enter-from-left' : 'enter-from-right';
-
-        if (prefersReducedMotion()) {
-          window.location.hash = target;
-          return;
-        }
-
-        const animEl = getPageAnimEl();
-        if (!animEl) {
-          window.location.hash = target;
-          return;
-        }
-
-        const exitClass =
-          direction === 'backward' ? 'dpr-page-exit-right' : 'dpr-page-exit-left';
-
-        animEl.classList.add('dpr-page-exit', exitClass);
-        // 等退场动画结束后再切换路由
-        setTimeout(() => {
-          window.location.hash = target;
-        }, DPR_TRANSITION_MS);
+        // 整页先滑走再打开下一篇，长文会像卡住。直接打开。
+        DPR_TRANSITION.pendingEnter = '';
+        window.location.hash = target;
       };
 
       const PREFETCH_STATE = {

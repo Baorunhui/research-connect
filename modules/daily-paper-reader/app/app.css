@@ -2494,13 +2494,6 @@ body.dpr-paper-page .markdown-section h1.dpr-title-hidden {
 /* 论文页“整页切换”动效：左右滑动/方向键切换时，正文区域做轻量滑入滑出 */
 body.dpr-paper-page .markdown-section .dpr-page-content {
   position: relative;
-  /* 让动效前后字体观感一致（避免 subpixel ↔ grayscale 的切换感） */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: geometricPrecision;
-  /* 固定在合成层：尽量避免“动画时/静止后”字体栅格化策略不同导致的观感变化 */
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
 }
 
 body.dpr-paper-page .markdown-section .dpr-page-content.dpr-page-exit,
