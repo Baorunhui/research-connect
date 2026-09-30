@@ -120,6 +120,7 @@ window.SurveyGenerator = (function () {
     pollFailures: 0,
     showingLog: false,
     lastJob: null,
+    progressKey: '',
     seedFile: null, // 已选种子 PDF File（与链接互斥：有文件优先）
   };
 
@@ -204,6 +205,11 @@ window.SurveyGenerator = (function () {
     if (!out) return;
     var status = String(job.status || 'unknown').toLowerCase();
     var events = job.events || [];
+    var viewKey = String(job.job_id || '') + '\n' + status + '\n' +
+      (events || []).map(function (ev) { return (ev && ev.event_id) || ''; }).join(',');
+    if (viewKey === state.progressKey && out.querySelector('.survey-progress-card')) return;
+    state.progressKey = viewKey;
+    var nearBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 48;
     out.textContent = '';
     out.classList.remove('is-error');
 
@@ -266,7 +272,9 @@ window.SurveyGenerator = (function () {
     card.appendChild(actions);
 
     out.appendChild(card);
-    try { out.scrollTop = out.scrollHeight; } catch (_e) { /* ignore */ }
+    if (nearBottom) {
+      try { out.scrollTop = out.scrollHeight; } catch (_e) { /* ignore */ }
+    }
   }
 
   function requestCancel(jobId) {
