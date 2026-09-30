@@ -838,6 +838,7 @@ function initIndexPage() {
             if (el('profile-top-n')) body.profile_top_n = parseInt(el('profile-top-n').value || '30') || 30;
             if (el('profile-min-cit')) body.profile_min_citations = parseInt(el('profile-min-cit').value || '0') || 0;
             if (el('profile-llm-fallback')) body.profile_use_llm_fallback = el('profile-llm-fallback').checked;
+            if (el('profile-full-mode')) body.profile_mode = el('profile-full-mode').checked ? 'full' : 'fast';
             if (el('idx-profile-fb-keys')) {
                 body.profile_fallback_api_keys = el('idx-profile-fb-keys').value.split(',').map(k => k.trim()).filter(Boolean);
             }

@@ -240,6 +240,10 @@ class ConfigUpdate(BaseModel):
     profile_fallback_api_keys: list[str] = []
     profile_fallback_base_url: str = ""
     profile_fallback_model: str = ""
+    profile_mode: str = "fast"
+    profile_top_n: int = 30
+    profile_min_citations: int = 0
+    profile_use_llm_fallback: bool = True
 
 
 @app.get("/api/presets")
@@ -270,7 +274,14 @@ async def save_config(config: ConfigUpdate, request: Request):
         # 合并保存：UI 未提交的字段（profile_* 等）保留当前值，
         # 而不是被重置为默认值。接口密钥只接受带服务器令牌的请求。
         data = config_manager.get().model_dump()
-        incoming = config.model_dump()
+        # 只覆盖这次真正提交的字段。学者主页的篇数和「查得更全」也在其中。
+        incoming = config.model_dump(exclude_unset=True)
+        if "profile_top_n" in incoming:
+            incoming["profile_top_n"] = _clamp_profile_top_n(incoming["profile_top_n"])
+        if "profile_min_citations" in incoming:
+            incoming["profile_min_citations"] = _clamp_min_citations(incoming["profile_min_citations"])
+        if "profile_mode" in incoming and incoming["profile_mode"] not in ("fast", "full"):
+            incoming["profile_mode"] = "fast"
         if not _api_config_write_allowed(request):
             incoming = strip_api_config(incoming)
         data.update(incoming)
@@ -753,10 +764,10 @@ async def run_profile_pipeline(request: ProfileRunRequest):
     if not request.force_refresh:
         cached = await _serve_cached_profile(
             profile_url=url,
-            top_n=request.top_n,
-            min_citations=request.min_citations,
-            mode=request.mode or "fast",
-            use_llm_fallback=request.use_llm_fallback,
+            top_n=config.profile_top_n,
+            min_citations=config.profile_min_citations,
+            mode=config.profile_mode or "fast",
+            use_llm_fallback=config.profile_use_llm_fallback,
         )
         if cached is not None:
             return cached
@@ -826,10 +837,10 @@ async def upload_profile_pipeline(request: Request,
         cached = await _serve_cached_profile(
             profile_html=html,
             scholar_name=file.filename or "",
-            top_n=top_n,
-            min_citations=min_citations,
-            mode=mode or "fast",
-            use_llm_fallback=use_llm_fallback,
+            top_n=config.profile_top_n,
+            min_citations=config.profile_min_citations,
+            mode=config.profile_mode or "fast",
+            use_llm_fallback=config.profile_use_llm_fallback,
         )
         if cached is not None:
             return cached
