@@ -230,6 +230,18 @@ def _redact_log_text(text: str) -> str:
     return "\n".join(kept)
 
 
+def _redacted_log_tail(text: str, tail: int = 20000) -> str:
+    """Hide secret lines before cutting the tail, so a key is not split in half."""
+    redacted = _redact_log_text(text)
+    if len(redacted) <= tail:
+        return redacted
+    clipped = redacted[-tail:]
+    newline = clipped.find("\n")
+    if 0 <= newline < len(clipped) - 1:
+        clipped = clipped[newline + 1 :]
+    return clipped
+
+
 def norm_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -784,7 +796,7 @@ class RunStore:
         path = Path(str(run.get("log_path") or ""))
         if not path.exists():
             return ""
-        return _redact_log_text(path.read_text(encoding="utf-8", errors="replace")[-20000:])
+        return _redacted_log_tail(path.read_text(encoding="utf-8", errors="replace"))
 
     def _update(self, run_id: str, **patch: Any) -> None:
         with self._lock:
@@ -1489,7 +1501,7 @@ def _survey_job_log(job_id: str, tail: int = 20000) -> str:
     path = _survey_job_log_path(job_id)
     if not path.exists():
         return ""
-    return path.read_text(encoding="utf-8", errors="replace")[-tail:]
+    return _redacted_log_tail(path.read_text(encoding="utf-8", errors="replace"), tail)
 
 
 def _run_survey_job(
