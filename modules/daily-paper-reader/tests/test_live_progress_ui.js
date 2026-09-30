@@ -52,7 +52,7 @@ const changed = sidebar.syncLivePapers({
 });
 assert.equal(changed, true);
 assert.ok(sidebar.getPaperHrefs().includes(
-  '#/api/local/runtime/docs/20260823-20260901/2608.1v1-a-vlm-paper',
+  '#/20260823-20260901/2608.1v1-a-vlm-paper',
 ));
 
 console.log('live progress UI tests passed');

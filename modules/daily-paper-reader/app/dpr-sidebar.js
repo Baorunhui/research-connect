@@ -1938,7 +1938,7 @@
       var route = String(payload.paper_id || '').replace(/^#?\//, '').trim();
       var title = String(payload.paper_title || '').trim();
       var dateKey = livePaperDateKey(route);
-      var href = normalizeRouteHref('api/local/runtime/docs/' + route);
+      var href = normalizeRouteHref(route);
       if (!route || !title || !dateKey || existing[route]) return;
 
       var day = null;

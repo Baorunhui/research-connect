@@ -3259,10 +3259,13 @@ class Handler(SimpleHTTPRequestHandler):
             relative = unquote(parsed.path.removeprefix("/api/local/runtime/docs/")).lstrip("/")
             docs_root = (ROOT_DIR / "docs").resolve()
             target = (docs_root / relative).resolve()
-            if (
-                (docs_root not in target.parents and target != docs_root)
-                or not target.is_file()
-            ):
+            if docs_root not in target.parents and target != docs_root:
+                return self._json({"ok": False, "error": "document not found"}, status=404)
+            if not target.is_file() and target.suffix.lower() not in {".md", ".markdown"}:
+                alt = target.with_name(target.name + ".md")
+                if docs_root in alt.parents and alt.is_file():
+                    target = alt
+            if not target.is_file():
                 return self._json({"ok": False, "error": "document not found"}, status=404)
             try:
                 size = target.stat().st_size
