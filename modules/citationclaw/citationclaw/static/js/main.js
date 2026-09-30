@@ -402,6 +402,18 @@ function _resultsSetLoading(show) {
     var el = document.getElementById('loading-indicator');
     if (el) el.style.display = show ? 'block' : 'none';
 }
+function _resultsEmptyCopy(kind) {
+    var title = document.querySelector('#empty-state h5');
+    var body = document.querySelector('#empty-state p');
+    if (kind === 'error') {
+        if (title) title.textContent = '结果列表没有打开';
+        if (body) body.textContent = '请稍后重试。';
+        return;
+    }
+    if (title) title.textContent = '还没有结果';
+    if (body) body.textContent = '先去查一位学者，结果会留在这里。';
+}
+
 function _resultsShowView(view) {
     // view: 'empty' | 'folders' | 'files'
     var emptyEl = document.getElementById('empty-state');
@@ -425,10 +437,12 @@ async function resultsShowFolders() {
         const res = await safeFetch('/api/results/folders');
         const folders = await res.json();
         _resultsSetLoading(false);
-        if (folders.length === 0) {
+        if (!Array.isArray(folders) || folders.length === 0) {
+            _resultsEmptyCopy(Array.isArray(folders) ? 'empty' : 'error');
             _resultsShowView('empty');
             return;
         }
+        _resultsEmptyCopy('empty');
         const list = document.getElementById('results-folder-list');
         list.innerHTML = '';
         folders.forEach(folder => {
@@ -472,6 +486,7 @@ async function resultsShowFolders() {
     } catch (err) {
         console.error('加载文件夹失败:', err);
         _resultsSetLoading(false);
+        _resultsEmptyCopy('error');
         _resultsShowView('empty');
     }
 }
@@ -519,6 +534,7 @@ async function resultsOpenFolder(folderName, displayName) {
     } catch (err) {
         console.error('加载文件夹内容失败:', err);
         _resultsSetLoading(false);
+        _resultsEmptyCopy('error');
         _resultsShowView('empty');
     }
 }

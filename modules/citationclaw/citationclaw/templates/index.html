@@ -306,8 +306,8 @@
                 <!-- 空状态 -->
                 <div id="empty-state" class="text-center p-5" style="display:none;">
                     <i class="bi bi-inbox" style="font-size: 4rem; color: #6c757d;"></i>
-                    <h5 class="mt-3 text-muted">暂无结果文件</h5>
-                    <p class="text-muted">请先执行任务生成结果</p>
+                    <h5 class="mt-3 text-muted">还没有结果</h5>
+                    <p class="text-muted">先去查一位学者，结果会留在这里。</p>
                     <a href="#" data-spa-panel="home" class="btn btn-primary mt-3">
                         <i class="bi bi-play"></i> 开始新任务
                     </a>
@@ -446,7 +446,7 @@
 
 {% block scripts %}
 <script src="/static/js/websocket.js?v=2.2"></script>
-<script src="/static/js/main.js?v=2.17"></script>
+<script src="/static/js/main.js?v=2.18"></script>
 <script>
 // ── API Key 检查 ────────────────────────────────────────────────
 function checkApiKeysAndAlert() {
