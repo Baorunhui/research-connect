@@ -16,6 +16,22 @@ window.PrivateDiscussionChat = (function () {
   const MAX_PINNED_QUESTIONS = 50; // 防止无限增长
   const paperTextCache = new Map();
 
+  function shortenPaperText(text) {
+    const limit = 60000;
+    const head = 45000;
+    const tail = 12000;
+    if (!text || text.length <= limit) return text || '';
+    return text.slice(0, head) + '\n\n（中间有一段这次没有带上。）\n\n' + text.slice(-tail);
+  }
+
+  function rememberPaperText(id, text) {
+    if (!id || !text) return;
+    if (!paperTextCache.has(id) && paperTextCache.size >= 2) {
+      paperTextCache.delete(paperTextCache.keys().next().value);
+    }
+    paperTextCache.set(id, text);
+  }
+
   const resizeChatInput = (input) => {
     if (!input) return;
     const style = window.getComputedStyle ? window.getComputedStyle(input) : null;
@@ -860,7 +876,8 @@ window.PrivateDiscussionChat = (function () {
         paperContent = String(clone.innerText || '').trim();
       }
     }
-    if (paperId && paperContent) paperTextCache.set(paperId, paperContent);
+    paperContent = shortenPaperText(paperContent);
+    rememberPaperText(paperId, paperContent);
 
     if (!question) return;
 
