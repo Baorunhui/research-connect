@@ -2192,10 +2192,14 @@
       '    <button type="button" class="dpr-sidebar-filter-btn ' + filterUnreadActive + '" data-filter="unread">未读 <span class="dpr-sidebar-unread-count" data-count="0">0</span></button>' +
       '  </div>' +
       '</div>' +
-      '<nav class="dpr-sidebar-body" aria-label="论文导航"></nav>' +
+      '<nav class="dpr-sidebar-body" aria-label="论文导航"><div class="dpr-sidebar-schedule-slot"></div><div class="dpr-sidebar-papers-slot"></div></nav>' +
       renderSidebarFooterControls(state.sidebarCollapsed) +
       '<div class="dpr-sidebar-resizer" role="separator" aria-orientation="vertical" title="拖动调整侧栏宽度"></div>';
     state.bodyEl = $('.dpr-sidebar-body', root);
+    state.scheduleSlot = $('.dpr-sidebar-schedule-slot', root);
+    state.papersSlot = $('.dpr-sidebar-papers-slot', root);
+    state.schedulePaintKey = '';
+    state.papersHtml = '';
     state.searchInput = $('.dpr-sidebar-search', root);
     state.unreadCountEl = $('.dpr-sidebar-unread-count', root);
     if (state.searchInput) state.searchInput.value = state.search || '';
@@ -2217,6 +2221,7 @@
       activeConferenceTag: vs.activeConferenceTag || '',
       search: String(vs.search || ''),
       filter: vs.filter === 'unread' ? 'unread' : 'all',
+      omitSchedule: !!(viewState && viewState.omitSchedule),
       readMap: vs.readMap || {},
       expandedAxisSections: normalizeSet(vs.expandedAxisSections),
       currentPaperHref: normalizeRouteHref(vs.currentPaperHref || ''),
@@ -2510,7 +2515,7 @@
     var viewModel = normalUnreadFilterMode ? filterModelForPaperResults(model, resultOptions) : model;
     var renderedGroups = 0;
     // 会议日程面板：无条件渲染（不依赖会议论文是否已检索），置于 body 顶部。
-    html.push(renderSchedulePanelHtml(state.schedule, state.scheduleExpanded));
+    if (!vs.omitSchedule) html.push(renderSchedulePanelHtml(state.schedule, state.scheduleExpanded));
     // 综述报告面板：仅常规视图渲染（搜索/未读筛选模式不索引综述报告），置于会议论文之前。
     if (!resultMode && !normalUnreadFilterMode && viewModel && viewModel.surveys && viewModel.surveys.length) {
       html.push(renderSurveyPanel(viewModel.surveys, vs, resultOptions.currentPaperId));
@@ -2597,9 +2602,57 @@
       readMap: readMap,
       unreadResultPaperIds: state.filter === 'unread' ? ensureUnreadSessionPaperIds(state.model, readMap) : state.unreadResultPaperIds,
       expandedAxisSections: state.expandedAxisSections,
+      omitSchedule: true,
     };
-    state.bodyEl.innerHTML = renderBodyHtml(state.model, viewState);
+    if (state.scheduleSlot) {
+      var scheduleKey = schedulePaintKey();
+      if (scheduleKey !== state.schedulePaintKey) {
+        var scheduleSearchEl = document.activeElement && document.activeElement.closest
+          ? document.activeElement.closest('[data-schedule-search]')
+          : null;
+        var scheduleCaret = scheduleSearchEl ? scheduleSearchEl.selectionStart : null;
+        state.scheduleSlot.innerHTML = renderSchedulePanelHtml(state.schedule, state.scheduleExpanded);
+        state.schedulePaintKey = scheduleKey;
+        if (scheduleSearchEl) {
+          var nextSearch = $('[data-schedule-search]', state.scheduleSlot);
+          if (nextSearch && nextSearch.focus) {
+            nextSearch.focus();
+            if (scheduleCaret != null && nextSearch.setSelectionRange) {
+              nextSearch.setSelectionRange(scheduleCaret, scheduleCaret);
+            }
+          }
+        }
+      }
+    }
+    var papersHtml = renderBodyHtml(state.model, viewState);
+    if (state.papersSlot) {
+      if (papersHtml !== state.papersHtml) {
+        state.papersHtml = papersHtml;
+        state.papersSlot.innerHTML = papersHtml;
+      }
+    } else if (state.bodyEl) {
+      state.bodyEl.innerHTML = renderSchedulePanelHtml(state.schedule, state.scheduleExpanded) + papersHtml;
+    }
     syncResolvedAxisState();
+  }
+
+  function schedulePaintKey() {
+    var favs = state.scheduleFavorites ? Array.from(state.scheduleFavorites).sort().join(',') : '';
+    var ranks = '';
+    try { ranks = JSON.stringify(state.scheduleRankFilter || {}); } catch (e) { ranks = ''; }
+    return [
+      state.scheduleRaw || '',
+      state.scheduleExpanded ? '1' : '0',
+      state.scheduleFieldFilter || '',
+      ranks,
+      state.scheduleStateFilter || '',
+      state.scheduleSearch || '',
+      state.scheduleFavOnly ? '1' : '0',
+      state.scheduleShowPast ? '1' : '0',
+      state.scheduleExpandedConf || '',
+      state.scheduleShowAll ? '1' : '0',
+      favs,
+    ].join('\n');
   }
 
   function updatePaperTitleOverflowMarks(root) {
@@ -3600,7 +3653,7 @@
         state.scheduleRaw = text;
         state.schedule = parseSchedule(json || {});
         state.scheduleLastFetchAt = Date.now();
-        if (state.bodyEl) state.bodyEl.innerHTML = renderBodyHtml(state.model, viewStateForRender(state, ReadState.getAll()));
+        if (state.bodyEl) renderBody();
         startCountdownTimer();
         return state.schedule;
       })
