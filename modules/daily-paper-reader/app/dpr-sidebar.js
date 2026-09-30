@@ -3630,6 +3630,7 @@
 
   function loadAndRender(force) {
     // 第一次打开沿用页面已经预取的目录；隔一段时间回来再强制要一份新的。
+    var hadSidebar = Boolean(state.sidebarSource);
     return fetch(SIDEBAR_URL, force ? { cache: 'no-store' } : {})
       .then(function (r) {
         if (!r.ok) throw new Error('sidebar HTTP ' + r.status);
@@ -3674,8 +3675,11 @@
       })
       .catch(function (err) {
         console.error('[DPR Sidebar] 加载失败:', err);
-        if (state.rootEl && state.bodyEl) {
-          state.bodyEl.innerHTML = '<div class="dpr-sidebar-error">侧边栏加载失败</div>';
+        // 已经有目录时，刷新失败不能把列表清掉。
+        if (hadSidebar) return;
+        var target = state.bodyEl || state.rootEl;
+        if (target) {
+          target.innerHTML = '<div class="dpr-sidebar-error">侧边栏加载失败</div>';
         }
       });
   }
