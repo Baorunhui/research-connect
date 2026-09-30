@@ -2279,6 +2279,7 @@ class TaskExecutor:
         profile_url: str = "",
         profile_html: str = "",
         scholar_name: str = "",
+        force_refresh: bool = False,
     ):
         """快查：论文列表 → OpenAlex 施引（仅题录+作者单位）→ Kaggle 题录核对 → 荣誉名单匹配。
 
@@ -2402,6 +2403,7 @@ class TaskExecutor:
                 rate=float(os.getenv("CITATIONCLAW_OPENALEX_RPS", "8") or 8),
                 log=self.log_manager.info,
                 should_cancel=lambda: self.should_cancel,
+                ignore_cache=force_refresh,
             )
             citing: dict = {}
             try:
@@ -2543,7 +2545,8 @@ class TaskExecutor:
 
         if (getattr(config, "profile_mode", "fast") or "fast") != "full":
             return await self._execute_scholar_profile_fast(
-                config, output_prefix, profile_url, profile_html, scholar_name
+                config, output_prefix, profile_url, profile_html, scholar_name,
+                force_refresh=force_refresh,
             )
 
         self.should_cancel = False

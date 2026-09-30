@@ -105,7 +105,8 @@ class OpenAlexCitingFetcher:
     def __init__(self, cache_dir: Path, email: str = "", api_key: str = "",
                  rate: float = 8.0, concurrency: int = 8, split_threshold: int = 2000,
                  log: Callable[[str], None] = print, client: Optional[httpx.AsyncClient] = None,
-                 route: str = "", should_cancel: Callable[[], bool] = lambda: False):
+                 route: str = "", should_cancel: Callable[[], bool] = lambda: False,
+                 ignore_cache: bool = False):
         self.cache_dir = Path(cache_dir)
         self.params = {k: v for k, v in (("mailto", email), ("api_key", api_key)) if v}
         self.limiter = _RateLimiter(rate)
@@ -113,6 +114,7 @@ class OpenAlexCitingFetcher:
         self.split_threshold = split_threshold
         self.log = log
         self.should_cancel = should_cancel
+        self.ignore_cache = ignore_cache
         self._client = client
         self._client_lock = asyncio.Lock()
         self.route = route or os.getenv("CITATIONCLAW_OPENALEX_ROUTE", "auto").strip().lower() or "auto"
@@ -217,7 +219,7 @@ class OpenAlexCitingFetcher:
         """Return ``{works:[{id,title,year,cited_by_count}], cited_by_count, resolved_by}``."""
         tnorm = normalize_title(title)
         cfile = self._cache_file("targets", tnorm or norm_doi(doi) or arxiv_id)
-        cached = self._read(cfile)
+        cached = None if self.ignore_cache else self._read(cfile)
         if cached is not None:
             return {**cached, "cached": True}
         found: Dict[str, dict] = {}
@@ -348,7 +350,7 @@ class OpenAlexCitingFetcher:
         key = "|".join(ids)
         cites = f"cites:{key}"
         base = self.cache_dir / "citing" / hashlib.sha1(key.encode()).hexdigest()[:20]
-        manifest = await asyncio.to_thread(self._read, base / "manifest.json.gz")
+        manifest = None if self.ignore_cache else await asyncio.to_thread(self._read, base / "manifest.json.gz")
         parts = [("all", cites)]
         if manifest and all((base / f"{n}.json.gz").is_file() for n, _ in manifest["parts"]):
             parts = [tuple(x) for x in manifest["parts"]]
@@ -372,7 +374,7 @@ class OpenAlexCitingFetcher:
         out: List[dict] = []
         todo = []
         for name, filt in parts:
-            hit = await asyncio.to_thread(self._read, base / f"{name}.json.gz")
+            hit = None if self.ignore_cache else await asyncio.to_thread(self._read, base / f"{name}.json.gz")
             if hit is not None and hit.get("filter") == filt:
                 out.extend(hit["records"])
                 progress["done"] += len(hit["records"])
