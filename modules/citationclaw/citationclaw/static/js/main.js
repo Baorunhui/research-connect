@@ -1546,36 +1546,35 @@ function initIndexPage() {
         if (data && data.excel) {
             const path = normPath(data.excel);
             const hrefPath = encodeResultPath(path);
-            const name = escapeHtml(path.split('/').pop());
+            const name = escapeHtml(resultFileLabel(path.split('/').pop()));
             html += `<div class="result-file-row">
                 <span class="result-file-icon">📊</span>
                 <span class="result-file-name">${name}</span>
                 <a href="${publicApiHref('/api/results/download/' + hrefPath)}" class="btn-download btn-dl-excel" download>
-                    <i class="bi bi-download"></i> Excel
+                    <i class="bi bi-download"></i> 下载表格
                 </a>
             </div>`;
         }
         if (data && data.json) {
             const path = normPath(data.json);
             const hrefPath = encodeResultPath(path);
-            const name = escapeHtml(path.split('/').pop());
+            const name = escapeHtml(resultFileLabel(path.split('/').pop()));
             html += `<div class="result-file-row">
                 <span class="result-file-icon">📋</span>
                 <span class="result-file-name">${name}</span>
                 <a href="${publicApiHref('/api/results/download/' + hrefPath)}" class="btn-download btn-dl-json" download>
-                    <i class="bi bi-download"></i> JSON
+                    <i class="bi bi-download"></i> 下载数据
                 </a>
             </div>`;
         }
         if (data && data.dashboard) {
             const path = normPath(data.dashboard);
             const hrefPath = encodeResultPath(path);
-            const name = escapeHtml(path.split('/').pop());
             html += `<div class="dashboard-cta">
                 <span class="result-file-icon">🔭</span>
                 <div class="dashboard-cta-text">
                     <strong style="color:#bc8cff">报告已生成</strong><br>
-                    <span style="font-size:11.5px">${name}</span>
+                    <span style="font-size:11.5px">可以在新页面里看，也可以下载旁边的表格和数据。</span>
                 </div>
                 <a href="${publicApiHref('/api/results/view/' + hrefPath)}" target="_blank" class="btn-download btn-dl-report">
                     <i class="bi bi-eye"></i> 查看报告
@@ -1617,7 +1616,7 @@ function initIndexPage() {
                     const href = publicApiHref((isHtml ? '/api/results/view/' : '/api/results/download/') + hrefPath);
                     html += `<div class="result-file-row">
                         <span class="result-file-icon">${isHtml ? '🔭' : (isExcel ? '📊' : '📋')}</span>
-                        <span class="result-file-name">${escapeHtml(f.name)}</span>
+                        <span class="result-file-name">${escapeHtml(resultFileLabel(f.name))}</span>
                         <a href="${href}" ${isHtml ? 'target="_blank"' : 'download'}
                            class="btn-download ${isHtml ? 'btn-dl-report' : (isExcel ? 'btn-dl-excel' : 'btn-dl-json')}">
                             <i class="bi ${isHtml ? 'bi-eye' : 'bi-download'}"></i> ${isHtml ? '查看报告' : '下载'}
