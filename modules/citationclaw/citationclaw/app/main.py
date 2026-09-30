@@ -1345,7 +1345,7 @@ async def delete_result_folder(folder_name: str):
         raise HTTPException(status_code=403, detail="不允许访问该路径")
     if not folder_path.exists() or not folder_path.is_dir():
         raise HTTPException(status_code=404, detail="文件夹不存在")
-    shutil.rmtree(folder_path)
+    await asyncio.to_thread(shutil.rmtree, folder_path)
     return {"success": True}
 
 
