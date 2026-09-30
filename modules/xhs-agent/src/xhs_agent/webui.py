@@ -148,6 +148,15 @@ async function loadHistory() {
   } catch (e) { /* history is optional */ }
 }
 
+function shownError(err) {
+  var text = String(err && err.message || '').trim();
+  if (!text || /failed to fetch|networkerror|load failed|traceback/i.test(text)) {
+    return '没有连上服务器，请稍后重试。';
+  }
+  if (text.length > 180) return '生成没有完成，请稍后重试。';
+  return text;
+}
+
 function formProblem(title, summary, materialLines, linkLines, audience) {
   if (!title || !summary) return '请先填写标题和一句话摘要。';
   if (title.length > 200) return '标题太长了，请缩短到 200 字以内。';
@@ -208,7 +217,7 @@ $('xhs-form').addEventListener('submit', async (ev) => {
   } catch (e) {
     if (e && e.forget) sessionStorage.removeItem('xhs_job');
     $('status').className = 'status error';
-    $('status').textContent = e.message || '请求失败';
+    $('status').textContent = shownError(e);
   } finally {
     $('submit').disabled = false;
   }
