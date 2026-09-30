@@ -312,7 +312,7 @@ async def start_task(request: TaskStartRequest):
         task_executor.execute_stage1_scraping(
             url=url,
             config=config,
-            output_prefix=request.output_prefix,
+            output_prefix=_safe_output_prefix(request.output_prefix, "paper"),
             resume_page=request.resume_page
         )
     )
@@ -350,6 +350,38 @@ async def _read_upload_capped(file: UploadFile, limit: int) -> bytes | None:
             return None
         chunks.append(block)
     return b"".join(chunks)
+
+
+def _paper_groups_problem(papers: list) -> str:
+    """Refuse a full analysis that would search an unbounded list of titles."""
+    kept = 0
+    for paper in papers:
+        title = str(getattr(paper, "title", "") or "").strip()
+        if not title:
+            continue
+        if len(title) > 500:
+            return "有一篇论文题目太长了，请缩短后再查。"
+        aliases = [str(alias or "").strip() for alias in (getattr(paper, "aliases", None) or [])]
+        aliases = [alias for alias in aliases if alias]
+        if any(len(alias) > 500 for alias in aliases):
+            return "有一个其他题名太长了，请缩短后再查。"
+        if len(aliases) > 8:
+            return "一篇论文的其他题名太多了，请留在 8 个以内。"
+        kept += 1
+    if kept == 0:
+        return "请输入至少一篇论文题目"
+    if kept > 30:
+        return "一次最多查 30 篇，请先减少几篇。"
+    return ""
+
+
+def _safe_output_prefix(value: str, default: str) -> str:
+    """Keep a result filename inside the result folder."""
+    text = str(value or "").replace("\\", "/").split("/")[-1].strip().replace("..", "")
+    cleaned = re.sub(r"[^\w.-]+", "_", text, flags=re.UNICODE).strip("._")
+    if not cleaned:
+        return default
+    return cleaned[:80]
 
 
 @app.post("/api/task/import")
@@ -430,18 +462,19 @@ async def run_pipeline(request: RunRequest):
         return JSONResponse(status_code=400,
             content={"status": "error", "message": "已经有一次查询在进行，请等它完成。"})
 
+    problem = _paper_groups_problem(request.papers)
+    if problem:
+        return JSONResponse(status_code=400,
+            content={"status": "error", "message": problem})
     groups = [{"title": p.title.strip(), "aliases": [a.strip() for a in p.aliases if a.strip()]}
               for p in request.papers if p.title.strip()]
-    if not groups:
-        return JSONResponse(status_code=400,
-            content={"status": "error", "message": "请输入至少一篇论文题目"})
 
     config = config_manager.get()
     _launch_task(
         task_executor.execute_for_titles(
             paper_groups=groups,
             config=config,
-            output_prefix=request.output_prefix,
+            output_prefix=_safe_output_prefix(request.output_prefix, "paper"),
         ),
         external_job_id=request.external_job_id,
     )
@@ -468,13 +501,16 @@ async def run_from_cache(request: FromCacheRequest):
     if not request.paper_title.strip():
         return JSONResponse(status_code=400,
             content={"status": "error", "message": "请输入论文标题"})
+    if len(request.paper_title.strip()) > 500:
+        return JSONResponse(status_code=400,
+            content={"status": "error", "message": "论文题目太长了，请缩短后再查。"})
 
     config = config_manager.get()
     _launch_task(
         task_executor.build_report_from_cache(
             paper_title=request.paper_title.strip(),
             config=config,
-            output_prefix=request.output_prefix or "cached",
+            output_prefix=_safe_output_prefix(request.output_prefix, "cached"),
         )
     )
     return {"status": "success", "message": f"已启动缓存报告生成: {request.paper_title.strip()}"}
@@ -715,7 +751,7 @@ async def run_profile_pipeline(request: ProfileRunRequest):
     _launch_task(
         task_executor.execute_scholar_profile(
             config=config,
-            output_prefix=request.output_prefix or "scholar_profile",
+            output_prefix=_safe_output_prefix(request.output_prefix, "scholar_profile"),
             profile_url=url,
             force_refresh=request.force_refresh,
         )
@@ -788,7 +824,7 @@ async def upload_profile_pipeline(request: Request,
     _launch_task(
         task_executor.execute_scholar_profile(
             config=config,
-            output_prefix=output_prefix or "scholar_profile",
+            output_prefix=_safe_output_prefix(output_prefix, "scholar_profile"),
             profile_html=html,
             scholar_name=file.filename or "",
             force_refresh=force_refresh,

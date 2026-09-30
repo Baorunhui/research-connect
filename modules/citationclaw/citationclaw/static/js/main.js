@@ -1095,6 +1095,18 @@ function initIndexPage() {
             alert('请输入至少一篇论文题目');
             return;
         }
+        if (groups.length > 30) {
+            alert('一次最多查 30 篇，请先减少几篇。');
+            return;
+        }
+        if (groups.some(function (group) {
+            var aliases = group.aliases || [];
+            return (group.title || '').length > 500 || aliases.length > 8 ||
+                aliases.some(function (alias) { return alias.length > 500; });
+        })) {
+            alert('有一篇论文题目或其他题名太长了，请缩短后再查。');
+            return;
+        }
         await saveIndexConfig();
 
         // 预检查 LLM 余额
