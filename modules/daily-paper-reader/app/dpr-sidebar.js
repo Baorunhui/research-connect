@@ -19,6 +19,7 @@
   var READ_STORAGE_KEY = 'dpr_read_papers_v1';
   var REFRESH_AFTER_HIDDEN_MS = 5 * 60 * 1000;
   var SEARCH_DEBOUNCE_MS = 200;
+  var SEARCH_RESULT_LIMIT = 80;
   var FILTER_KEY = 'dpr_sidebar_filter_v2';
   var COLLAPSE_KEY = 'dpr_sidebar_collapse_v4';
   var SCHEDULE_COLLAPSE_KEY = 'dpr_schedule_collapse_v1';
@@ -1353,12 +1354,33 @@
       group.unreadCount = countUnreadPapers(group.papers || [], opts.readMap);
       unread += group.unreadCount;
     });
+    var shown = groups;
+    var omitted = 0;
+    if (opts.keyword && total > SEARCH_RESULT_LIMIT) {
+      omitted = total - SEARCH_RESULT_LIMIT;
+      shown = [];
+      var left = SEARCH_RESULT_LIMIT;
+      groups.forEach(function (group) {
+        if (left <= 0) return;
+        var papers = (group.papers || []).slice(0, left);
+        left -= papers.length;
+        shown.push({
+          key: group.key,
+          label: group.label,
+          papers: papers,
+          unreadCount: countUnreadPapers(papers, opts.readMap),
+        });
+      });
+    }
     return {
       activeKey: '__results__',
       resultMode: true,
       tabs: [{ key: '__results__', label: resultTabLabel(opts), count: total, unreadCount: unread }],
-      groups: groups,
+      groups: shown,
       totalCount: total,
+      matchCount: total,
+      matchUnread: unread,
+      omitted: omitted,
     };
   }
 
@@ -2487,8 +2509,12 @@
         : (vs.conferenceViewMode === 'tag'
           ? buildConferenceTagView(viewModel, vs.activeConferenceTag, vs.readMap)
           : buildConferenceConfView(viewModel, vs.activeConference, vs.readMap));
-      var conferenceTotal = countPapersInView(conferenceView);
-      var conferenceUnread = countUnreadInView(conferenceView, vs.readMap);
+      var conferenceTotal = typeof conferenceView.matchCount === 'number'
+        ? conferenceView.matchCount
+        : countPapersInView(conferenceView);
+      var conferenceUnread = typeof conferenceView.matchUnread === 'number'
+        ? conferenceView.matchUnread
+        : countUnreadInView(conferenceView, vs.readMap);
       if (!resultMode || conferenceTotal > 0) {
         renderedGroups += 1;
         html.push(renderAxisGroup({
@@ -2511,8 +2537,12 @@
       var dailyView = resultMode
         ? buildDailyResultView(model, resultOptions)
         : buildDailyCalendarTagView(viewModel, vs.activeDailyDate, vs.activeDailyTag, vs.readMap, vs.activeDailyMonth);
-      var dailyTotal = countPapersInView(dailyView);
-      var dailyUnread = countUnreadInView(dailyView, vs.readMap);
+      var dailyTotal = typeof dailyView.matchCount === 'number'
+        ? dailyView.matchCount
+        : countPapersInView(dailyView);
+      var dailyUnread = typeof dailyView.matchUnread === 'number'
+        ? dailyView.matchUnread
+        : countUnreadInView(dailyView, vs.readMap);
       if (!resultMode || dailyTotal > 0) {
         renderedGroups += 1;
         html.push(renderAxisGroup({
@@ -2857,7 +2887,7 @@
         ? ' dpr-sidebar-axis-section-conference'
         : ' dpr-sidebar-axis-section-daily';
       var stateKey = axisSectionStateKey(group, mode, item.key);
-      var isExpanded = expanded.has(stateKey);
+      var isExpanded = !!(view && view.resultMode) || expanded.has(stateKey);
       var expandedClass = isExpanded ? ' is-expanded' : '';
       var activeSectionClass = (currentPaperId && (item.papers || []).some(function (paper) {
         return paperIdentity(paper) === currentPaperId;
@@ -2876,6 +2906,9 @@
       html.push('  </ul>');
       html.push('</section>');
     });
+    if (view && view.omitted) {
+      html.push('<p class="dpr-sidebar-search-more">先列出 ' + safeText(SEARCH_RESULT_LIMIT) + ' 篇，还有 ' + safeText(view.omitted) + ' 篇。把词写具体一点，范围会更小。</p>');
+    }
     html.push('</div>');
     return html.join('');
   }

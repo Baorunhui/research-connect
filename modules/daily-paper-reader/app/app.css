@@ -8950,6 +8950,12 @@ body.dpr-sidebar-resizing {
   font-size: 12px;
   text-align: center;
 }
+.dpr-sidebar-search-more {
+  margin: 8px 12px 12px;
+  color: #64748b;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
 
 /* 单篇论文 */
 .dpr-sidebar-paper {
