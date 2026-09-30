@@ -111,7 +111,11 @@ def ensure_runtime_docs_shell() -> None:
         "「论文总结」由本地后端（`python src/local_server.py`）驱动，核心思路是":
         "论文总结就在这个网站上做。它的做法是",
         "流水线由 GitHub Actions 定时触发（北京时间每天凌晨 02:30 左右），也可在站内手动触发：":
-        "在这个网站上，点右下角的火箭，或在页面设置里点「保存并生成日报」，就会开始写。每天自动跑目前是关掉的，避免夜里一直调用模型。",
+        "在这个网站上，点右下角的火箭，或在页面设置里点「保存并生成日报」，就会开始写。每天北京时间 02:30 会自动写一次。",
+        "每天自动跑目前是关掉的，避免夜里一直调用模型。":
+        "每天北京时间 02:30 会自动写一次。",
+        "每天自动跑目前是关掉的。":
+        "每天北京时间 02:30 会自动写一次。",
         "本页讲解日报流水线的整体流程、三种运行模式的区别、每一步用到什么技术，以及最终推荐数量是怎么决定的。":
         "用这个网站，点右下角的火箭，或在页面设置里点「保存并生成日报」即可。下面是内部流程，日常使用不用照着配置。",
         "所以对 fork 用户来说：配置好 Supabase 后，日常推荐的论文主要来自维护层\n持续灌入的多源论文库；arXiv 抓取只是未接管时的兜底路径。":
@@ -132,6 +136,7 @@ def ensure_runtime_docs_shell() -> None:
     for path in (
         docs_dir / "survey.md",
         docs_dir / "summarize.md",
+        docs_dir / "tutorial" / "README.md",
         docs_dir / "tutorial" / "survey.md",
         docs_dir / "tutorial" / "paper-summarize.md",
         docs_dir / "tutorial" / "workflow.md",
@@ -2070,16 +2075,6 @@ def _normalize_recommend_setting(value) -> dict:
     return out
 
 
-def _chat_key_is_configured(chat: dict | None) -> bool:
-    """页面只需要知道有没有密钥，不能把密钥本身发到浏览器。"""
-    if str((chat or {}).get("api_key") or "").strip():
-        return True
-    for name in ("DEEPSEEK_API_KEY", "SUMMARY_API_KEY"):
-        if str(os.environ.get(name) or "").strip():
-            return True
-    return False
-
-
 def _subscriptions_for_settings(subs: dict | None) -> dict | None:
     """设置页不需要向量缓存。缓存留在服务器上，保存时按原文补回。"""
     if not isinstance(subs, dict):
@@ -2186,9 +2181,7 @@ def _load_local_chat_full() -> dict:
     recommend = _normalize_recommend_setting(cfg.get("recommend_setting"))
     return {
         "chat": {
-            "model": str(chat.get("model") or "").strip(),
-            "base_url": str(chat.get("base_url") or "").strip().rstrip("/"),
-            "api_key_configured": _chat_key_is_configured(chat),
+            "model": str(chat.get("model") or "").strip() or "deepseek-flash",
         },
         "rerank": {
             "profile": str((loc.get("rerank") or {}).get("profile") or "").strip(),
@@ -2210,20 +2203,67 @@ def _load_local_chat_full() -> dict:
 
 
 def merge_local_section(existing: dict | None, incoming: dict | None) -> dict:
-    """只把 incoming['local'] 深合并到 existing 的 local 段，保留其它段落与未传入字段。"""
+    """只把 incoming['local'] 深合并到 existing 的 local 段，保留其它段落与未传入字段。
+
+    地址、密钥和每天自动跑的时间由服务器决定。页面只能改模型名。
+    """
     merged = dict(existing or {})
     loc = dict((existing or {}).get("local") or {})
     inc_loc = dict((incoming or {}).get("local") or {})
-    for section in ("chat", "schedule", "rerank", "recall"):
+    for section in ("chat", "rerank", "recall"):
         if section in inc_loc and isinstance(inc_loc[section], dict):
             base = dict(loc.get(section) or {})
-            base.update({
-                k: v for k, v in inc_loc[section].items()
-                if v is not None and not (k == "api_key" and not str(v).strip())
-            })
+            updates: dict = {}
+            for key, value in inc_loc[section].items():
+                if value is None:
+                    continue
+                if section == "chat" and key in {"api_key", "base_url"}:
+                    continue
+                if section == "chat" and key == "model" and not str(value).strip():
+                    continue
+                updates[key] = value
+            base.update(updates)
             loc[section] = base
     merged["local"] = loc
     return merged
+
+
+def _dispatch_run_config(payload: dict | None) -> dict | None:
+    """一次生成如果带了订阅或天数，用服务器自己的配置做副本。
+
+    请求里的整份配置和密钥都不采用。副本只给这一次运行，不写回服务器上的配置。
+    """
+    overrides = payload.get("overrides") if isinstance(payload, dict) else None
+    if not isinstance(overrides, dict):
+        return None
+    import copy
+    import yaml as _yaml
+
+    raw = _yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
+    cfg = copy.deepcopy(raw if isinstance(raw, dict) else {})
+    subscriptions = overrides.get("subscriptions")
+    if isinstance(subscriptions, dict):
+        cfg["subscriptions"] = subscriptions
+    paper = cfg.get("arxiv_paper_setting")
+    if not isinstance(paper, dict):
+        paper = {}
+        cfg["arxiv_paper_setting"] = paper
+    mode = str(overrides.get("mode") or "").strip()
+    if mode:
+        paper["mode"] = mode
+    days = overrides.get("days_window")
+    if days is not None and str(days).strip() != "":
+        try:
+            paper["days_window"] = max(1, min(90, int(days)))
+        except (TypeError, ValueError):
+            pass
+    paper["prefer_supabase_read"] = True
+    local = cfg.get("local")
+    if isinstance(local, dict):
+        schedule = local.get("schedule")
+        if isinstance(schedule, dict):
+            schedule["enabled"] = False
+    return cfg
 
 
 def merge_top_level_section(existing: dict | None, key: str, value: dict | None) -> dict:
@@ -2311,17 +2351,16 @@ def _build_openai_models_url(base_url: str) -> str:
     return f"{raw}/v1/models"
 
 
-def _resolve_chat_credentials(base_url: str, api_key: str) -> tuple[str, str]:
-    """模型列表/连通性测试共用：请求体优先，留空回退 config.yaml local.chat，再回退 .env。"""
+def _resolve_chat_credentials(base_url: str = "", api_key: str = "") -> tuple[str, str]:
+    """模型列表和连通性测试只用服务器上的地址和密钥。页面传上来的一律不用。"""
+    del base_url, api_key
     cfg = _load_local_chat_config()
     from llm import resolve_llm_api_key, resolve_llm_base_url
 
-    url = str(base_url or "").strip() or cfg["base_url"] or resolve_llm_base_url()
-    key = str(api_key or "").strip() or _resolve_chat_api_key(cfg) or resolve_llm_api_key()
-    if not url:
-        raise ValueError("还没有模型地址。请打开页面设置填写。")
-    if not key:
-        raise ValueError("还没有可用的模型密钥。请打开页面设置填写。")
+    url = cfg["base_url"] or resolve_llm_base_url()
+    key = _resolve_chat_api_key(cfg) or resolve_llm_api_key()
+    if not url or not key:
+        raise ValueError("模型还没在服务器上配好。")
     return url, key
 
 
@@ -2747,9 +2786,7 @@ def _generate_subscription_candidates(intent: str, tag_hint: str = "") -> dict[s
     cfg = _load_local_chat_config()
     api_key = _resolve_chat_api_key(cfg) or resolve_llm_api_key()
     if not api_key:
-        raise ValueError(
-            "还没有可用的模型密钥。请打开页面设置填写。"
-        )
+        raise ValueError("模型还没在服务器上配好。")
     model = cfg["model"] or resolve_llm_model()
     base_url = cfg["base_url"] or resolve_llm_base_url()
     client = OpenAIClient(api_key=api_key, model=model, base_url=base_url)
@@ -3352,11 +3389,7 @@ class Handler(SimpleHTTPRequestHandler):
                 },
             )})
         if parsed.path == "/api/local/config":
-            return self._json({
-                "ok": True,
-                "path": str(CONFIG_PATH),
-                "content": CONFIG_PATH.read_text(encoding="utf-8") if CONFIG_PATH.exists() else "",
-            })
+            return self._json({"ok": False, "error": "not found"}, status=404)
         if parsed.path == "/api/local/config/structured":
             return self._json({
                 "ok": True,
@@ -3523,7 +3556,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": False, "error": error}, status=status)
             return self._json({"ok": True, "run_id": run_id, "deleted": True})
         if parsed.path == "/api/local/config":
-            return self._save_local_config()
+            return self._json({"ok": False, "error": "not found"}, status=404)
         if parsed.path == "/api/local/config/partial":
             return self._save_local_config_partial()
         if parsed.path == "/api/local/smart-query":
@@ -3545,8 +3578,7 @@ class Handler(SimpleHTTPRequestHandler):
             workflow_file = str(payload.get("workflowFile") or "")
             inputs = payload.get("inputs") if isinstance(payload.get("inputs"), dict) else {}
             inputs = {str(k): str(v) for k, v in inputs.items() if v is not None}
-            config = payload.get("config") if isinstance(payload.get("config"), dict) else None
-            secret = payload.get("secret") if isinstance(payload.get("secret"), dict) else None
+            config = _dispatch_run_config(payload)
             cmd = build_command(workflow_key, workflow_file, inputs)
             run = RUN_STORE.create(
                 workflow_key,
@@ -3554,7 +3586,7 @@ class Handler(SimpleHTTPRequestHandler):
                 inputs,
                 cmd,
                 config=config,
-                secret=secret,
+                secret=None,
                 external_job_id=str(payload.get("externalJobId") or ""),
                 reuse_active=True,
             )
@@ -3705,28 +3737,12 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as exc:
             return self._json({"ok": False, "error": str(exc)}, status=400)
 
-    def _save_local_config(self) -> None:
-        if yaml is None:
-            return self._json({"ok": False, "error": "设置没保存：服务器上缺少配置组件。"}, status=500)
-        try:
-            length = _request_body_length(self.headers, 1024 * 1024)
-            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
-            config = payload.get("config")
-            if not isinstance(config, dict):
-                return self._json({"ok": False, "error": "config must be an object"}, status=400)
-            content = yaml.safe_dump(config, allow_unicode=True, sort_keys=False, width=10**9)
-            CONFIG_PATH.write_text(content, encoding="utf-8")
-            return self._json({"ok": True, "path": str(CONFIG_PATH), "savedAt": utc_now()})
-        except Exception as exc:
-            print(f"[papers] config save failed: {exc!r}", flush=True)
-            return self._json({"ok": False, "error": "设置没有保存，请稍后重试。"}, status=400)
-
     def _save_local_config_partial(self) -> None:
         """支持只更新 config.yaml 的指定顶层段，其余保持不变。
 
-        当前可更新段：local（chat/schedule）、subscriptions、source_backends、
+        当前可更新段：local（模型名、精排、召回）、subscriptions、source_backends、
         supabase、academic_news（前端会议速览勾选）。
-        未涉及的段保持原样。
+        地址、密钥和每天自动跑的时间不从页面写入。未涉及的段保持原样。
         """
         if yaml is None:
             return self._json({"ok": False, "error": "设置没保存：服务器上缺少配置组件。"}, status=500)
@@ -3823,9 +3839,7 @@ class Handler(SimpleHTTPRequestHandler):
             print(f"[papers] request body failed: {exc}", flush=True)
             return self._json({"ok": False, "error": "这次提交读不懂，请再试一次。"}, status=400)
         try:
-            base_url, api_key = _resolve_chat_credentials(
-                str(payload.get("base_url") or ""), str(payload.get("api_key") or "")
-            )
+            base_url, api_key = _resolve_chat_credentials()
             models = _fetch_chat_model_list(base_url, api_key)
         except ValueError as exc:
             return self._json({"ok": False, "error": str(exc)}, status=400)
@@ -3845,9 +3859,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not model:
             return self._json({"ok": False, "error": "请先填写模型名称"}, status=400)
         try:
-            base_url, api_key = _resolve_chat_credentials(
-                str(payload.get("base_url") or ""), str(payload.get("api_key") or "")
-            )
+            base_url, api_key = _resolve_chat_credentials()
             latency_ms, snippet = _probe_chat_completion(base_url, api_key, model)
         except ValueError as exc:
             return self._json({"ok": False, "error": str(exc)}, status=400)
@@ -3890,10 +3902,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": "请先写一句想问的话。"}, status=400)
         cfg = _load_local_chat_config()
         api_key = _resolve_chat_api_key(cfg)
-        if not str(cfg.get("base_url") or "").strip():
-            return self._json({"ok": False, "error": "还没有模型地址。请打开页面设置填写。"}, status=400)
-        if not api_key:
-            return self._json({"ok": False, "error": "还没有可用的模型密钥。请打开页面设置填写。"}, status=400)
+        if not str(cfg.get("base_url") or "").strip() or not api_key:
+            return self._json({"ok": False, "error": "模型还没在服务器上配好。"}, status=400)
         body = build_chat_request_payload(
             cfg["model"],
             messages,
@@ -3916,7 +3926,7 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 pass
             if code in (401, 403):
-                message, status = "模型没有接受这次请求。请打开页面设置检查密钥。", code
+                message, status = "模型没有接受这次请求。可以换一个模型名，或稍后再试。", code
             elif code == 429:
                 message, status = "模型暂时忙，请稍后再问。", 429
             else:

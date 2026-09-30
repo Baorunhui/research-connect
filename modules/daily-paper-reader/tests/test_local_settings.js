@@ -23,8 +23,8 @@ function testBuildLocalPayloadMapsFormToApiShape() {
   const api = loadModule();
   const local = api.buildLocalPayload({
     chatBaseUrl: 'https://api.sinksilk.com:58443',
-    chatModel: 'deepseek-v4-flash',
-    chatApiKey: '',
+    chatModel: 'deepseek-flash',
+    chatApiKey: 'sk-secret',
     schedEnabled: true,
     schedTime: '18:30',
     rerankProfile: 'public-zwwen-rerank',
@@ -34,13 +34,7 @@ function testBuildLocalPayloadMapsFormToApiShape() {
   assert.equal(JSON.stringify(local), JSON.stringify({
     local: {
       chat: {
-        base_url: 'https://api.sinksilk.com:58443',
-        model: 'deepseek-v4-flash',
-        api_key: '',
-      },
-      schedule: {
-        enabled: true,
-        time: '18:30',
+        model: 'deepseek-flash',
       },
       rerank: {
         profile: 'public-zwwen-rerank',
@@ -52,35 +46,22 @@ function testBuildLocalPayloadMapsFormToApiShape() {
   }));
 }
 
-function testBuildLocalPayloadTrimsWhitespaceAndKeepsEmptyKey() {
+function testBuildLocalPayloadTrimsModelAndIgnoresSecrets() {
   const api = loadModule();
   const local = api.buildLocalPayload({
     chatBaseUrl: '  https://example.com/v1  ',
     chatModel: ' some-model ',
-    chatApiKey: '',
+    chatApiKey: ' sk-secret ',
     schedEnabled: false,
     schedTime: ' 09:15 ',
     rerankProfile: ' auto ',
   });
-  assert.equal(local.local.chat.base_url, 'https://example.com/v1');
   assert.equal(local.local.chat.model, 'some-model');
-  assert.equal(local.local.chat.api_key, '');
-  assert.equal(local.local.schedule.enabled, false);
-  assert.equal(local.local.schedule.time, '09:15');
+  assert.equal(local.local.chat.base_url, undefined);
+  assert.equal(local.local.chat.api_key, undefined);
+  assert.equal(local.local.schedule, undefined);
   assert.equal(local.local.rerank.profile, 'auto');  // trim 后保留合法值
   assert.equal(local.local.recall.mode, '');  // 未选时为空 → 后端视为 supabase
-}
-
-function testBuildLocalPayloadKeepsProvidedApiKey() {
-  const api = loadModule();
-  const local = api.buildLocalPayload({
-    chatBaseUrl: 'https://x',
-    chatModel: 'm',
-    chatApiKey: ' sk-secret ',
-    schedEnabled: true,
-    schedTime: '18:30',
-  });
-  assert.equal(local.local.chat.api_key, 'sk-secret');
 }
 
 function testBuildSubscriptionsPayloadPreservesSchemaAndCache() {
@@ -330,7 +311,7 @@ function testSmartQueryProgressIsCappedAndExplainsLongWait() {
   assert.ok(start.percent >= 0 && start.percent < normal.percent);
   assert.ok(normal.percent < slow.percent);
   assert.equal(verySlow.percent, 92, 'estimated progress must wait for the real response');
-  assert.ok(slow.label.includes('仍在处理'));
+  assert.ok(slow.label.includes('还在处理'));
   assert.ok(slow.label.includes('60 秒'));
 }
 
@@ -343,8 +324,7 @@ function testSaveAndRunUsesPublicCommandRelay() {
 
 Promise.resolve()
   .then(testBuildLocalPayloadMapsFormToApiShape)
-  .then(testBuildLocalPayloadTrimsWhitespaceAndKeepsEmptyKey)
-  .then(testBuildLocalPayloadKeepsProvidedApiKey)
+  .then(testBuildLocalPayloadTrimsModelAndIgnoresSecrets)
   .then(testBuildRecommendPayloadShapes)
   .then(testBuildSubscriptionsPayloadPreservesSchemaAndCache)
   .then(testBuildSubscriptionsPayloadAddsNewProfile)

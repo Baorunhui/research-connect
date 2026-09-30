@@ -11,7 +11,7 @@
 | `/xhs/` | XHS Agent：小红书内容包 | `rc-xhs` | `127.0.0.1:58891` |
 
 端口只绑定 `127.0.0.1`；公网入口是宿主机反向代理 → `127.0.0.1:58888`。
-整个站点使用 HTTP Basic Auth，因为各模块页面可以读取/修改模型 API Key 并发起付费任务。
+整个站点使用 HTTP Basic Auth。页面可以发起会调用模型的任务，论文日报还可以改模型名；地址和密钥留在服务器上。
 
 ## 启动
 
@@ -45,8 +45,8 @@ docker compose ps
 | `CITATIONCLAW_LIGHT_BASE_URL` / `_API_KEY` / `_MODEL` | CitationClaw 轻量模型档（二次筛选/自引/格式化、画像报告、引文语境、PDF 作者抽取），覆盖页面里保存的轻量档；联网搜索和作者校验仍用 `LLM_*`。宿主机本地服务写 `http://host.docker.internal:<端口>/v1` |
 | `HONOR_LIST_DIR` | 荣誉名单目录（默认 `./state/honor-list`，只读挂载到 `/honor-list`） |
 
-查引用的模型与数据源 Key 由服务器环境变量和已有配置维护，`/citations/` 页面不展示、也不能改。
-ScraperAPI 可选，本机部署默认不需要。Daily Paper 的订阅和模型在 `/papers/` 的设置面板中修改。
+查引用和论文日报的地址、密钥由服务器环境变量和已有配置维护，页面不展示、也不能改。论文日报的设置里仍可以改模型名和订阅词。
+ScraperAPI 可选，本机部署默认不需要。每天北京时间 02:30 自动写一次日报。
 
 ## 查他引快查（默认）
 

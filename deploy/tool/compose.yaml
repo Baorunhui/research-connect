@@ -62,9 +62,10 @@ services:
     <<: *app
     container_name: rc-daily-paper
     working_dir: /app/modules/daily-paper-reader
-    command: ["python", "src/local_server.py", "--host", "0.0.0.0", "--port", "8567", "--serve", "--no-schedule"]
+    command: ["python", "src/local_server.py", "--host", "0.0.0.0", "--port", "8567", "--serve"]
     environment:
       <<: *app-env
+      TZ: Asia/Shanghai
       DAILY_PAPER_DIR: /app/modules/daily-paper-reader
       DPR_PUBLIC_BASE: /papers
       DEEPSEEK_API_KEY: ${LLM_API_KEY:-}

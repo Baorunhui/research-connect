@@ -82,11 +82,11 @@ source_backends:
 
 local:
   port: 8567
-  schedule:            # 定时自动跑流水线（每天一次）
-    enabled: false     # 由 Connect Hub 按用户设置的时间调度；模块本身默认不另起 scheduler
-    time: "18:30"      # 后台 UTC 18:30（北京时间 02:30），同现状
+  schedule:            # 定时自动跑流水线（每天一次，容器时区为北京时间）
+    enabled: true
+    time: "02:30"
     fetch_days: ""     # 留空则用 arxiv_paper_setting.days_window
-  chat:                # AI 问答模型；仅存在本机，前端不读
-    model: deepseek-v4-flash
+  chat:                # AI 问答模型；地址和密钥只在服务器上，页面只能改模型名
+    model: deepseek-flash
     base_url: https://api.sinksilk.com:58443/   # OpenAI 兼容中转站
     api_key: ""        # 留空则从 .env 读 DEEPSEEK_API_KEY

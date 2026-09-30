@@ -43,13 +43,7 @@
     return {
       local: {
         chat: {
-          base_url: trimText(v.chatBaseUrl),
           model: trimText(v.chatModel),
-          api_key: trimText(v.chatApiKey),
-        },
-        schedule: {
-          enabled: Boolean(v.schedEnabled),
-          time: trimText(v.schedTime),
         },
         rerank: {
           profile: trimText(v.rerankProfile),
@@ -482,22 +476,21 @@
     overlay.innerHTML =
       '<div class="secret-gate-modal" role="dialog" aria-modal="true" aria-label="页面设置">' +
       '  <h2 style="margin-top:0;">页面设置</h2>' +
-      '  <p style="font-size:13px;color:#555;margin:0 0 14px;">模型和精排保存后马上生效，不用重启。</p>' +
-      '  <div class="dpr-settings-field"><label>模型地址</label><input type="text" id="dpr-settings-chat-baseurl" placeholder="https://api.sinksilk.com:58443" /></div>' +
-      '  <div class="dpr-settings-field"><label>模型密钥（留空表示不修改已保存的密钥）</label><input type="password" id="dpr-settings-chat-apikey" placeholder="" autocomplete="off" /></div>' +
+      '  <p style="font-size:13px;color:#555;margin:0 0 14px;">模型名和精排保存后马上生效。地址和密钥由服务器准备，这里改不了。</p>' +
       '  <div class="dpr-settings-field"><label>AI 问答模型</label>' +
       '    <div style="display:flex;gap:6px;align-items:center;">' +
-      '      <input type="text" id="dpr-settings-chat-model" placeholder="deepseek-v4-flash" style="flex:1;min-width:0;" />' +
+      '      <input type="text" id="dpr-settings-chat-model" placeholder="deepseek-flash" style="flex:1;min-width:0;" />' +
       '      <button type="button" class="secret-gate-btn secondary" id="dpr-settings-chat-fetch-models" style="white-space:nowrap;padding:4px 10px;font-size:12px;">获取模型列表</button>' +
       '    </div>' +
       '    <select id="dpr-settings-chat-model-select" style="margin-top:6px;width:100%;display:none;"></select>' +
-      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">填好地址后点「获取模型列表」，从下拉里选择会自动填入；也可以直接手输模型名。密钥留空时用已经保存的密钥。</p></div>' +
+      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">默认是 deepseek-flash。可以手输模型名，也可以点「获取模型列表」后从下拉里选。</p></div>' +
       '  <div class="dpr-settings-field"><label>连通性测试</label>' +
       '    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
       '      <button type="button" class="secret-gate-btn secondary" id="dpr-settings-chat-test" style="padding:4px 10px;font-size:12px;">测试连通性</button>' +
       '      <span id="dpr-settings-chat-test-status" style="font-size:12px;color:#666;"></span>' +
       '    </div>' +
-      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">用当前地址和模型试着问一句，成功会显示花了多久。</p></div>' +
+      '    <p style="font-size:12px;color:#666;margin:4px 0 0;">用上面的模型名试着问一句，成功会显示花了多久。</p></div>' +
+      '  <p id="dpr-settings-sched-note" style="font-size:12px;color:#666;margin:0 0 12px;">每天北京时间 02:30 会自动写一次。</p>' +
       '  <div class="dpr-settings-field"><label>召回模式（日报数据来源）</label>' +
       '    <select id="dpr-settings-recall-mode">' +
       '      <option value="supabase">云端（默认）</option>' +
@@ -513,9 +506,6 @@
       '      <option value="local-qwen3-0.6b">本地 GPU（Qwen3-Reranker-0.6B）</option>' +
       '    </select>' +
       '    <p style="font-size:12px;color:#666;margin:4px 0 0;">默认用远程精排，不用这台机器的显卡。保存后，下一次日报和综述就按新选择运行。</p></div>' +
-      '  <div class="dpr-settings-field"><label><input type="checkbox" id="dpr-settings-sched-enabled" /> 每天定时自动跑流水线</label>' +
-      '    <p id="dpr-settings-sched-hint" style="font-size:12px;color:#666;margin:4px 0 0;">正在确认定时器是否已启动。</p></div>' +
-      '  <div class="dpr-settings-field"><label>定时时间（本地 24 小时制）</label><input type="text" id="dpr-settings-sched-time" placeholder="18:30" /></div>' +
       '  <div class="dpr-settings-field"><label><input type="checkbox" id="dpr-settings-run-enrich" /> 生成日报前，先把订阅词扩成更多检索词</label>' +
       '    <p style="font-size:12px;color:#666;margin:4px 0 0;">打开后，每次生成日报会先用模型把订阅词扩成更多检索词。默认关闭。这个开关记在当前浏览器里。</p></div>' +
       '  <div class="dpr-settings-field"><label>默认运行模式（快速抓取弹窗与本面板共用）</label>' +
@@ -581,12 +571,6 @@
     const modelSelect = document.getElementById('dpr-settings-chat-model-select');
     if (fetchModelsBtn && modelSelect) {
       fetchModelsBtn.addEventListener('click', async () => {
-        const baseUrl = String((document.getElementById('dpr-settings-chat-baseurl') || {}).value || '').trim();
-        const apiKey = String((document.getElementById('dpr-settings-chat-apikey') || {}).value || '').trim();
-        if (!baseUrl) {
-          setChatToolStatus('请先填写模型地址', '#c00');
-          return;
-        }
         const originalText = fetchModelsBtn.textContent;
         fetchModelsBtn.disabled = true;
         setChatToolStatus('正在获取模型列表...');
@@ -595,7 +579,7 @@
           resp = await fetch(apiUrl('/api/local/chat/models'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
+            body: JSON.stringify({}),
           });
           const data = await resp.json().catch(() => ({}));
           if (!resp.ok || !data.ok) throw new Error((data && data.error) || ('HTTP ' + resp.status));
@@ -625,13 +609,7 @@
     const chatTestBtn = document.getElementById('dpr-settings-chat-test');
     if (chatTestBtn) {
       chatTestBtn.addEventListener('click', async () => {
-        const baseUrl = String((document.getElementById('dpr-settings-chat-baseurl') || {}).value || '').trim();
-        const apiKey = String((document.getElementById('dpr-settings-chat-apikey') || {}).value || '').trim();
         const model = String((document.getElementById('dpr-settings-chat-model') || {}).value || '').trim();
-        if (!baseUrl) {
-          setChatToolStatus('请先填写模型地址', '#c00');
-          return;
-        }
         if (!model) {
           setChatToolStatus('请先填写或从下拉选择模型名称', '#c00');
           return;
@@ -644,7 +622,7 @@
           resp = await fetch(apiUrl('/api/local/chat/test'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ base_url: baseUrl, api_key: apiKey, model: model }),
+            body: JSON.stringify({ model: model }),
           });
           const data = await resp.json().catch(() => ({}));
           if (!resp.ok || !data.ok) throw new Error((data && data.error) || ('HTTP ' + resp.status));
@@ -691,7 +669,7 @@
       return '当前服务还没有这个功能。更新并重启论文日报服务后再试。';
     }
     if (msg && msg.length <= 80 && !/https?:\/\/|[A-Za-z]{3,}/.test(msg)) return msg;
-    return '这次没有完成，请检查地址和密钥后再试。';
+    return '这次没有完成，请稍后重试。';
   }
 
   let settingsReady = false;
@@ -733,25 +711,13 @@
       const chat = local.chat || {};
       const sched = local.schedule || {};
       const modelEl = document.getElementById('dpr-settings-chat-model');
-      const baseEl = document.getElementById('dpr-settings-chat-baseurl');
-      const keyEl = document.getElementById('dpr-settings-chat-apikey');
-      const enabledEl = document.getElementById('dpr-settings-sched-enabled');
-      const timeEl = document.getElementById('dpr-settings-sched-time');
-      if (modelEl) modelEl.value = chat.model || '';
-      if (baseEl) baseEl.value = chat.base_url || '';
-      if (keyEl) {
-        keyEl.value = '';
-        keyEl.placeholder = chat.api_key_configured
-          ? '已保存密钥，留空表示不修改'
-          : '还没有密钥';
-      }
-      if (enabledEl) enabledEl.checked = Boolean(sched.enabled);
-      if (timeEl) timeEl.value = sched.time || '';
-      const schedHint = document.getElementById('dpr-settings-sched-hint');
-      if (schedHint) {
-        schedHint.textContent = data.scheduler_running
-          ? '定时器已在运行。改时间后要重启服务，才会按新时间跑。'
-          : '当前服务没有启动定时器。勾选只会先记下来，不会自动跑。';
+      if (modelEl) modelEl.value = chat.model || 'deepseek-flash';
+      const schedNote = document.getElementById('dpr-settings-sched-note');
+      if (schedNote) {
+        const when = String(sched.time || '02:30');
+        schedNote.textContent = data.scheduler_running
+          ? '每天 ' + when + '（北京时间）会自动写一次。'
+          : '每天夜里会自动写一次。当前这次服务还没把定时器开起来。';
       }
       const rerankEl = document.getElementById('dpr-settings-rerank-profile');
       if (rerankEl) {
@@ -801,11 +767,7 @@
 
   function buildCurrentPayload() {
     const values = {
-      chatBaseUrl: document.getElementById('dpr-settings-chat-baseurl').value,
-      chatModel: document.getElementById('dpr-settings-chat-model').value,
-      chatApiKey: document.getElementById('dpr-settings-chat-apikey').value,
-      schedEnabled: document.getElementById('dpr-settings-sched-enabled').checked,
-      schedTime: document.getElementById('dpr-settings-sched-time').value,
+      chatModel: (document.getElementById('dpr-settings-chat-model') || {}).value,
       rerankProfile: (document.getElementById('dpr-settings-rerank-profile') || {}).value || 'auto',
       recallMode: (document.getElementById('dpr-settings-recall-mode') || {}).value || 'supabase',
       recommendDeep: (document.getElementById('dpr-settings-recommend-deep') || {}).value || '',

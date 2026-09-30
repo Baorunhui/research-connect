@@ -84,15 +84,15 @@ def _isolated_summarize_cache(tmp_path, monkeypatch):
 
 def test_merge_local_section_preserves_other_sections():
     from src.local_server import merge_local_section
-    existing = {"github": {"owner": "x"}, "local": {"chat": {"model": "m", "base_url": "u", "api_key": "k"}, "schedule": {"enabled": True, "time": "18:30", "fetch_days": ""}}}
-    incoming = {"local": {"chat": {"base_url": "https://new"}, "schedule": {"enabled": False}}}
-    merged = merge_local_section(existing, {"local": incoming})
-    assert merged["github"] == {"owner": "x"}          # 其它段保留
-    assert merged["local"]["chat"]["model"] == "m"      # 未传字段保留
-    assert merged["local"]["chat"]["base_url"] == "https://new"
-    assert merged["local"]["chat"]["api_key"] == "k"    # 未传字段保留
-    assert merged["local"]["schedule"]["enabled"] is False
-    assert merged["local"]["schedule"]["time"] == "18:30"  # 未传字段保留
+    existing = {"github": {"owner": "x"}, "local": {"chat": {"model": "m", "base_url": "u", "api_key": "k"}, "schedule": {"enabled": True, "time": "02:30", "fetch_days": ""}}}
+    incoming = {"local": {"chat": {"base_url": "https://new", "api_key": "leaked", "model": "deepseek-flash"}, "schedule": {"enabled": False, "time": "09:00"}}}
+    merged = merge_local_section(existing, incoming)
+    assert merged["github"] == {"owner": "x"}
+    assert merged["local"]["chat"]["model"] == "deepseek-flash"
+    assert merged["local"]["chat"]["base_url"] == "u"
+    assert merged["local"]["chat"]["api_key"] == "k"
+    assert merged["local"]["schedule"]["enabled"] is True
+    assert merged["local"]["schedule"]["time"] == "02:30"
 
 
 def test_merge_top_level_section_replaces_key_preserves_others():
@@ -155,6 +155,8 @@ def test_load_local_chat_full_includes_subscriptions(tmp_path, monkeypatch):
 
     full = local_server._load_local_chat_full()
     assert full["chat"]["model"] == "m"
+    assert "base_url" not in full["chat"]
+    assert "api_key" not in full["chat"]
     assert full["schedule"]["time"] == "18:30"
     assert full["subscriptions"]["intent_profiles"][0]["tag"] == "RAG"
 
@@ -177,17 +179,45 @@ def test_scheduler_ties_to_port_config():
     assert cfg["local"]["port"] == 8567
 
 
-def test_merge_local_section_preserves_other_sections():
+def test_merge_local_section_ignores_blank_model():
     from src.local_server import merge_local_section
-    existing = {"github": {"owner": "x"}, "local": {"chat": {"model": "m", "base_url": "u", "api_key": "k"}, "schedule": {"enabled": True, "time": "18:30", "fetch_days": ""}}}
-    incoming = {"local": {"chat": {"base_url": "https://new"}, "schedule": {"enabled": False}}}
-    merged = merge_local_section(existing, incoming)
-    assert merged["github"] == {"owner": "x"}          # 其它段保留
-    assert merged["local"]["chat"]["model"] == "m"      # 未传字段保留
-    assert merged["local"]["chat"]["base_url"] == "https://new"
-    assert merged["local"]["chat"]["api_key"] == "k"    # 未传字段保留
-    assert merged["local"]["schedule"]["enabled"] is False
-    assert merged["local"]["schedule"]["time"] == "18:30"  # 未传字段保留
+    existing = {"local": {"chat": {"model": "deepseek-flash", "base_url": "u", "api_key": "k"}}}
+    merged = merge_local_section(existing, {"local": {"chat": {"model": "  "}}})
+    assert merged["local"]["chat"]["model"] == "deepseek-flash"
+
+
+def test_dispatch_run_config_keeps_server_secrets(tmp_path, monkeypatch):
+    import yaml
+
+    import src.local_server as ls
+
+    cfg = {
+        "local": {
+            "chat": {"model": "deepseek-flash", "base_url": "http://server", "api_key": "server-key"},
+            "schedule": {"enabled": True, "time": "02:30"},
+        },
+        "arxiv_paper_setting": {"mode": "standard", "days_window": 9},
+        "subscriptions": {"intent_profiles": [{"tag": "OLD"}]},
+    }
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    monkeypatch.setattr(ls, "CONFIG_PATH", path)
+    out = ls._dispatch_run_config({
+        "config": {"local": {"chat": {"api_key": "from-client"}}},
+        "secret": {"DEEPSEEK_API_KEY": "from-client"},
+        "overrides": {
+            "subscriptions": {"intent_profiles": [{"tag": "NEW"}]},
+            "mode": "skims",
+            "days_window": 30,
+        },
+    })
+    assert out["local"]["chat"]["api_key"] == "server-key"
+    assert out["local"]["chat"]["base_url"] == "http://server"
+    assert out["subscriptions"]["intent_profiles"][0]["tag"] == "NEW"
+    assert out["arxiv_paper_setting"]["mode"] == "skims"
+    assert out["arxiv_paper_setting"]["days_window"] == 30
+    assert out["local"]["schedule"]["enabled"] is False
+    assert ls._dispatch_run_config({"config": {"local": {"chat": {"api_key": "x"}}}}) is None
 
 # --------------------------------------------------------------------------- #
 # 论文总结端点 /api/paper/summarize 的纯函数单元测试（不联网、不调 LLM）
@@ -1498,9 +1528,8 @@ def test_resolve_chat_credentials_fallback_chain(monkeypatch):
         "_load_local_chat_config",
         lambda: {"model": "m", "base_url": "https://saved", "api_key": "saved-key"},
     )
-    # 请求体优先
-    assert ls._resolve_chat_credentials("https://body", "body-key") == ("https://body", "body-key")
-    # 留空回退 config.yaml local.chat
+    # 页面传来的地址和密钥不用
+    assert ls._resolve_chat_credentials("https://body", "body-key") == ("https://saved", "saved-key")
     assert ls._resolve_chat_credentials("", "") == ("https://saved", "saved-key")
     # config 也没有 → 回退 .env 解析
     monkeypatch.setattr(ls, "_load_local_chat_config", lambda: {"model": "", "base_url": "", "api_key": ""})

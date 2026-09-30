@@ -1304,7 +1304,7 @@ window.PrivateDiscussionChat = (function () {
           preview ? `| 响应内容片段: ${preview}` : '',
         );
         const chatError = resp.status === 401 || resp.status === 403
-          ? '模型没有接受这次请求。请打开页面设置检查密钥。'
+          ? '模型没有接受这次请求。可以换一个模型名，或稍后再试。'
           : resp.status === 429
             ? '模型暂时忙，请稍后再问。'
             : '这次没有答上来，请稍后重试。';

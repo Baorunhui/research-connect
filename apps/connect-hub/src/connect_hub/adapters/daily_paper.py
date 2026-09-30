@@ -10,8 +10,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-import yaml
-
 from connect_hub.contracts import (
     ConnectJobError,
     JobErrorCode,
@@ -249,22 +247,6 @@ class DailyPaperAdapter:
         on_snapshot: Callable[[Mapping[str, Any], str], None] | None,
         is_cancelled: Callable[[], bool] | None,
     ) -> Mapping[str, Any]:
-        config_response = self._request("GET", "/api/local/config", None)
-        config_text = str(config_response.get("content") or "")
-        config = yaml.safe_load(config_text) if config_text.strip() else {}
-        if not isinstance(config, dict):
-            config = {}
-        config["subscriptions"] = _build_subscriptions(arguments.get("topics"))
-        paper_settings = config.setdefault("arxiv_paper_setting", {})
-        if isinstance(paper_settings, dict):
-            paper_settings["mode"] = str(arguments.get("mode") or "standard")
-            paper_settings["days_window"] = int(arguments.get("fetch_days") or 30)
-            paper_settings["prefer_supabase_read"] = True
-        local = config.setdefault("local", {})
-        if isinstance(local, dict):
-            schedule = local.setdefault("schedule", {})
-            if isinstance(schedule, dict):
-                schedule["enabled"] = False
         started = self._request(
             "POST",
             "/api/local/workflows/dispatch",
@@ -276,8 +258,11 @@ class DailyPaperAdapter:
                     "fetch_mode": str(arguments.get("mode") or "standard"),
                     "run_enrich": "true",
                 },
-                "config": config,
-                "secret": dict(self.extra_env),
+                "overrides": {
+                    "subscriptions": _build_subscriptions(arguments.get("topics")),
+                    "mode": str(arguments.get("mode") or "standard"),
+                    "days_window": int(arguments.get("fetch_days") or 30),
+                },
                 "externalJobId": str(arguments.get("job_id") or ""),
                 "schemaVersion": SCHEMA_VERSION,
             },
