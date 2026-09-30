@@ -653,6 +653,7 @@ class RunStore:
             if str(run.get("status") or "").lower() in self.ACTIVE_STATUSES:
                 run["status"] = "completed"
                 run["conclusion"] = "interrupted"
+                run["error"] = "上次生成时服务停过，这次已标成中断。可以重新开始。"
                 run["completed_at"] = now
                 run["updated_at"] = now
                 run["cancel_requested"] = False
@@ -660,7 +661,7 @@ class RunStore:
                     _run_event(
                         "run.interrupted",
                         str(run.get("id") or ""),
-                        message="本地服务曾中断，遗留任务已标记为 interrupted",
+                        message="上次生成时服务停过，这次已标成中断。可以重新开始。",
                     )
                 )
             self._runs[str(run["id"])] = run
