@@ -1272,6 +1272,11 @@ _REPORT_ASSET_URLS = (
 )
 
 
+def _read_public_report(path: Path) -> str:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return _html_for_public_view(text)
+
+
 def _html_for_public_view(raw: str) -> str:
     """Keep report downloads under the public prefix, and hide the in-report assistant.
 
@@ -1299,8 +1304,8 @@ def _html_for_public_view(raw: str) -> str:
 async def view_result_html(filepath: str):
     p = _safe_data_path(filepath)
     if p.exists() and p.is_file():
-        text = p.read_text(encoding="utf-8", errors="replace")
-        return HTMLResponse(_html_for_public_view(text))
+        rendered = await asyncio.to_thread(_read_public_report, p)
+        return HTMLResponse(rendered)
     raise HTTPException(status_code=404, detail="文件不存在")
 
 
