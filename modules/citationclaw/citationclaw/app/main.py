@@ -337,14 +337,29 @@ async def continue_task():
     return {"status": "success", "message": "已开始核对作者和单位。"}
 
 
+async def _read_upload_capped(file: UploadFile, limit: int) -> bytes | None:
+    """Read an upload and stop once it passes the limit, instead of buffering all of it."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        block = await file.read(1024 * 1024)
+        if not block:
+            break
+        total += len(block)
+        if total > limit:
+            return None
+        chunks.append(block)
+    return b"".join(chunks)
+
+
 @app.post("/api/task/import")
 async def import_task(file: UploadFile = File(...)):
     import tempfile
 
     temp_path = None
     try:
-        content = await file.read()
-        if len(content) > 100 * 1024 * 1024:
+        content = await _read_upload_capped(file, 100 * 1024 * 1024)
+        if content is None:
             raise HTTPException(status_code=413, detail="文件过大，限制 100MB")
 
         with tempfile.NamedTemporaryFile(mode='wb', suffix='.jsonl', delete=False) as temp_file:
@@ -723,8 +738,8 @@ async def upload_profile_pipeline(request: Request,
     if task_executor.is_running:
         return JSONResponse(status_code=400,
             content={"status": "error", "message": "已经有一次查询在进行，请等它完成。"})
-    content = await file.read()
-    if len(content) > 20 * 1024 * 1024:
+    content = await _read_upload_capped(file, 20 * 1024 * 1024)
+    if content is None:
         return JSONResponse(status_code=400, content={
             "status": "error",
             "message": "这个文件超过 20MB。请另存为仅网页，不要连图片一起保存。",
