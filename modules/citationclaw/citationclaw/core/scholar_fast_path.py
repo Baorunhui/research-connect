@@ -217,17 +217,28 @@ table{{border-collapse:collapse;width:100%;min-width:720px}}
 td,th{{border-bottom:1px solid #eef0f5;padding:8px 10px;font-size:13px;vertical-align:top;text-align:left}}
 th{{background:#f8fafc;position:sticky;top:0}}
 p{{line-height:1.6}}
+.find{{display:block;width:100%;max-width:420px;margin:8px 0 16px;padding:8px 10px;border:1px solid #cfd5e1;border-radius:8px;font:inherit}}
 </style></head><body><main>
 <h2>{e(report['scholar_name'] or '学者')} · 查他引</h2>
 <div class="banner">{e(report['disclaimer'])}</div>
 <ul class="stats">{stats_line}</ul>
 <p>{e(honor_note)}</p>
 {kaggle_note}
+<label for="report-find">在这份报告里查找</label>
+<input id="report-find" class="find" placeholder="学者、论文或单位">
 <h3>对上的学者（{cov['honor_citers']}）</h3>
-<div class="wrap"><table><tr><th>学者</th><th>荣誉</th><th>怎么对上的</th><th>单位</th><th>引用了几篇</th><th>引用的论文</th></tr>{rows}</table></div>
+<div class="wrap"><table><thead><tr><th>学者</th><th>荣誉</th><th>怎么对上的</th><th>单位</th><th>引用了几篇</th><th>引用的论文</th></tr></thead><tbody>{rows}</tbody></table></div>
 <h3>查过的论文</h3>
-<div class="wrap"><table><tr><th>论文</th><th>年份</th><th>主页上的引用数</th><th>论文编号</th><th>目录里的引用数</th><th>已查到的施引</th><th>对上几位</th></tr>{trows}</table></div>
+<div class="wrap"><table><thead><tr><th>论文</th><th>年份</th><th>主页上的引用数</th><th>论文编号</th><th>目录里的引用数</th><th>已查到的施引</th><th>对上几位</th></tr></thead><tbody>{trows}</tbody></table></div>
 <p style="color:#888">生成于 {e(report['generated_at'])}</p>
+<script>
+document.getElementById('report-find').addEventListener('input', function () {{
+  var q = this.value.trim().toLowerCase();
+  document.querySelectorAll('tbody tr').forEach(function (row) {{
+    row.hidden = !!(q && row.textContent.toLowerCase().indexOf(q) < 0);
+  }});
+}});
+</script>
 </main></body></html>"""
 
 
