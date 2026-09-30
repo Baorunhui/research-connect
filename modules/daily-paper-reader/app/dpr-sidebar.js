@@ -54,9 +54,10 @@
       .replace(/>/g, '&gt;');
   }
   function safeText(value) {
-    var d = document.createElement('div');
-    d.textContent = String(value == null ? '' : value);
-    return d.innerHTML;
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
   function debounce(fn, wait) {
     var t = null;
@@ -70,9 +71,13 @@
     };
   }
   function decodeHtmlEntities(s) {
-    var d = document.createElement('div');
-    d.innerHTML = String(s == null ? '' : s);
-    return d.textContent || '';
+    return String(s == null ? '' : s)
+      .replace(/&quot;/g, '"')
+      .replace(/&#34;/g, '"')
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
   }
   function parseScore(raw) {
     var n = parseFloat(raw);
@@ -525,9 +530,7 @@
       return { href: hashMatch ? hashMatch[1] : m[1], label: stripTags(m[2]) };
     }
     function stripTags(html) {
-      var d = document.createElement('div');
-      d.innerHTML = String(html || '');
-      return (d.textContent || '').trim();
+      return decodeHtmlEntities(String(html || '').replace(/<[^>]*>/g, '')).trim();
     }
     function parsePaperLine(line) {
       var m = line.match(/<a\b([^>]*)>([\s\S]*?)<\/a>/);
