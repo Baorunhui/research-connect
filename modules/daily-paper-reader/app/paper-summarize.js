@@ -52,6 +52,7 @@ window.PaperSummarizer = (function () {
     result: null,
     jobId: null,       // 当前异步 job_id
     seenEventIds: {},  // 已展示过的事件 event_id 集合（去重）
+    progressKey: '',
     pollFailures: 0,
   };
 
@@ -191,6 +192,7 @@ window.PaperSummarizer = (function () {
     if (progBox) progBox.textContent = '';
     state.jobId = null;
     state.seenEventIds = {};
+    state.progressKey = '';
     setStatus('');
     renderProgress([], 'queued');
     // 异步 job：POST 建job拿 job_id，然后轮询 GET /api/paper/summarize/<id> 拿进度事件
@@ -328,6 +330,11 @@ window.PaperSummarizer = (function () {
   function renderProgress(events, status, seenIds) {
     var box = document.querySelector('#paper-summarize-progress');
     if (!box) return;
+    var viewKey = String(status || '') + '\n' + (events || []).map(function (ev) {
+      return (ev && ev.event_id) || '';
+    }).join(',');
+    if (viewKey === state.progressKey && box.querySelector('.paper-summarize-progress-head')) return;
+    state.progressKey = viewKey;
     var shown = presentSummarizeEvents(events);
     if (window.DPRTaskProgress && typeof window.DPRTaskProgress.render === 'function') {
       (events || []).forEach(function (ev) {
