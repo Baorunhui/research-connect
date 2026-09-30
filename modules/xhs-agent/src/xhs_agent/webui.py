@@ -148,7 +148,7 @@ async function loadHistory() {
   } catch (e) { /* history is optional */ }
 }
 
-function formProblem(title, summary, materialLines) {
+function formProblem(title, summary, materialLines, linkLines, audience) {
   if (!title || !summary) return '请先填写标题和一句话摘要。';
   if (title.length > 200) return '标题太长了，请缩短到 200 字以内。';
   if (summary.length > 4000) return '摘要太长了，请缩短到 4000 字以内。';
@@ -156,6 +156,14 @@ function formProblem(title, summary, materialLines) {
   var materialLength = 0;
   materialLines.forEach(function (line) { materialLength += line.length; });
   if (materialLength > 12000) return '要点太长了，请缩短后再生成。';
+  if (linkLines.length > 20) return '链接太多了，请留在 20 条以内。';
+  var linkLength = 0;
+  for (var i = 0; i < linkLines.length; i++) {
+    if (linkLines[i].length > 2000) return '有一条链接太长了，请缩短后再生成。';
+    linkLength += linkLines[i].length;
+  }
+  if (linkLength > 8000) return '链接太长了，请缩短后再生成。';
+  if (audience.length > 400) return '读者说明太长了，请缩短后再生成。';
   return '';
 }
 
@@ -164,14 +172,16 @@ $('xhs-form').addEventListener('submit', async (ev) => {
   const title = $('title').value.trim();
   const summary = $('summary').value.trim();
   const materialLines = lines('materials');
-  const problem = formProblem(title, summary, materialLines);
+  const linkLines = lines('links');
+  const audience = $('audience').value.trim();
+  const problem = formProblem(title, summary, materialLines, linkLines, audience);
   if (problem) {
     $('status').className = 'status error';
     $('status').textContent = problem;
     return;
   }
   const materials = materialLines.map((text, i) => ({ id: 'M' + (i + 1), type: 'fact', text }));
-  const links = lines('links').map(url => ({ type: 'source', url }));
+  const links = linkLines.map(url => ({ type: 'source', url }));
   const body = {
     schema_version: 'xhs_agent.request.v1',
     request_id: 'web-' + Date.now().toString(36),
@@ -181,7 +191,7 @@ $('xhs-form').addEventListener('submit', async (ev) => {
               title: title, summary: summary, materials, links, entities: {} },
     requirements: { card_count: Math.max(1, Math.min(8, parseInt($('cards').value || '5', 10))) },
   };
-  if ($('audience').value.trim()) body.audience = { who: $('audience').value.trim() };
+  if (audience) body.audience = { who: audience };
   $('submit').disabled = true;
   $('status').className = 'status';
   $('status').textContent = '正在整理论文要点';

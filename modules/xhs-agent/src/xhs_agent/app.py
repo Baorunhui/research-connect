@@ -185,12 +185,32 @@ def _prepare_request(request: SocialContentRequest) -> SocialContentRequest:
         raise HTTPException(status_code=400, detail="要点太多了，请留在 30 条以内。")
     if sum(len(item.text) for item in materials) > 12000:
         raise HTTPException(status_code=400, detail="要点太长了，请缩短后再生成。")
+    links = []
+    for link in request.source.links:
+        url = str(link.url or "").strip()
+        if not url:
+            continue
+        label = str(link.label or "").strip() or None
+        if label and len(label) > 200:
+            label = label[:200]
+        links.append(link.model_copy(update={"url": url, "label": label}))
+    if len(links) > 20:
+        raise HTTPException(status_code=400, detail="链接太多了，请留在 20 条以内。")
+    if any(len(link.url) > 2000 for link in links) or sum(len(link.url) for link in links) > 8000:
+        raise HTTPException(status_code=400, detail="链接太长了，请缩短后再生成。")
+    audience = request.audience
+    if audience is not None and len(str(audience.who or "").strip()) > 400:
+        raise HTTPException(status_code=400, detail="读者说明太长了，请缩短后再生成。")
     source = request.source.model_copy(update={
         "title": title,
         "summary": summary,
         "materials": materials,
+        "links": links,
     })
-    return request.model_copy(update={"source": source})
+    updates = {"source": source}
+    if audience is not None:
+        updates["audience"] = audience.model_copy(update={"who": str(audience.who or "").strip()})
+    return request.model_copy(update=updates)
 
 
 @app.post("/v1/xhs/jobs")
