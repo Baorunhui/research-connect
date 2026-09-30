@@ -1024,16 +1024,34 @@ def _input_without_file_bytes(payload: dict[str, Any]) -> dict[str, Any]:
     return shown
 
 
+SUMMARIZE_MAX_FINISHED_JOBS = 50
+
+
 class SummarizeJobStore:
     """论文总结异步 job 存储 + 后台执行。线程安全。
 
     job 状态机：queued -> running -> completed | failed | cancelled
     事件列表 events 按 append 顺序增长，轮询时整体返回，前端按 event_id 去重。
+    终态记录只保留最近 50 条，避免服务一直开着时把每篇总结都留在内存里。
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._jobs: dict[str, dict[str, Any]] = {}
+
+    def _prune_finished_locked(self) -> None:
+        """Drop the oldest finished jobs. The caller must already hold the lock."""
+        finished = [
+            (job_id, job)
+            for job_id, job in self._jobs.items()
+            if job.get("status") in ("completed", "failed", "cancelled")
+        ]
+        overflow = len(finished) - SUMMARIZE_MAX_FINISHED_JOBS
+        if overflow <= 0:
+            return
+        finished.sort(key=lambda item: str(item[1].get("updated_at") or ""))
+        for stale_id, _ in finished[:overflow]:
+            del self._jobs[stale_id]
 
     def create(self, payload: dict[str, Any], reuse_active: bool = False) -> dict[str, Any]:
         job_id = "sum-" + uuid.uuid4().hex[:12]
@@ -1061,6 +1079,7 @@ class SummarizeJobStore:
                             copied["already_running"] = True
                         return copied  # type: ignore[return-value]
             self._jobs[job_id] = job
+            self._prune_finished_locked()
         thread = threading.Thread(target=self._worker, args=(job_id, payload), daemon=True)
         thread.start()
         return self.public(job_id)  # type: ignore[arg-type]
@@ -1099,7 +1118,17 @@ class SummarizeJobStore:
             job["status"] = status
             job["updated_at"] = utc_now()
             for k, v in extra.items():
+                if k == "result" and isinstance(v, dict):
+                    v = dict(v)
+                    v.pop("preview", None)
+                    meta = v.get("meta")
+                    if isinstance(meta, dict):
+                        meta = dict(meta)
+                        meta.pop("md_path", None)
+                        v["meta"] = meta
                 job[k] = v
+            if status in ("completed", "failed", "cancelled"):
+                self._prune_finished_locked()
 
     def _cancel_check(self, job_id: str) -> bool:
         with self._lock:
