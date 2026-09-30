@@ -3121,9 +3121,25 @@ def _persist_summarize_as_daily_paper(
         return {"paper_id": "", "md_path": "", "registered": False, "error": str(exc)}
 
 
+def _payload_without_embedded_images(payload: dict[str, Any]) -> dict[str, Any]:
+    """旧缓存把整张图的内容写进 JSON。图已经在论文页上，这里只留能跳转的结果。"""
+    figures = payload.get("figures")
+    if not isinstance(figures, list) or not figures:
+        return payload
+    try:
+        encoded = json.dumps(figures, ensure_ascii=False)
+    except (TypeError, ValueError):
+        encoded = ""
+    if len(encoded) < 8000 and "data:" not in encoded and "base64" not in encoded.lower():
+        return payload
+    slim = dict(payload)
+    slim["figures"] = []
+    return slim
+
+
 class SummarizeCache:
     """论文总结结果缓存：按论文身份（arXiv id / PDF 内容哈希）存 JSON 文件，重启仍有效。
-    每个条目保存完整响应（含 base64 图），超出上限时按写入时间淘汰最旧条目。"""
+    只保留打开论文页所需的结果。超出上限时按写入时间淘汰最旧条目。"""
 
     def __init__(self, path: Path, max_entries: int = 50) -> None:
         self._path = path
@@ -3136,9 +3152,27 @@ class SummarizeCache:
             return {}
         try:
             payload = json.loads(self._path.read_text(encoding="utf-8") or "{}")
-            return payload if isinstance(payload, dict) else {}
         except Exception:
             return {}
+        if not isinstance(payload, dict):
+            return {}
+        cleaned: dict[str, dict[str, Any]] = {}
+        dirty = False
+        for key, entry in payload.items():
+            if not isinstance(entry, dict):
+                continue
+            body = entry.get("payload")
+            if isinstance(body, dict):
+                slim = _payload_without_embedded_images(body)
+                if slim is not body:
+                    entry = dict(entry)
+                    entry["payload"] = slim
+                    dirty = True
+            cleaned[str(key)] = entry
+        if dirty:
+            self._data = cleaned
+            self._save()
+        return cleaned
 
     def _save(self) -> None:
         try:
@@ -3157,7 +3191,7 @@ class SummarizeCache:
 
     def put(self, key: str, payload: dict[str, Any]) -> None:
         with self._lock:
-            self._data[key] = {"at": utc_now(), "payload": payload}
+            self._data[key] = {"at": utc_now(), "payload": _payload_without_embedded_images(payload)}
             # 超出上限：按 at 淘汰最旧的
             if self._max and len(self._data) > self._max:
                 for old_key in sorted(self._data, key=lambda k: self._data[k].get("at", ""))[: self._max * -1]:
