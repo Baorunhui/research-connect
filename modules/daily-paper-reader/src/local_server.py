@@ -1194,7 +1194,7 @@ class SummarizeJobStore:
             result = _run_summarize_job(job_id, payload, self)
             if self._cancel_check(job_id):
                 self._set_status(job_id, "cancelled")
-                self._emit(job_id, _job_event("job.cancelled", job_id, message="已取消"))
+                self._emit(job_id, _job_event("job.cancelled", job_id, message="这次已停下。"))
             else:
                 self._set_status(job_id, "completed", result=result)
                 self._emit(job_id, _job_event("job.completed", job_id, message="总结完成"))
@@ -1220,7 +1220,7 @@ def _run_summarize_job(job_id: str, payload: dict[str, Any], store: SummarizeJob
     """执行原 _handle_summarize 的核心逻辑，分阶段发进度事件。失败抛异常。"""
     def emit(stage: str, message: str, *, current: int | None = None, total: int | None = None, payload: dict[str, Any] | None = None) -> None:
         if store._cancel_check(job_id):
-            raise _CancelRequested("用户取消")
+            raise _CancelRequested("这次已停下。")
         store._emit(job_id, _job_event("job.progress", job_id, stage=stage, message=message,
                                        current=current, total=total, payload=payload))
 
@@ -1577,7 +1577,7 @@ def _run_survey_job(
     def emit(stage: str, message: str, *, current: int | None = None, total: int | None = None,
              payload: dict[str, Any] | None = None) -> None:
         if store._cancel_check(job_id):
-            raise _CancelRequested("用户取消")
+            raise _CancelRequested("这次已停下。")
         log_lines.append(f"[{stage}] {message}")
         _flush_log()
         store._emit(job_id, _job_event("job.progress", job_id, stage=stage, message=message,
@@ -1659,7 +1659,7 @@ def _run_survey_job(
     def _gate() -> None:
         """协作式取消 + 墙钟预算闸门（综述含 PDF 深读，整体耗时可达十几分钟）。"""
         if store._cancel_check(job_id):
-            raise _CancelRequested("用户取消")
+            raise _CancelRequested("这次已停下。")
         if time.time() - started > SURVEY_WALL_CLOCK_BUDGET_SECONDS:
             raise TimeoutError("综述流水线超过 40 分钟墙钟预算，已终止")
 

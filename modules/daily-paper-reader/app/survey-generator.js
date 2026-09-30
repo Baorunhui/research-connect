@@ -210,7 +210,7 @@ window.SurveyGenerator = (function () {
       queued: '📥 已排队，等待开始',
       completed: '✅ 综述完成',
       failed: '❌ 综述失败',
-      cancelled: '🚫 已取消',
+      cancelled: '已停下',
     }[status] || '⏳ 综述生成中';
     card.appendChild(el('div', 'survey-progress-title', headline));
     var topic = (job.input && job.input.query) || '';
@@ -344,7 +344,7 @@ window.SurveyGenerator = (function () {
         } else if (status === 'cancelled') {
           forgetSurveyJob();
           setBusy(false);
-          setStatus('已取消。');
+          setStatus('这次已停下。');
           listRuns();
         } else {
           state.timer = setTimeout(function () {

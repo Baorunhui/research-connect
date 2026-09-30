@@ -277,7 +277,7 @@ window.PaperSummarizer = (function () {
         } else if (status === 'cancelled') {
           forgetSummarizeJob();
           state.busy = false;
-          setStatus('已取消');
+          setStatus('这次已停下。');
         } else {
           setTimeout(function () { pollJob(jobId); }, POLL_INTERVAL);
         }
