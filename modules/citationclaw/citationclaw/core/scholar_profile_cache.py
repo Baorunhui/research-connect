@@ -129,6 +129,11 @@ def cache_params_match(entry: dict, requested: dict) -> bool:
         str(requested.get("mode") or "fast"),
         bool(requested.get("use_llm_fallback", True)),
     )
+    # The fast report never calls the model. That checkbox only changes the
+    # slower full run, so it must not force the fast report to be fetched again.
+    if stored_params["mode"] != "full" and wanted["mode"] != "full":
+        stored_params["use_llm_fallback"] = True
+        wanted["use_llm_fallback"] = True
     return stored_params == wanted
 
 
