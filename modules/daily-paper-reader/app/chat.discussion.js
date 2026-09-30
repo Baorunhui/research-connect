@@ -1144,20 +1144,23 @@ window.PrivateDiscussionChat = (function () {
         });
       }
 
-          const prev = await loadChatHistory(paperId);
+      const prev = await loadChatHistory(paperId);
+      let includedQuestion = false;
       prev.forEach((m) => {
         if (m.role === 'user' || m.role === 'ai') {
           messages.push({
             role: m.role === 'ai' ? 'assistant' : 'user',
             content: m.content || '',
           });
+          if (m.role === 'user' && m.content === question) includedQuestion = true;
         }
       });
-
-      messages.push({
-        role: 'user',
-        content: question,
-      });
+      if (!includedQuestion) {
+        messages.push({
+          role: 'user',
+          content: question,
+        });
+      }
 
       const controller = new AbortController();
       const timeoutMs = 120000;
