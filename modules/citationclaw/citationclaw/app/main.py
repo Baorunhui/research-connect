@@ -1099,22 +1099,38 @@ async def get_task_status():
 
 # ── Results endpoints with absolute path ──────────────────────────────────
 
+_FOLDER_LABELS: dict[str, tuple[float, int, str]] = {}
+
+
 def _result_folder_label(folder: Path) -> str:
-    """用报告标题代替 result-时间戳，方便在结果列表里辨认。"""
+    """用报告标题代替 result-时间戳。同一份文件不重复打开。"""
     html_files = sorted(path for path in folder.glob("*.html") if path.is_file())
-    for html in html_files[:1]:
-        try:
-            head = html.read_text(encoding="utf-8", errors="ignore")[:4000]
-        except OSError:
-            continue
-        match = re.search(r"<title>(.*?)</title>", head, re.I | re.S)
-        if not match:
-            continue
-        title = re.sub(r"\s+", " ", match.group(1)).strip()
-        title = re.sub(r"\s*·\s*被引画像报告\s*$", "", title).strip()
-        if title:
-            return title[:80]
-    return folder.name
+    html = html_files[0] if html_files else None
+    if html is None:
+        return folder.name
+    try:
+        stat = html.stat()
+    except OSError:
+        return folder.name
+    key = str(html)
+    cached = _FOLDER_LABELS.get(key)
+    if cached and cached[0] == stat.st_mtime and cached[1] == stat.st_size:
+        return cached[2]
+    title = folder.name
+    try:
+        head = html.read_text(encoding="utf-8", errors="ignore")[:4000]
+    except OSError:
+        head = ""
+    match = re.search(r"<title>(.*?)</title>", head, re.I | re.S)
+    if match:
+        cleaned = re.sub(r"\s+", " ", match.group(1)).strip()
+        cleaned = re.sub(r"\s*·\s*被引画像报告\s*$", "", cleaned).strip()
+        if cleaned:
+            title = cleaned[:80]
+    if len(_FOLDER_LABELS) > 200:
+        _FOLDER_LABELS.pop(next(iter(_FOLDER_LABELS)))
+    _FOLDER_LABELS[key] = (stat.st_mtime, stat.st_size, title)
+    return title
 
 
 @app.get("/api/results/folders")
