@@ -1790,6 +1790,17 @@ def build_chat_request_payload(model: str, messages: list[dict], *, max_tokens: 
     return payload
 
 
+def _chat_answer_token_cap(value: Any) -> int | None:
+    """页面问答不必按模型上限整段生成。探测用的很小值保持不变。"""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    if n < 1:
+        return None
+    return min(n, 8192)
+
+
 def _build_chat_endpoint(base_url: str) -> str:
     """Mirrors frontend buildChatCompletionsEndpoint: append /v1 if base_url has no /vN suffix."""
     base = base_url.rstrip("/")
@@ -3431,7 +3442,11 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": "还没有模型地址。请打开页面设置填写。"}, status=400)
         if not api_key:
             return self._json({"ok": False, "error": "还没有可用的模型密钥。请打开页面设置填写。"}, status=400)
-        body = build_chat_request_payload(cfg["model"], messages, max_tokens=payload.get("max_tokens"))
+        body = build_chat_request_payload(
+            cfg["model"],
+            messages,
+            max_tokens=_chat_answer_token_cap(payload.get("max_tokens")),
+        )
         endpoint = _build_chat_endpoint(cfg["base_url"])
         req = urllib.request.Request(
             endpoint,
