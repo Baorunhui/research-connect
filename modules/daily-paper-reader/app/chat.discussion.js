@@ -1251,7 +1251,7 @@ window.PrivateDiscussionChat = (function () {
           data.choices[0].message &&
           data.choices[0].message.content
             ? data.choices[0].message.content
-            : '（模型未返回内容）';
+            : '这次没有答上来，请稍后重试。';
         answerBuffer = answer;
         scheduleRender();
       } else {
@@ -1307,8 +1307,21 @@ window.PrivateDiscussionChat = (function () {
       }
 
       const nowStrAnswer = new Date().toLocaleString();
+      const visibleAnswer = answerBuffer.trim() || thinkingBuffer.trim();
+      if (!visibleAnswer) {
+        aiAnswerDiv.textContent = '这次没有答上来，请稍后重试。';
+        if (statusEl) {
+          statusEl.textContent = '这次没有答上来，请稍后重试。';
+          statusEl.style.color = '#c00';
+        }
+        return;
+      }
+      if (!answerBuffer.trim()) {
+        answerBuffer = visibleAnswer;
+        applyAnswerView();
+      }
       const updated = await loadChatHistory(paperId);
-      if (thinkingBuffer.trim()) {
+      if (thinkingBuffer.trim() && answerBuffer.trim() && thinkingBuffer.trim() !== answerBuffer.trim()) {
         updated.push({
           role: 'thinking',
           content: thinkingBuffer,
@@ -1317,10 +1330,10 @@ window.PrivateDiscussionChat = (function () {
       }
       updated.push({
         role: 'ai',
-        content: answerBuffer || '（模型未返回内容）',
-      time: nowStrAnswer,
-    });
-    await saveChatHistory(paperId, updated);
+        content: answerBuffer.trim(),
+        time: nowStrAnswer,
+      });
+      await saveChatHistory(paperId, updated);
 
       // 新一轮对话完成后，再次刷新 Zotero 元数据
       try {
@@ -1332,7 +1345,7 @@ window.PrivateDiscussionChat = (function () {
       }
 
       if (statusEl) {
-        statusEl.textContent = `已用 ${model} 回答`;
+        statusEl.textContent = '已回答。';
         statusEl.style.color = '#4caf50';
       }
 
