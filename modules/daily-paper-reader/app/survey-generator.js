@@ -118,6 +118,8 @@ window.SurveyGenerator = (function () {
     seenEventIds: {},
     timer: null,
     pollFailures: 0,
+    showingLog: false,
+    lastJob: null,
     seedFile: null, // 已选种子 PDF File（与链接互斥：有文件优先）
   };
 
@@ -197,6 +199,7 @@ window.SurveyGenerator = (function () {
   }
 
   function renderProgressCard(job) {
+    if (state.showingLog) return;
     var out = getEl('survey-result');
     if (!out) return;
     var status = String(job.status || 'unknown').toLowerCase();
@@ -276,9 +279,11 @@ window.SurveyGenerator = (function () {
   }
 
   function loadLog(jobId) {
+    state.showingLog = true;
     fetch(surveyEndpoint() + '/' + encodeURIComponent(jobId) + '/log', { cache: 'no-store' })
       .then(function (r) { return r.json().catch(function () { return {}; }); })
       .then(function (data) {
+        if (!state.showingLog) return;
         var out = getEl('survey-result');
         if (!out) return;
         out.textContent = '';
@@ -288,7 +293,8 @@ window.SurveyGenerator = (function () {
         var back = el('button', 'survey-btn survey-btn-ghost', '返回进度');
         back.type = 'button';
         back.addEventListener('click', function () {
-          if (state.jobId) pollJob(state.jobId);
+          state.showingLog = false;
+          if (state.lastJob) renderProgressCard(state.lastJob);
         });
         var backRow = el('div', 'survey-log-back');
         backRow.appendChild(back);
@@ -296,7 +302,10 @@ window.SurveyGenerator = (function () {
         out.appendChild(title);
         out.appendChild(pre);
       })
-      .catch(function () { renderError('读取日志失败。'); });
+      .catch(function () {
+        state.showingLog = false;
+        renderError('详细过程没有打开，请稍后重试。');
+      });
   }
 
   // ---- 轮询 ----
@@ -332,6 +341,7 @@ window.SurveyGenerator = (function () {
           throw new Error('retry');
         }
         state.pollFailures = 0;
+        state.lastJob = job;
         var status = String(job.status || 'unknown').toLowerCase();
         renderProgressCard(job);
         if (status === 'completed') {
@@ -345,6 +355,8 @@ window.SurveyGenerator = (function () {
           renderError(job.error || '综述生成失败');
           listRuns();
         } else if (status === 'cancelled') {
+          state.showingLog = false;
+          renderProgressCard(job);
           forgetSurveyJob();
           setBusy(false);
           setStatus('这次已停下。');
