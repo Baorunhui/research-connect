@@ -1790,6 +1790,27 @@ def build_chat_request_payload(model: str, messages: list[dict], *, max_tokens: 
     return payload
 
 
+def _trim_chat_messages(messages: list) -> list[dict]:
+    """保留系统提示、论文正文，以及最近几轮。更早的来回不再每次重发。"""
+    cleaned: list[dict] = []
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "")
+        content = item.get("content")
+        if role not in {"system", "user", "assistant"} or not isinstance(content, str) or not content.strip():
+            continue
+        cleaned.append({"role": role, "content": content})
+    system = [item for item in cleaned if item["role"] == "system"][:1]
+    rest = [item for item in cleaned if item["role"] != "system"]
+    paper: dict | None = None
+    if rest and rest[0]["role"] == "user" and len(rest[0]["content"]) > 2000:
+        paper = rest[0]
+        rest = rest[1:]
+    tail = rest[-8:]
+    return system + ([paper] if paper else []) + tail
+
+
 def _chat_answer_token_cap(value: Any) -> int | None:
     """页面问答不必按模型上限整段生成。探测用的很小值保持不变。"""
     try:
@@ -3435,6 +3456,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": "这次提问读不懂，请再试一次。"}, status=400)
         messages = payload.get("messages")
         if not isinstance(messages, list) or not messages:
+            return self._json({"ok": False, "error": "请先写一句想问的话。"}, status=400)
+        messages = _trim_chat_messages(messages)
+        if not any(item["role"] == "user" for item in messages):
             return self._json({"ok": False, "error": "请先写一句想问的话。"}, status=400)
         cfg = _load_local_chat_config()
         api_key = _resolve_chat_api_key(cfg)
