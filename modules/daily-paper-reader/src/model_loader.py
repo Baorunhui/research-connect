@@ -23,6 +23,8 @@ _DEFAULT_REMOTE_EMBED_ENDPOINT = os.getenv("DPR_EMBED_API_URL") or "https://zwwe
 # 与重排同一把公共服务密钥。没单独配 DPR_EMBED_API_KEY 时用它，否则请求会 401。
 _PUBLIC_EMBED_API_KEY = "26932a86d772001af60cbd9d2c162bfda3a90e094f797f3d6806f6077478b27a"
 _DEFAULT_REMOTE_EMBED_API_KEY = os.getenv("DPR_EMBED_API_KEY") or _PUBLIC_EMBED_API_KEY
+_PAPER_EMBED_DIM = 384
+_DEFAULT_CHAT_EMBED_MODEL = "qwen3-embedding"
 
 
 def _log_default(message: str) -> None:
@@ -337,6 +339,157 @@ def _hf_endpoint(endpoint: Optional[str] = None):
       del os.environ["HF_HUB_BASE_URL"]
 
 
+class OpenAICompatibleEmbedder:
+  """问答接口站的 OpenAI 兼容 /embeddings。"""
+
+  is_remote = True
+
+  def __init__(
+    self,
+    model_name: str,
+    base_url: str,
+    api_key: str,
+    timeout: int = _DEFAULT_REMOTE_TIMEOUT_SECONDS,
+    log: Callable[[str], None] = _log_default,
+  ):
+    self.model_name = str(model_name or _DEFAULT_CHAT_EMBED_MODEL).strip()
+    self.endpoint = self._normalize_endpoint(base_url)
+    self.api_key = str(api_key or "").strip()
+    self.timeout = max(int(timeout or _DEFAULT_REMOTE_TIMEOUT_SECONDS), 1)
+    self.max_seq_length = None
+    self._log = log
+
+  @staticmethod
+  def _normalize_endpoint(base_url: str) -> str:
+    text = str(base_url or "").strip().rstrip("/")
+    if not text:
+      raise ValueError("问答接口站地址为空")
+    if text.lower().endswith("/embeddings"):
+      return text
+    return f"{text}/embeddings"
+
+  def encode(
+    self,
+    texts,
+    convert_to_numpy: bool = True,
+    normalize_embeddings: bool = True,
+    batch_size: int = 8,
+    show_progress_bar: bool = False,
+    **kwargs,
+  ):
+    del show_progress_bar, kwargs
+    if isinstance(texts, str):
+      texts = [texts]
+    if not isinstance(texts, list):
+      texts = list(texts or [])
+    if not texts:
+      empty = np.zeros((0, 0), dtype=np.float32)
+      return empty if convert_to_numpy else empty.tolist()
+    if not self.api_key:
+      raise RuntimeError("问答接口站的 embedding 缺少密钥")
+
+    safe_batch_size = max(int(batch_size or 8), 1)
+    outputs: list[np.ndarray] = []
+    headers = {
+      "Content-Type": "application/json",
+      "Authorization": f"Bearer {self.api_key}",
+    }
+    self._log(
+      f"[INFO] 问答接口站 embedding：model={self.model_name} "
+      f"endpoint={self.endpoint} total={len(texts)} batch={safe_batch_size}"
+    )
+    for start in range(0, len(texts), safe_batch_size):
+      chunk = texts[start : start + safe_batch_size]
+      response = requests.post(
+        self.endpoint,
+        headers=headers,
+        json={"model": self.model_name, "input": chunk},
+        timeout=self.timeout,
+      )
+      if response.status_code >= 300:
+        detail = ""
+        try:
+          err = response.json().get("error") or {}
+          detail = str(err.get("message") or err.get("code") or "")[:180]
+        except Exception:
+          detail = (response.text or "")[:180]
+        raise RuntimeError(f"HTTP {response.status_code} {detail}".strip())
+      data = response.json().get("data") or []
+      if not isinstance(data, list) or len(data) != len(chunk):
+        raise RuntimeError("问答接口站的 embedding 返回条数不对")
+      data.sort(key=lambda item: item.get("index", 0))
+      try:
+        arr = np.asarray([item["embedding"] for item in data], dtype=np.float32)
+      except Exception as exc:
+        raise RuntimeError(f"问答接口站的 embedding 无法解析：{exc}") from exc
+      if arr.ndim != 2 or arr.shape[0] != len(chunk):
+        raise RuntimeError("问答接口站的 embedding 维度异常")
+      if normalize_embeddings:
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        arr = arr / np.clip(norms, 1e-12, None)
+      outputs.append(arr)
+    merged = np.vstack(outputs) if outputs else np.zeros((0, 0), dtype=np.float32)
+    return merged if convert_to_numpy else merged.tolist()
+
+
+def _chat_embedding_settings() -> tuple[str, str, str]:
+  base = (
+    os.getenv("DPR_CHAT_EMBED_BASE_URL")
+    or os.getenv("DEEPSEEK_BASE_URL")
+    or os.getenv("SUMMARY_BASE_URL")
+    or ""
+  ).strip().rstrip("/")
+  key = (
+    os.getenv("DPR_CHAT_EMBED_API_KEY")
+    or os.getenv("DEEPSEEK_API_KEY")
+    or os.getenv("SUMMARY_API_KEY")
+    or ""
+  ).strip()
+  model = (os.getenv("DPR_EMBED_MODEL") or _DEFAULT_CHAT_EMBED_MODEL).strip()
+  return base, key, model
+
+
+def _try_chat_site_embedder(
+  log: Callable[[str], None],
+  timeout: int,
+) -> Optional[OpenAICompatibleEmbedder]:
+  """优先用问答同一个接口站的 embedding。维度必须和论文库一致，否则检索会对不上。"""
+  if str(os.getenv("DPR_EMBED_API_URL") or "").strip():
+    return None
+  base, key, model = _chat_embedding_settings()
+  if not base or not key or not model:
+    return None
+  embedder = OpenAICompatibleEmbedder(
+    model_name=model,
+    base_url=base,
+    api_key=key,
+    timeout=timeout,
+    log=log,
+  )
+  try:
+    sample = embedder.encode(
+      ["probe"],
+      convert_to_numpy=True,
+      normalize_embeddings=False,
+      batch_size=1,
+    )
+  except Exception as exc:
+    log(f"[WARN] 问答接口站的 embedding 现在不可用，改用和论文库一致的向量服务：{exc}")
+    return None
+  dim = int(sample.shape[1]) if getattr(sample, "ndim", 0) == 2 and sample.shape[0] else 0
+  if dim != _PAPER_EMBED_DIM:
+    log(
+      f"[WARN] 问答接口站的 embedding（{model}）维度是 {dim}，论文库是 {_PAPER_EMBED_DIM}。"
+      "维度不一致不能拿来检索，改用和论文库一致的向量服务。"
+    )
+    return None
+  log(
+    f"[INFO] 使用问答接口站的 embedding：model={model} "
+    f"endpoint={embedder.endpoint} dim={dim}"
+  )
+  return embedder
+
+
 def load_sentence_transformer(
   model_name: str,
   *,
@@ -365,6 +518,11 @@ def load_sentence_transformer(
       or _PUBLIC_EMBED_API_KEY
     )
   ).strip()
+  if allow_remote and remote_endpoint is None:
+    chat_embedder = _try_chat_site_embedder(log, _DEFAULT_REMOTE_TIMEOUT_SECONDS)
+    if chat_embedder is not None:
+      return chat_embedder
+
   if allow_remote and effective_remote_endpoint:
     remote_timeout_text = os.getenv("DPR_EMBED_API_TIMEOUT", str(_DEFAULT_REMOTE_TIMEOUT_SECONDS))
     try:

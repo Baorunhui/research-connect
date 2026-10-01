@@ -7,6 +7,7 @@ import requests
 
 from src.model_loader import (
     _PUBLIC_EMBED_API_KEY,
+    OpenAICompatibleEmbedder,
     RemoteSentenceTransformer,
     load_sentence_transformer,
 )
@@ -138,7 +139,12 @@ class RemoteSentenceTransformerTest(unittest.TestCase):
         {
             "DPR_EMBED_API_TIMEOUT": "45",
             "DPR_EMBED_API_KEY": "",
+            "DPR_EMBED_API_URL": "",
             "DPR_PUBLIC_SERVICE_API_KEY": "",
+            "DEEPSEEK_BASE_URL": "",
+            "DEEPSEEK_API_KEY": "",
+            "SUMMARY_BASE_URL": "",
+            "SUMMARY_API_KEY": "",
         },
         clear=False,
     )
@@ -148,6 +154,55 @@ class RemoteSentenceTransformerTest(unittest.TestCase):
         self.assertEqual(model.model_name, "BAAI/bge-small-en-v1.5")
         self.assertEqual(model.endpoint, "https://zwwen.online/embed")
         self.assertEqual(model.timeout, 45)
+        self.assertEqual(model.api_key, _PUBLIC_EMBED_API_KEY)
+
+    @patch.dict(
+        os.environ,
+        {
+            "DPR_EMBED_API_URL": "",
+            "DEEPSEEK_BASE_URL": "http://api.example/v1",
+            "DEEPSEEK_API_KEY": "chat-key",
+            "DPR_EMBED_MODEL": "qwen3-embedding",
+        },
+        clear=False,
+    )
+    @patch("src.model_loader.requests.post")
+    def test_chat_site_embedding_is_used_when_dimension_matches_the_library(self, mock_post):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"data": [{"index": 0, "embedding": [1.0] + [0.0] * 383}]}
+        mock_post.return_value = resp
+
+        model = load_sentence_transformer("BAAI/bge-small-en-v1.5", device="cpu")
+
+        self.assertIsInstance(model, OpenAICompatibleEmbedder)
+        self.assertEqual(model.model_name, "qwen3-embedding")
+        self.assertEqual(model.endpoint, "http://api.example/v1/embeddings")
+        self.assertEqual(mock_post.call_args.kwargs["json"]["model"], "qwen3-embedding")
+
+    @patch.dict(
+        os.environ,
+        {
+            "DPR_EMBED_API_URL": "",
+            "DEEPSEEK_BASE_URL": "http://api.example/v1",
+            "DEEPSEEK_API_KEY": "chat-key",
+            "DPR_EMBED_MODEL": "qwen3-embedding",
+            "DPR_EMBED_API_KEY": "",
+            "DPR_PUBLIC_SERVICE_API_KEY": "",
+        },
+        clear=False,
+    )
+    @patch("src.model_loader.requests.post")
+    def test_chat_site_embedding_falls_back_when_dimension_differs(self, mock_post):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"data": [{"index": 0, "embedding": [1.0, 0.0, 0.0, 0.0]}]}
+        mock_post.return_value = resp
+
+        model = load_sentence_transformer("BAAI/bge-small-en-v1.5", device="cpu")
+
+        self.assertIsInstance(model, RemoteSentenceTransformer)
+        self.assertEqual(model.endpoint, "https://zwwen.online/embed")
         self.assertEqual(model.api_key, _PUBLIC_EMBED_API_KEY)
 
     def test_explicit_remote_credentials_override_process_defaults(self):
