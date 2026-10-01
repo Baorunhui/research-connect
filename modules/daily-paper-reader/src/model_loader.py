@@ -449,11 +449,19 @@ def _chat_embedding_settings() -> tuple[str, str, str]:
   return base, key, model
 
 
+def _prefer_chat_site_embedding() -> bool:
+  """问答站点默认没有和论文库匹配的 embedding，只有显式打开才去试。"""
+  value = str(os.getenv("DPR_PREFER_CHAT_EMBED") or "").strip().lower()
+  return value in {"1", "true", "yes", "y", "on"}
+
+
 def _try_chat_site_embedder(
   log: Callable[[str], None],
   timeout: int,
 ) -> Optional[OpenAICompatibleEmbedder]:
-  """优先用问答同一个接口站的 embedding。维度必须和论文库一致，否则检索会对不上。"""
+  """问答同一个接口站的 embedding。维度必须和论文库一致，否则检索会对不上。"""
+  if not _prefer_chat_site_embedding():
+    return None
   if str(os.getenv("DPR_EMBED_API_URL") or "").strip():
     return None
   base, key, model = _chat_embedding_settings()

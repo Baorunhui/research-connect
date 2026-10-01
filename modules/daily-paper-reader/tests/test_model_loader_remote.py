@@ -163,6 +163,7 @@ class RemoteSentenceTransformerTest(unittest.TestCase):
             "DEEPSEEK_BASE_URL": "http://api.example/v1",
             "DEEPSEEK_API_KEY": "chat-key",
             "DPR_EMBED_MODEL": "qwen3-embedding",
+            "DPR_PREFER_CHAT_EMBED": "1",
         },
         clear=False,
     )
@@ -189,6 +190,7 @@ class RemoteSentenceTransformerTest(unittest.TestCase):
             "DPR_EMBED_MODEL": "qwen3-embedding",
             "DPR_EMBED_API_KEY": "",
             "DPR_PUBLIC_SERVICE_API_KEY": "",
+            "DPR_PREFER_CHAT_EMBED": "1",
         },
         clear=False,
     )
@@ -204,6 +206,28 @@ class RemoteSentenceTransformerTest(unittest.TestCase):
         self.assertIsInstance(model, RemoteSentenceTransformer)
         self.assertEqual(model.endpoint, "https://zwwen.online/embed")
         self.assertEqual(model.api_key, _PUBLIC_EMBED_API_KEY)
+
+    @patch.dict(
+        os.environ,
+        {
+            "DPR_EMBED_API_URL": "",
+            "DEEPSEEK_BASE_URL": "http://api.example/v1",
+            "DEEPSEEK_API_KEY": "chat-key",
+            "DPR_EMBED_MODEL": "qwen3-embedding",
+            "DPR_PREFER_CHAT_EMBED": "",
+            "DPR_EMBED_API_KEY": "",
+            "DPR_PUBLIC_SERVICE_API_KEY": "",
+        },
+        clear=False,
+    )
+    @patch("src.model_loader.requests.post")
+    def test_free_library_embedding_is_used_without_probing_the_chat_site(self, mock_post):
+        model = load_sentence_transformer("BAAI/bge-small-en-v1.5", device="cpu")
+
+        self.assertIsInstance(model, RemoteSentenceTransformer)
+        self.assertEqual(model.endpoint, "https://zwwen.online/embed")
+        self.assertEqual(model.api_key, _PUBLIC_EMBED_API_KEY)
+        mock_post.assert_not_called()
 
     def test_explicit_remote_credentials_override_process_defaults(self):
         model = load_sentence_transformer(
