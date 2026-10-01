@@ -179,35 +179,13 @@
     };
     window.DPRPrefetchDocsifyShell = function () {
       try {
-        var hash = String((window.location && window.location.hash) || '');
-        var route = hash.replace(/^#/, '').split('?')[0] || '/';
-        route = decodeURIComponent(route).replace(/^\/+/, '');
-        var pagePath = route && route !== '/'
-          ? route
-          : 'README';
-        if (!/\.(md|html)$/i.test(pagePath)) {
-          pagePath = pagePath.replace(/\/$/, '/README') + '.md';
-        }
         // 目录在脚本加载前就开始取，侧栏直接用这一份，避免再要一遍。
+        // 不预取 README。那个文件以前按未知二进制返回，一打开就会被浏览器下载。
         window.DPR_SIDEBAR_TEXT = fetch('docs/_sidebar.md', { credentials: 'same-origin' })
           .then(function (response) {
             if (!response.ok) throw new Error('sidebar HTTP ' + response.status);
             return response.text();
           });
-        var requests = [
-          'docs/' + pagePath.replace(/^\/+/, ''),
-        ].filter(function (url, index, list) {
-          return url && list.indexOf(url) === index;
-        });
-        requests.forEach(function (url) {
-          var link = document.createElement('link');
-          link.rel = 'preload';
-          link.as = 'fetch';
-          link.crossOrigin = 'anonymous';
-          link.href = url;
-          link.setAttribute('data-dpr-docsify-preload', '1');
-          document.head.appendChild(link);
-        });
       } catch {
         // ignore
       }

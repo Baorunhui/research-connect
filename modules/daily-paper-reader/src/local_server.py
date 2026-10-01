@@ -3265,6 +3265,12 @@ class Handler(SimpleHTTPRequestHandler):
             hostname = host.split(":", 1)[0]
         return hostname in _ALLOWED_HOSTS
 
+    def guess_type(self, path: str) -> str:
+        """Markdown 按文本返回。当成未知二进制时，浏览器会把 README 直接下载下来。"""
+        if str(path).lower().endswith((".md", ".markdown")):
+            return "text/markdown; charset=utf-8"
+        return super().guess_type(path)
+
     def _cacheable_static(self) -> bool:
         """Versioned scripts and images can be cached. Pages and APIs stay fresh."""
         path = urlparse(self.path).path.lower()

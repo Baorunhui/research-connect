@@ -3,7 +3,13 @@ import os
 
 import pytest
 
-from src.local_server import build_chat_request_payload
+from src.local_server import Handler, build_chat_request_payload
+
+
+def test_markdown_is_served_as_text_not_a_download():
+    handler = Handler.__new__(Handler)
+    content_type = handler.guess_type("/app/docs/README.md")
+    assert content_type.startswith("text/markdown")
 
 
 def test_connect_hub_secret_env_allowlist_includes_remote_embedding():

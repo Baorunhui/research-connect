@@ -8,6 +8,8 @@ const plugin = fs.readFileSync('app/docsify-plugin.js', 'utf8');
 const runner = fs.readFileSync('app/workflows.runner.js', 'utf8');
 
 assert.match(index, /window\.DPR_SIDEBAR_TEXT = fetch\('docs\/_sidebar\.md'/);
+assert.doesNotMatch(index, /rel = 'preload'/);
+assert.doesNotMatch(index, /docs\/README/);
 assert.doesNotMatch(index, /'docs\/_sidebar\.md',\s*\n\s*'docs\/'/);
 assert.match(sidebar, /window\.DPR_SIDEBAR_TEXT/);
 assert.match(plugin, /authorsFromPaperText\(rawPaperContent, frontmatterPaperMeta\)/);
