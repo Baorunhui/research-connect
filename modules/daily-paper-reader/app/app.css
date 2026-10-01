@@ -129,6 +129,32 @@ html {
   text-underline-offset: 3px;
 }
 
+.markdown-section .dpr-home-generate {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: #2f7a55;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 650;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.markdown-section .dpr-home-generate:hover {
+  background: #256546;
+}
+
+.markdown-section .dpr-home-generate:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.markdown-section .dpr-home-generate-note {
+  color: #5c6b64;
+  font-size: 0.86rem;
+}
+
 .markdown-section .dpr-home-notice-entry {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);

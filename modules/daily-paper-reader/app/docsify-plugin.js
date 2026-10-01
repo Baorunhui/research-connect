@@ -29,6 +29,28 @@ window.$docsify = {
         );
       }
 
+      if (!document.documentElement.dataset.dprGenerateDailyBound) {
+        document.documentElement.dataset.dprGenerateDailyBound = '1';
+        document.addEventListener('click', (event) => {
+          const button = event.target && event.target.closest
+            ? event.target.closest('[data-dpr-generate-daily]')
+            : null;
+          if (!button) return;
+          event.preventDefault();
+          const runner = window.DPRWorkflowRunner;
+          if (!runner || typeof runner.runQuickFetchByDays !== 'function') {
+            button.textContent = '页面还没准备好，请刷新后再点。';
+            return;
+          }
+          button.disabled = true;
+          button.textContent = '正在开始…';
+          Promise.resolve(runner.runQuickFetchByDays('10', {})).catch(() => {
+            button.disabled = false;
+            button.textContent = '生成日报';
+          });
+        });
+      }
+
       // 1. 解析当前文章 ID (简单用文件名作为 ID)
       const getPaperId = () => {
         return vm.route.file.replace('.md', '');

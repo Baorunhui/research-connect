@@ -12,6 +12,7 @@ assert.doesNotMatch(index, /rel = 'preload'/);
 assert.doesNotMatch(index, /docs\/README/);
 assert.doesNotMatch(index, /'docs\/_sidebar\.md',\s*\n\s*'docs\/'/);
 assert.match(sidebar, /window\.DPR_SIDEBAR_TEXT/);
+assert.match(plugin, /data-dpr-generate-daily/);
 assert.match(plugin, /authorsFromPaperText\(rawPaperContent, frontmatterPaperMeta\)/);
 assert.match(plugin, /Math\.min\(authorParagraphs\.length, 6\)/);
 assert.doesNotMatch(runner, /python src\/local_server\.py/);
