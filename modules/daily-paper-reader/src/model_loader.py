@@ -20,8 +20,9 @@ _DEFAULT_RETRIES = 3
 _DEFAULT_HF_BACKOFF_RETRIES = 1
 _DEFAULT_REMOTE_TIMEOUT_SECONDS = 60
 _DEFAULT_REMOTE_EMBED_ENDPOINT = os.getenv("DPR_EMBED_API_URL") or "https://zwwen.online/embed"
-# 当前服务使用固定 API key 接入。
-_DEFAULT_REMOTE_EMBED_API_KEY = os.getenv("DPR_EMBED_API_KEY") or ""
+# 与重排同一把公共服务密钥。没单独配 DPR_EMBED_API_KEY 时用它，否则请求会 401。
+_PUBLIC_EMBED_API_KEY = "26932a86d772001af60cbd9d2c162bfda3a90e094f797f3d6806f6077478b27a"
+_DEFAULT_REMOTE_EMBED_API_KEY = os.getenv("DPR_EMBED_API_KEY") or _PUBLIC_EMBED_API_KEY
 
 
 def _log_default(message: str) -> None:
@@ -358,7 +359,11 @@ def load_sentence_transformer(
   effective_remote_api_key = str(
     remote_api_key
     if remote_api_key is not None
-    else (os.getenv("DPR_EMBED_API_KEY") or _DEFAULT_REMOTE_EMBED_API_KEY)
+    else (
+      os.getenv("DPR_EMBED_API_KEY")
+      or os.getenv("DPR_PUBLIC_SERVICE_API_KEY")
+      or _PUBLIC_EMBED_API_KEY
+    )
   ).strip()
   if allow_remote and effective_remote_endpoint:
     remote_timeout_text = os.getenv("DPR_EMBED_API_TIMEOUT", str(_DEFAULT_REMOTE_TIMEOUT_SECONDS))

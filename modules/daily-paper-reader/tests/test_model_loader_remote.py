@@ -5,7 +5,11 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import requests
 
-from src.model_loader import RemoteSentenceTransformer, load_sentence_transformer
+from src.model_loader import (
+    _PUBLIC_EMBED_API_KEY,
+    RemoteSentenceTransformer,
+    load_sentence_transformer,
+)
 
 
 class RemoteSentenceTransformerTest(unittest.TestCase):
@@ -133,16 +137,18 @@ class RemoteSentenceTransformerTest(unittest.TestCase):
         os.environ,
         {
             "DPR_EMBED_API_TIMEOUT": "45",
+            "DPR_EMBED_API_KEY": "",
+            "DPR_PUBLIC_SERVICE_API_KEY": "",
         },
         clear=False,
     )
-    def test_load_sentence_transformer_returns_remote_wrapper_without_hardcoded_key(self):
+    def test_load_sentence_transformer_uses_public_embed_key_by_default(self):
         model = load_sentence_transformer("BAAI/bge-small-en-v1.5", device="cpu")
         self.assertTrue(getattr(model, "is_remote", False))
         self.assertEqual(model.model_name, "BAAI/bge-small-en-v1.5")
         self.assertEqual(model.endpoint, "https://zwwen.online/embed")
         self.assertEqual(model.timeout, 45)
-        self.assertEqual(model.api_key, "")
+        self.assertEqual(model.api_key, _PUBLIC_EMBED_API_KEY)
 
     def test_explicit_remote_credentials_override_process_defaults(self):
         model = load_sentence_transformer(
