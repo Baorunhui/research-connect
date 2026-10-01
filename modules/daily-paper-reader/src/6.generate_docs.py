@@ -1597,11 +1597,11 @@ def apply_figure_interpretation(
     - 上下文 = 图注 caption + 正文中引用该图号的段落（txt_path 全文）+ 标题/摘要，
       由文本模型批量生成比图注更详细的中文总结。
     - 保留 docling 英文图注 caption，中文解读存到 interpretation（二者并存）。
-    - 仅 section == 'deep' 且开关开启时执行（成本控制）。
+    - 精读和速览都会做；开关关闭时跳过。
     - 若所有图表已有 interpretation（或已标记无上下文跳过）则跳过（避免重复计费）。
     - best-effort：失败仅跳过解读，不阻塞文档生成。
     """
-    if section != "deep" or not figures_enabled():
+    if not figures_enabled():
         return
     figures = paper.get("_figure_assets") if isinstance(paper.get("_figure_assets"), list) else []
     tables = paper.get("_table_assets") if isinstance(paper.get("_table_assets"), list) else []
@@ -1986,8 +1986,8 @@ def process_paper(
                     f.write(updated)
                 existing = updated
 
-        # 图表解读（仅精读区 + 开关开启）：纯文本解读（图注 + 正文引用段），并回写 front matter
-        if section == "deep" and figures_enabled():
+        # 图表解读：纯文本解读（图注 + 正文引用段），并回写 front matter
+        if figures_enabled():
             if not isinstance(paper.get("_figure_assets"), list) and not isinstance(paper.get("_table_assets"), list):
                 # 尝试从既有 front matter 读取已提取的图表，供解读
                 fm = _parse_front_matter(existing)
@@ -2067,7 +2067,7 @@ def process_paper(
             paper["_figure_assets"] = figures
         if tables:
             paper["_table_assets"] = tables
-        # 图表解读（仅精读区 + 开关开启）
+        # 图表解读：图注 + 正文引用段
         apply_figure_interpretation(paper, docs_dir=docs_dir, section=section, txt_path=txt_path, client=paper_llm_client)
         glance = generate_glance_overview(title, abstract_en, client=paper_llm_client) or build_glance_fallback(paper)
         if glance:
@@ -2093,7 +2093,7 @@ def process_paper(
     if tables:
         paper["_table_assets"] = tables
 
-    # 图表解读（仅精读区 + 开关开启）：纯文本解读（图注 + 正文引用段），写入 front matter
+    # 图表解读：纯文本解读（图注 + 正文引用段），写入 front matter
     apply_figure_interpretation(paper, docs_dir=docs_dir, section=section, txt_path=txt_path, client=paper_llm_client)
 
     zh_title, zh_abstract = translate_title_and_abstract_to_zh(title, abstract_en, client=paper_llm_client)
@@ -2161,7 +2161,7 @@ def generate_external_paper_docs(
     pdf_url = str(paper.get("pdf_url") or paper.get("link") or "").strip()
     paper_llm_client = create_llm_client()
 
-    # 复用日报的「解读论文」：速览五段 + 精读深度总结 + 图表解读（仅精读区）。
+    # 复用日报的「解读论文」：速览五段 + 精读深度总结 + 图表解读。
     _progress("glance", "正在写速览")
     glance = generate_glance_overview(title, abstract_en, client=paper_llm_client) or build_glance_fallback(paper)
     if glance:
@@ -2182,7 +2182,7 @@ def generate_external_paper_docs(
         paper["_table_assets"] = tables
     _progress("figures", f"图表抽取完成（{len(figures)} 图 / {len(tables)} 表）")
 
-    if section == "deep" and figures_enabled():
+    if figures_enabled():
         # 先确保全文就绪（幂等），作为图表解读的正文引用上下文
         if pdf_url:
             try:
