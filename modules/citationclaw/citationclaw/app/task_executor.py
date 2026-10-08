@@ -1850,6 +1850,235 @@ class TaskExecutor:
         finally:
             self.is_running = False
 
+    async def execute_for_titles_openalex(
+        self,
+        paper_groups: List[dict],
+        config: AppConfig,
+        output_prefix: str,
+    ):
+        """按论文题目查他引：OpenAlex 施引 + 本地 Kaggle 题录核对 + 荣誉名单。
+
+        默认题目入口走这里。不查找 Google Scholar 引用链接，也不跑 Phase 1 爬取。
+        自引只在 OpenAlex 返回了目标论文作者时才跳过；没有作者名单时整表保留。
+        """
+        from citationclaw.core.honor_list import get_honor_list
+        from citationclaw.core.kaggle_arxiv_meta import get_kaggle_meta, normalize_title
+        from citationclaw.core.openalex_citing import OpenAlexCitingFetcher, verify_with_kaggle
+        from citationclaw.core.scholar_fast_path import (
+            DISCLAIMER, REPORT_MODE, build_fast_report, write_outputs,
+        )
+
+        self.should_cancel = False
+        started = time.monotonic()
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            _folder_prefix = getattr(config, "result_folder_prefix", "") or ""
+            folder_name = f"{_folder_prefix}-result-{timestamp}" if _folder_prefix else f"result-{timestamp}"
+            result_dir = DATA_DIR / folder_name
+            self.log_manager.info("=" * 50)
+            self.log_manager.info("开始按题目查他引")
+            self.log_manager.info("=" * 50)
+
+            targets = []
+            for group in paper_groups or []:
+                title = str((group or {}).get("title") or "").strip()
+                if not title:
+                    continue
+                aliases = []
+                for alias in (group or {}).get("aliases") or []:
+                    text = str(alias or "").strip()
+                    if text and text not in aliases and text != title:
+                        aliases.append(text)
+                targets.append({
+                    "title": title,
+                    "aliases": aliases,
+                    "year": (group or {}).get("year"),
+                    "citations": 0,
+                    "doi": str((group or {}).get("doi") or ""),
+                    "arxiv_id": str((group or {}).get("arxiv_id") or ""),
+                })
+            if not targets:
+                message = "请输入至少一篇论文题目"
+                self.log_manager.warning(message)
+                await self._broadcast_task_finished("no_results", message)
+                return
+
+            def _open_local_lists(papers):
+                honor_list = get_honor_list()
+                honor_stats = honor_list.stats()
+                snapshot = get_kaggle_meta()
+                snapshot = snapshot if snapshot.available else None
+                if snapshot is not None:
+                    for paper, match in zip(papers, snapshot.lookup_many(papers)):
+                        if not match:
+                            continue
+                        for key in ("arxiv_id", "doi"):
+                            paper[key] = paper.get(key) or match.get(key, "")
+                return honor_list, honor_stats, snapshot
+
+            honor, stats, kaggle = await asyncio.to_thread(_open_local_lists, targets)
+            if not stats["available"]:
+                self.log_manager.warning("荣誉名单没加载，这次对不上名单里的学者。")
+            else:
+                self.log_manager.info(f"  名单里有 {stats['total']} 人")
+            if kaggle is None:
+                self.log_manager.warning("本地论文快照没加载，这次只对题名，不核对论文编号。")
+
+            fetcher = OpenAlexCitingFetcher(
+                DATA_DIR / "cache" / "openalex_citing",
+                email=getattr(config, "openalex_email", "") or os.getenv("CITATIONCLAW_OPENALEX_MAILTO", ""),
+                api_key=os.getenv("OPENALEX_API_KEY", ""),
+                rate=float(os.getenv("CITATIONCLAW_OPENALEX_RPS", "8") or 8),
+                log=self.log_manager.info,
+                should_cancel=lambda: self.should_cancel,
+            )
+            citing: dict = {}
+            unresolved: List[str] = []
+            try:
+                self.log_manager.info(f"正在用 OpenAlex 按题目查这 {len(targets)} 篇论文的施引")
+
+                async def _resolve_group(tp):
+                    found: dict = {}
+                    authors: List[str] = []
+                    by: List[str] = []
+                    for index, title in enumerate([tp["title"], *tp["aliases"]]):
+                        res = await fetcher.resolve(
+                            title,
+                            tp.get("doi", "") if index == 0 else "",
+                            tp.get("arxiv_id", "") if index == 0 else "",
+                            tp.get("year") if index == 0 else None,
+                        )
+                        works = res.get("works") or []
+                        if not works:
+                            continue
+                        if res.get("resolved_by"):
+                            by.append(res["resolved_by"])
+                        for work in works:
+                            found.setdefault(work["id"], work)
+                            authors.extend(work.get("authors") or [])
+                    works = list(found.values())
+                    return {
+                        "works": works,
+                        "cited_by_count": sum(int(w.get("cited_by_count") or 0) for w in works),
+                        "authors": list(dict.fromkeys(a for a in authors if a)),
+                        "resolved_by": "+".join(dict.fromkeys(by)),
+                    }
+
+                resolved = await asyncio.gather(*(_resolve_group(tp) for tp in targets))
+                found_n = sum(1 for res in resolved if res["works"])
+                expected = sum(res["cited_by_count"] for res in resolved)
+                self.log_manager.info(
+                    f"  目录里找到 {found_n}/{len(targets)} 篇，记载大约 {expected} 条引用"
+                )
+
+                for tp, res in zip(targets, resolved):
+                    title = tp["title"]
+                    tp["self_cite_names"] = res["authors"]
+                    if not res["works"]:
+                        unresolved.append(title)
+                        citing[normalize_title(title)] = {
+                            "records": [], "openalex_ids": [], "openalex_cited_by": 0,
+                            "complete": True, "resolved_by": "",
+                        }
+                        self.log_manager.warning(f"OpenAlex 没有这篇论文：{title}")
+                        continue
+                    ids = [w["id"] for w in res["works"]]
+                    id_text = "、".join(ids[:4])
+                    if res["cited_by_count"] <= 0:
+                        self.log_manager.info(
+                            f"OpenAlex 找到了这篇论文（{id_text}），被引为 0：{title}"
+                        )
+                    else:
+                        self.log_manager.info(
+                            f"OpenAlex 找到了这篇论文（{id_text}），目录记载被引 {res['cited_by_count']}：{title}"
+                        )
+
+                async def _pull(i, tp, res):
+                    ids = [w["id"] for w in res["works"]]
+                    got = await fetcher.fetch_citing(ids, res["cited_by_count"], label=f"#{i + 1}")
+                    citing[normalize_title(tp["title"])] = {
+                        **got, "openalex_ids": ids, "openalex_cited_by": res["cited_by_count"],
+                        "resolved_by": res.get("resolved_by", ""),
+                    }
+
+                await asyncio.gather(*(
+                    _pull(i, tp, res)
+                    for i, (tp, res) in enumerate(zip(targets, resolved))
+                    if res["works"]
+                ))
+            finally:
+                await fetcher.close()
+
+            if self.should_cancel:
+                await self._broadcast_task_finished("cancelled", "这次查询已停下。")
+                return
+            if len(unresolved) == len(targets):
+                message = "OpenAlex 没有这篇论文：" + "；".join(unresolved)
+                await self._broadcast_task_finished("no_results", message)
+                return
+
+            took = time.monotonic() - started
+            incomplete_n = sum(
+                1 for item in citing.values()
+                if item.get("openalex_ids") and not item.get("complete")
+            )
+            print(
+                f"[citationclaw] title citing fetched={fetcher.fetched_records} "
+                f"requests={fetcher.requests} incomplete={incomplete_n} elapsed={took:.0f}s",
+                flush=True,
+            )
+            if incomplete_n:
+                self.log_manager.warning(
+                    f"有 {incomplete_n} 篇论文的施引没拉全，已拿到的会写进报告。"
+                )
+            else:
+                self.log_manager.info("引用记录拉完了。")
+
+            self.log_manager.info("正在核对题录，并对照荣誉名单")
+            if kaggle is not None:
+                await asyncio.to_thread(
+                    lambda: sum(verify_with_kaggle(c["records"], kaggle) for c in citing.values()))
+            report = await asyncio.to_thread(
+                build_fast_report, targets, targets[0]["title"], honor, citing, kaggle,
+                self.log_manager.info,
+            )
+            report["openalex"] = {"requests": fetcher.requests, "retries": fetcher.retries,
+                                  "route": fetcher.route, "new_records": fetcher.fetched_records}
+            report["elapsed_seconds"] = round(time.monotonic() - started, 2)
+            report["query"] = "title"
+            self.log_manager.info("正在写成报告")
+            files = await asyncio.to_thread(
+                write_outputs, report, result_dir, output_prefix or "paper",
+            )
+            missing = int((report.get("coverage") or {}).get("targets_incomplete") or 0)
+            done = f"查完了，用时 {report['elapsed_seconds']} 秒。"
+            if missing:
+                done += f"有 {missing} 篇论文的施引没拉全。"
+            self.log_manager.success(done + DISCLAIMER)
+            print(f"[citationclaw] result dir: {result_dir}", flush=True)
+            await self.log_manager._broadcast({"type": "all_done", "data": {
+                "excel": self._data_result_path(files["excel"]),
+                "json": self._data_result_path(files["json"]),
+                "dashboard": self._data_result_path(files["dashboard"]),
+                "cost_summary": {},
+                "mode": REPORT_MODE,
+                "disclaimer": DISCLAIMER,
+                "coverage": report["coverage"],
+            }})
+            return {
+                "excel": str(files["excel"] or ""),
+                "json": str(files["json"]),
+                "dashboard": str(files["dashboard"]),
+                "cost_summary": {},
+                "mode": REPORT_MODE,
+                "coverage": report["coverage"],
+            }
+        except Exception as e:
+            self._log_failure(e)
+            raise
+        finally:
+            self.is_running = False
+
     async def execute_for_titles(
         self,
         paper_groups: List[dict],

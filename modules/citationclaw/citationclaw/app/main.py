@@ -476,6 +476,7 @@ class RunRequest(BaseModel):
     papers: List[PaperInput]
     output_prefix: str = "paper"
     external_job_id: str = ""
+    mode: str = "fast"  # fast: OpenAlex 施引；full: 显式的谷歌学术全量爬取
 
 
 @app.get("/api/quota/check")
@@ -510,8 +511,12 @@ async def run_pipeline(request: RunRequest):
               for p in request.papers if p.title.strip()]
 
     config = config_manager.get()
+    mode = (request.mode or "fast").strip().lower()
+    if mode != "full":
+        mode = "fast"
+    runner = task_executor.execute_for_titles if mode == "full" else task_executor.execute_for_titles_openalex
     _launch_task(
-        task_executor.execute_for_titles(
+        runner(
             paper_groups=groups,
             config=config,
             output_prefix=_safe_output_prefix(request.output_prefix, "paper"),
@@ -519,11 +524,16 @@ async def run_pipeline(request: RunRequest):
         external_job_id=request.external_job_id,
     )
     total = sum(1 + len(g["aliases"]) for g in groups)
+    if mode == "full":
+        message = f"已启动全量分析，共 {len(groups)} 篇论文（含 {total} 个搜索标题）"
+    else:
+        message = f"已启动 OpenAlex 施引查询，共 {len(groups)} 篇论文（含 {total} 个搜索标题）"
     return {
         "schema_version": "connect.job.v1",
         "status": "success",
         "job_id": request.external_job_id,
-        "message": f"已启动，共 {len(groups)} 篇论文（含 {total} 个搜索标题）",
+        "mode": mode,
+        "message": message,
     }
 
 

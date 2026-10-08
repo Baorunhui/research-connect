@@ -70,3 +70,38 @@ def test_fast_report_matches_openalex_citing_records(tmp_path):
     assert [c["name"] for c in report["honor_citers"]] == ["Wei Wang"]
     assert report["honor_citers"][0]["citing_papers"] == ["Citing One"]
     assert "OpenAlex" in render_html(report)
+
+
+def test_empty_self_cite_names_are_not_dropped(tmp_path):
+    """A title query with no author list must keep every citing paper."""
+    h = _honors(tmp_path)
+    records = [
+        {"id": "W1", "title": "Citing One", "year": 2021, "doi": "", "arxiv_id": "",
+         "authors": [{"name": "Wei Wang", "affiliation": "UCLA", "email": ""}]},
+        {"id": "W3", "title": "Self Cite", "year": 2022, "doi": "", "arxiv_id": "",
+         "authors": [{"name": "Jane Doe", "affiliation": "X", "email": ""}]},
+    ]
+    citing = {normalize_title("Target Paper On Graphs"): {
+        "records": records, "openalex_ids": ["W9"], "openalex_cited_by": 2, "complete": True}}
+    report = build_fast_report(
+        [{"title": "Target paper on graphs", "self_cite_names": []}],
+        "Jane Doe", h, citing, kaggle=None, log=lambda _m: None)
+    assert report["coverage"]["self_citations_skipped"] == 0
+    assert report["coverage"]["unique_citing_works"] == 2
+
+
+def test_known_target_authors_skip_only_those_names(tmp_path):
+    h = _honors(tmp_path)
+    records = [
+        {"id": "W1", "title": "Citing One", "year": 2021, "doi": "", "arxiv_id": "",
+         "authors": [{"name": "Wei Wang", "affiliation": "UCLA", "email": ""}]},
+        {"id": "W3", "title": "Self Cite", "year": 2022, "doi": "", "arxiv_id": "",
+         "authors": [{"name": "Jane Doe", "affiliation": "X", "email": ""}]},
+    ]
+    citing = {normalize_title("Target Paper On Graphs"): {
+        "records": records, "openalex_ids": ["W9"], "openalex_cited_by": 2, "complete": True}}
+    report = build_fast_report(
+        [{"title": "Target paper on graphs", "self_cite_names": ["Doe, Jane"]}],
+        "", h, citing, kaggle=None, log=lambda _m: None)
+    assert report["coverage"]["self_citations_skipped"] == 1
+    assert report["coverage"]["unique_citing_works"] == 1

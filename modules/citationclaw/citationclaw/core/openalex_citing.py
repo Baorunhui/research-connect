@@ -34,7 +34,7 @@ from citationclaw.core.openalex_client import BASE_URL, OpenAlexClient
 
 WORKS_URL = f"{BASE_URL}/works"
 CITING_SELECT = "id,display_name,publication_year,doi,ids,authorships"
-TARGET_SELECT = "id,display_name,publication_year,doi,ids,cited_by_count"
+TARGET_SELECT = "id,display_name,publication_year,doi,ids,cited_by_count,authorships"
 AUTHOR_WORK_SELECT = "id,display_name,publication_year,doi,ids,cited_by_count,authorships"
 PER_PAGE = 200
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
@@ -51,6 +51,24 @@ def _citing_progress_text(progress: dict) -> str:
     count = f"{done}/{total}" if total > 0 and done <= total else str(done)
     return f"{prefix}已查到 {count} 条引用"
 _FORBIDDEN = ("pdf", "location", "abstract", "fulltext", "content_url")
+
+
+def titles_equivalent(query: str, candidate: str, min_tokens: int = 8) -> bool:
+    """Exact normalized title, or one full title contained in the other.
+
+    OpenAlex sometimes drops a short leading name (``AG-Pose:``). Containment
+    requires a long shared title so a short phrase cannot select another paper.
+    """
+    a = normalize_title(query)
+    b = normalize_title(candidate)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long = (a, b) if len(a) <= len(b) else (b, a)
+    if len(short.split()) < min_tokens:
+        return False
+    return f" {short} " in f" {long} "
 
 
 def short_id(openalex_id: str) -> str:
@@ -243,12 +261,23 @@ class OpenAlexCitingFetcher:
             if not exact and not found and results and OpenAlexClient._titles_match(
                     title, results[0].get("display_name", ""), threshold=0.8):
                 exact = results[:1]
+            if not exact and not found:
+                # title.search is an AND over every token, so a prefix OpenAlex
+                # did not index (for example "AG-Pose:") returns nothing.
+                searched = await self._get(WORKS_URL, {"search": clean, "select": TARGET_SELECT, "per-page": 8})
+                ranked = (searched or {}).get("results") or []
+                exact = [w for w in ranked if titles_equivalent(title, w.get("display_name", ""))]
+                if year:
+                    exact = [w for w in exact if not w.get("publication_year")
+                             or abs(int(w["publication_year"]) - int(year)) <= 2] or exact
             for w in exact:
                 found.setdefault(short_id(w["id"]), w)
             if exact:
                 by.append("title")
         works = [{"id": k, "title": w.get("display_name", ""), "year": w.get("publication_year"),
-                  "cited_by_count": int(w.get("cited_by_count") or 0)} for k, w in found.items()]
+                  "cited_by_count": int(w.get("cited_by_count") or 0),
+                  "authors": [a["name"] for a in compact_work(w).get("authors") or [] if a.get("name")]}
+                 for k, w in found.items()]
         works = [w for w in works if w["cited_by_count"] > 0] or works[:1]
         out = {"works": works, "cited_by_count": sum(w["cited_by_count"] for w in works),
                "resolved_by": "+".join(dict.fromkeys(by))}

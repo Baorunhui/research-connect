@@ -1166,8 +1166,9 @@ function initIndexPage() {
         if (logSection) logSection.style.display = 'block';
         var resultsSection = document.getElementById('idx-results-section');
         if (resultsSection) resultsSection.style.display = 'none';
+        var useFullTitles = document.getElementById('title-full-mode')?.checked;
         var pipe = document.getElementById('idx-pipeline-info');
-        if (pipe) pipe.style.display = '';
+        if (pipe) pipe.style.display = useFullTitles ? '' : 'none';
         document.querySelectorAll('.pipeline-phase').forEach(el => {
             el.classList.remove('active', 'done');
         });
@@ -1225,7 +1226,11 @@ function initIndexPage() {
             const resp = await safeFetch('/api/run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ papers: groups, output_prefix: outputPrefix })
+                body: JSON.stringify({
+                    papers: groups,
+                    output_prefix: outputPrefix,
+                    mode: useFullTitles ? 'full' : 'fast'
+                })
             });
             const data = await resp.json();
             if (data.status !== 'success') {

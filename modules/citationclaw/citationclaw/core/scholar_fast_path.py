@@ -65,7 +65,6 @@ def build_fast_report(
     ``citing`` maps ``normalize_title(target title)`` to
     ``{records, openalex_ids, openalex_cited_by, complete, resolved_by}``.
     """
-    scholar_key = name_key(scholar_name)
     targets_out: List[dict] = []
     citers: Dict[tuple, dict] = {}
     seen_citing: set = set()
@@ -91,9 +90,18 @@ def build_fast_report(
         n_fetched += len(records)
         hits_here = []
         n_self_here = 0
+        # Title search sets this list (possibly empty). An empty list means the
+        # target authors are unknown, so nothing is dropped as a self-citation.
+        # Scholar-profile papers omit the key and keep matching the profile name.
+        if "self_cite_names" in tp:
+            self_keys = {name_key(n) for n in (tp.get("self_cite_names") or [])}
+            self_keys.discard("")
+        else:
+            profile_key = name_key(scholar_name)
+            self_keys = {profile_key} if profile_key else set()
         for rec in records:
             authors = rec.get("authors") or []
-            if scholar_key and any(name_key(a.get("name", "")) == scholar_key for a in authors):
+            if self_keys and any(name_key(a.get("name", "")) in self_keys for a in authors):
                 seen_self.add(rec["id"])
                 n_self_here += 1
                 continue
